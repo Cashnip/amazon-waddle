@@ -2,7 +2,7 @@
 title: Azamon — Addendum Técnico do PRD
 status: final
 created: 2026-08-14
-updated: 2026-08-16
+updated: 2026-09-05
 ---
 
 # Addendum — Azamon
@@ -73,7 +73,7 @@ NFR-7 exige que duas criações simultâneas de Pedido para a última unidade pr
 O que o NFR-3 e a SM-5 cobram na prática:
 
 - Uma interface com as operações mínimas: **iniciar Tentativa de Pagamento** e **receber confirmação**.
-- O Provedor Simulado implementa a interface e decide o resultado por configuração — regra determinística acionável na demonstração (FR-25), não aleatória.
+- O Provedor Simulado implementa a interface e decide o resultado **pelos centavos do total do Pedido**, com as faixas declaradas no §7.1 do PRD — determinístico e acionável na demonstração sem reconfigurar nada e sem superfície de operador (FR-25), não aleatório. A faixa vale para a primeira Tentativa de Pagamento; da segunda em diante o resultado é `APROVADO`, senão a nova tentativa da FR-27 não existiria.
 - A confirmação chega **fora da requisição do checkout**, mesmo no simulado. Esse é o ponto que a discussão marcou como inegociável: o gateway real confirma por fora, então o MVP também confirma por fora, ou a virada vira reescrita.
 - A confirmação é idempotente por chave (NFR-12) — a mesma confirmação recebida duas vezes avança o Pedido uma vez só. É o comportamento exato que um webhook real exige.
 - A tela do Pedido reflete o novo Status do Pedido sem recarregamento manual (FR-26). O mecanismo — polling curto, SSE ou WebSocket — é decisão de arquitetura; polling é o suficiente e o mais barato.

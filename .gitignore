@@ -1,3 +1,8 @@
 .DS_Store
+
+# Skills e instalação do BMad: são *instalados*, não versionados.
+# Reproduzíveis a partir de skills-lock.json (skills) e do instalador do
+# BMad (_bmad/). Juntos passam de 2 MB de código de terceiros.
 .claude/
+.agents/
 _bmad/
