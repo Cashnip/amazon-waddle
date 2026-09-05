@@ -2,7 +2,7 @@
 title: Azamon
 status: final
 created: 2026-08-14
-updated: 2026-08-16
+updated: 2026-09-05
 ---
 
 # PRD: Azamon
@@ -400,6 +400,7 @@ Antes de confirmar, o Comprador vê a composição completa do que vai comprar.
 - A revisão mostra cada Item de Carrinho com preço unitário e subtotal, o Endereço escolhido, o Frete e o total.
 - É possível voltar ao Carrinho a partir da revisão sem perder o Endereço já escolhido.
 - Carrinho vazio não permite chegar à revisão.
+- A revisão declara a forma de pagamento sem coletar nenhum dado dela: o Comprador lê que o Pedido será submetido ao Provedor de Pagamento e não encontra na tela nenhum campo de cartão (ver §8, FR-25).
 
 #### FR-23: Criação do Pedido
 
@@ -430,7 +431,7 @@ O Pedido criado é submetido ao Provedor de Pagamento, que responde de forma ass
 **Consequências (testáveis):**
 - A resposta da requisição de checkout não espera o resultado do pagamento: o Comprador vai para a tela do Pedido em estado "processando".
 - Cada submissão gera uma Tentativa de Pagamento com identificador próprio e resultado `APROVADO` ou `RECUSADO`.
-- O Provedor Simulado permite escolher deterministicamente o resultado durante a demonstração — o caminho de recusa é acionável sob demanda, não por sorte.
+- O Provedor Simulado decide o resultado por regra determinística sobre o total do Pedido, declarada no §7.1. O caminho de recusa é acionável sob demanda — o apresentador escolhe Produto e quantidade para cair na faixa que quer, sem reconfigurar o sistema, sem reiniciar contêiner e sem superfície de operador. A faixa decide a **primeira** Tentativa de Pagamento de um Pedido; da segunda em diante o resultado é `APROVADO` — sem isso um Pedido recusado nunca poderia ser pago, e a nova tentativa da FR-27 não existiria.
 - Nenhum dado de cartão é coletado, transmitido ou armazenado, nem no Provedor Simulado (ver §8).
 
 #### FR-26: Confirmação de Pagamento Aprovado
@@ -652,6 +653,7 @@ O time tem entre 2 e 4 pessoas — o dobro de capacidade entre um extremo e outr
 | Teto de itens por página aceito do cliente | FR-15, NFR-14 | 60 | — |
 | Unidades por Item de Carrinho | FR-17, NFR-14 | 10 | — |
 | Isenção de Frete acima de | FR-21 | R$ 299,00 | — |
+| Regra de decisão do Provedor Simulado, pelos centavos do total | FR-25 | Na **primeira** Tentativa de Pagamento: `,00`–`,89` → `APROVADO` · `,90`–`,94` → `RECUSADO` · `,95`–`,99` → confirmação nunca chega. Da segunda em diante: `APROVADO` | Idêntica — a regra não é reconfigurada |
 | Tentativas de Pagamento por Pedido | FR-27 | 3 | — |
 | Expiração da Tentativa de Pagamento | FR-34 | 15 min | 60 s |
 | Intervalo entre etapas da simulação de entrega | FR-33 | 24 h | 30 s |
@@ -678,10 +680,12 @@ O time tem entre 2 e 4 pessoas — o dobro de capacidade entre um extremo e outr
 - Vitrine · Resultados de busca (com filtros e ordenação) · Página de Produto · Login · Cadastro · Recuperação de senha
 
 **Comprador (com Sessão)**
-- Carrinho · Checkout (Endereço → Frete → Revisão → Pagamento) · Tela do Pedido em processamento · Meus pedidos · Detalhe do Pedido · Meus endereços · Perfil
+- Carrinho · Checkout (Endereço → Revisão) · Tela do Pedido em processamento · Meus pedidos · Detalhe do Pedido · Meus endereços · Perfil
 
 **Administrador (com Sessão)**
 - Vendedores (lista, criar, editar) · Categorias · Produtos (lista, criar, editar, ajustar Estoque) · Pedidos (lista com filtro por Status do Pedido, detalhe, avançar status)
+
+**O checkout tem dois passos, não quatro.** O Frete é inteiramente derivado do CEP do Endereço escolhido (FR-21) e o pagamento não coleta dado nenhum — o §8 proíbe dado de cartão em qualquer ponto do sistema, **inclusive no Provedor Simulado**. Nenhum dos dois tem dado a pedir, então ambos aparecem como blocos da Revisão, e o resultado do pagamento chega fora do checkout, na Tela do Pedido em processamento (FR-25).
 
 A navegação principal do Comprador é a barra de busca — é o caminho da UJ-1 e deve estar presente em toda tela pública. A área administrativa é separada da loja e não aparece para quem não é Administrador.
 
@@ -723,17 +727,17 @@ O princípio é único e se repete: **implementação simples hoje, atrás de um
 3. Buscar um termo com erro de acentuação, filtrar por faixa de preço, ordenar por preço (FR-12, FR-13, FR-14).
 4. Abrir a página de Produto e mostrar o Vendedor — é aqui que se explica a espinha de marketplace (FR-7).
 5. Adicionar ao Carrinho, ajustar quantidade (FR-17, FR-18).
-6. Checkout: cadastrar Endereço, ver o Frete mudar por região, revisar (FR-20, FR-21, FR-22).
+6. Checkout em dois passos: cadastrar Endereço e chegar à Revisão; voltar ao passo Endereço, trocar para outra região e mostrar o Frete recalculado na Revisão (FR-20, FR-21, FR-22).
 7. Confirmar; mostrar o Pedido em processamento virar `PAGO` sem recarregar a página (FR-23, FR-25, FR-26).
 8. Abrir "Meus pedidos" e o detalhe, mostrando o preço praticado e a linha do tempo (FR-29, FR-30).
 9. Deixar a simulação de entrega avançar até `ENTREGUE` durante o resto da apresentação (FR-33).
 
 **Roteiro B — o caminho triste (o que separa maquete de sistema)**
-1. Com o Provedor Simulado configurado para recusar, repetir o checkout (FR-25).
+1. Repetir o checkout com um Pedido cujo total cai na faixa de recusa da regra do §7.1 — nada é reconfigurado entre os roteiros (FR-25).
 2. Mostrar o Pedido em `PAGAMENTO_RECUSADO` com o motivo (FR-27).
 3. Abrir a página do Produto em outra aba e mostrar que o Estoque **voltou** (FR-11, FR-27).
 4. Tentar de novo com aprovação e mostrar o Pedido seguindo adiante (FR-27).
-5. Com o prazo de expiração reduzido, criar um Pedido e **não** responder a confirmação: mostrar o Pedido saindo sozinho de `AGUARDANDO_PAGAMENTO` por tempo esgotado e o Estoque voltando (FR-34). É a única forma de a SM-1 exercitar a expiração.
+5. Com o prazo de expiração em 60 s (§7.1), criar um Pedido cujo total cai na faixa em que a confirmação **nunca chega**: mostrar o Pedido saindo sozinho de `AGUARDANDO_PAGAMENTO` por tempo esgotado e o Estoque voltando (FR-34). É a única forma de a SM-1 exercitar a expiração.
 
 **Roteiro C — operação e reversão (realiza UJ-3, UJ-4)**
 1. Entrar como Administrador, cadastrar Vendedor e Produto, e vê-lo aparecer na vitrine (FR-8, FR-9).
