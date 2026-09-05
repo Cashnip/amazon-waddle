@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Azamon — Página de Produto</title>
+<style>
+/* ===========================================================
+   Tela: Página de Produto (área Público)
+   Governada por:
+     DESIGN.md → Colors, Typography (preco / preco-centavos), Components
+       (Caixa de compra, Botão Adicionar ao Carrinho, Selo de disponibilidade)
+     EXPERIENCE.md → Component Patterns (Caixa de compra, Selo de
+       disponibilidade), Dinheiro e Estoque na tela, Accessibility Floor
+       (ordem de tabulação: título e preço antes da Caixa de compra)
+     Key Flows → UJ-1, passo 4
+   Estado canônico: Produto disponível com Estoque abaixo do teto de 10,
+   por isso a quantidade é exibida (EXPERIENCE.md → Dinheiro e Estoque).
+   Três colunas em ≥1024px. Em sm a Caixa de compra empilha abaixo da
+   descrição (EXPERIENCE.md → Responsive & Platform).
+   Sem rede: fonte de sistema, imagem desenhada em CSS.
+   =========================================================== */
+:root{
+  --chrome:#131921; --chrome-muted:#232F3E; --chrome-foreground:#FFFFFF;
+  --primary:#FFD814; --primary-foreground:#0F1111;
+  --link:#007185; --available:#007600;
+  --background:#FFFFFF; --foreground:#0A0A0A; --muted:#F5F5F5;
+  --muted-foreground:#5F5F5F; --border:#E5E5E5;
+  --section:48px; --section-sm:32px; --page-margin-lg:32px;
+  --r-sm:4px; --r-md:6px; --r-lg:8px; --r-full:9999px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  font-variant-numeric:tabular-nums}
+.chrome{background:var(--chrome);color:var(--chrome-foreground);
+  display:flex;align-items:center;gap:24px;padding:12px var(--page-margin-lg)}
+.wordmark{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.search{flex:1;display:flex;background:#fff;border-radius:var(--r-full);overflow:hidden;height:44px}
+.search select{border:0;background:var(--muted);color:var(--primary-foreground);padding:0 14px;font:inherit}
+.search input{flex:1;border:0;padding:0 14px;font:inherit}
+.search button{border:0;background:var(--primary);color:var(--primary-foreground);
+  padding:0 22px;font:inherit;font-weight:600}
+.chrome .acct{font-size:13px;line-height:1.3}.chrome .acct b{display:block;font-size:14px}
+.cart{display:flex;align-items:baseline;gap:6px;font-weight:600}
+.cart .n{background:var(--primary);color:var(--primary-foreground);
+  border-radius:var(--r-full);padding:1px 8px;font-size:13px}
+.cats{background:var(--chrome-muted);color:var(--chrome-foreground);
+  display:flex;gap:22px;padding:10px var(--page-margin-lg);font-size:13px}
+.wrap{max-width:1440px;margin:0 auto;padding:var(--section-sm) var(--page-margin-lg) var(--section)}
+.crumbs{color:var(--muted-foreground);font-size:13px;margin-bottom:20px}
+.crumbs a{color:var(--link);text-decoration:none}
+.cols{display:grid;grid-template-columns:1fr 1.15fr 320px;gap:var(--section)}
+.ph{aspect-ratio:1;border-radius:var(--r-lg);background:
+  repeating-linear-gradient(45deg,#F0F0F0 0 12px,#E8E8E8 12px 24px);
+  display:grid;place-items:center;color:#9A9A9A;font-size:13px}
+h1{font-size:24px;font-weight:600;line-height:1.3;margin:0 0 8px}
+.seller{font-size:13px;color:var(--muted-foreground);margin-bottom:var(--section-sm)}
+.seller a{color:var(--link);text-decoration:none}
+.sep{border:0;border-top:1px solid var(--border);margin:var(--section-sm) 0}
+.preco{font-size:28px;font-weight:500;line-height:1;display:inline-flex;align-items:flex-start}
+.preco .cur{font-size:14px;font-weight:500;margin:2px 3px 0 0}
+.preco .cents{font-size:14px;font-weight:500;margin-top:2px}
+h2{font-size:15px;font-weight:600;margin:0 0 10px}
+.desc p{margin:0 0 12px;max-width:62ch}
+.box{border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--section-sm);
+  display:flex;flex-direction:column;gap:16px;align-self:start;background:#fff}
+.avail{color:var(--available);font-size:14px;font-weight:500}
+.freight{font-size:13px;color:var(--muted-foreground)}
+.qty{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.qty select{font:inherit;padding:9px 10px;border:1px solid var(--border);
+  border-radius:var(--r-md);background:#fff}
+.btn{border:0;border-radius:var(--r-full);padding:12px 16px;font:inherit;
+  font-weight:600;cursor:pointer;background:var(--primary);color:var(--primary-foreground)}
+.note{font-size:12px;color:var(--muted-foreground);line-height:1.45}
+</style></head><body>
+
+<header class="chrome">
+  <div class="wordmark">azamon</div>
+  <form class="search" role="search">
+    <select aria-label="Categoria"><option>Todos</option><option selected>Eletrônicos</option></select>
+    <input value="carregador tipo c" aria-label="Buscar Produtos" maxlength="100">
+    <button type="submit">Buscar</button>
+  </form>
+  <div class="acct">Olá, Marina<b>Minha conta</b></div>
+  <div class="cart">Carrinho <span class="n">2</span></div>
+</header>
+<nav class="cats"><span>Eletrônicos</span><span>Livros</span><span>Casa</span><span>Esporte</span><span>Beleza</span><span>Brinquedos</span><span>Papelaria</span></nav>
+
+<main class="wrap">
+  <div class="crumbs"><a href="#">Início</a> › <a href="#">Eletrônicos</a> › <a href="#">Carregadores</a></div>
+
+  <div class="cols">
+    <div class="ph">imagem do Produto</div>
+
+    <section>
+      <h1>Carregador rápido USB-C 30 W bivolt</h1>
+      <div class="seller">Vendido por <a href="#">NorteTech</a></div>
+      <div class="preco"><span class="cur">R$</span>89<span class="cents">,90</span></div>
+      <hr class="sep">
+      <h2>Descrição</h2>
+      <div class="desc">
+        <p>Carregador de parede compacto com saída única USB-C de 30 W, compatível com carga rápida em celulares e tablets. Entrada bivolt automática de 100 V a 240 V.</p>
+        <p>Proteção contra sobrecarga, sobreaquecimento e curto-circuito. Corpo em policarbonato com acabamento fosco. Cabo não incluso.</p>
+      </div>
+    </section>
+
+    <aside class="box">
+      <div class="preco"><span class="cur">R$</span>89<span class="cents">,90</span></div>
+      <div class="avail">Restam 3 unidades</div>
+      <div class="freight">Frete grátis em Pedidos acima de R$ 299,00</div>
+      <div class="qty">
+        <label for="q">Quantidade</label>
+        <select id="q"><option>1</option><option>2</option><option>3</option></select>
+      </div>
+      <button class="btn">Adicionar ao Carrinho</button>
+      <p class="note">Vendido e entregue por NorteTech.</p>
+    </aside>
+  </div>
+</main>
+</body></html>
