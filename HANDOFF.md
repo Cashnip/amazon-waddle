@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-06 · **Estado:** PRD, UX, arquitetura e spec finalizados e reconciliados entre si. Nada construído ainda — falta fatiar em épicas e histórias, e então o código começa.
+**Atualizado:** 2026-09-07 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. Sprint planning passou no portão de prontidão e o rastreamento existe. Nada de código ainda — a Estória 1.1 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -68,9 +68,12 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-create-epics-and-stories`, partindo da `SPEC.md` e do `mapa-de-capacidades.md`. Os `CAP`, os `FR` e os `AD` têm ID estável, então as épicas citam por ID sem risco de deriva. Depois `bmad-build`.
+`bmad-build` na **Estória 1.1** — o andaime dos quatro contêineres. As sete épicas e as 52 estórias estão em
+`_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
+`_bmad-output/implementation-artifacts/sprint-status.yaml`, tudo em `backlog`.
 
-A spec rodou em 2026-09-06 e adotou os seis documentos como companheiros, sem absorver nenhum.
+A spec rodou em 2026-09-06 e adotou os seis documentos como companheiros, sem absorver nenhum; as épicas
+rodaram em 2026-09-07 e citam `CAP`, `FR`, `NFR`, `AD` e `UX-DR` por ID, sem copiar enunciado.
 
 E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, um Comprador, um Pedido que nasce, é pago pelo Provedor Simulado e chega a `ENTREGUE`, com telas feias. É onde as cinco verificações acima acontecem.
 
@@ -90,6 +93,12 @@ E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, u
 - **Registrar `GET /api/v1/produtos` em dois lugares.** A rota é de `busca`, com ou sem `termo` — a Vitrine é uma listagem, não uma rota à parte. `catalogo` serve `GET /api/v1/produtos/<id>` e o CRUD administrativo, e não registra handler de listagem. Duas equipes registrando o mesmo padrão no `ServeMux` fazem o binário **entrar em pânico no arranque**: falha de subida, não de comportamento (`AD-16`).
 - **Fixar o Next.js na linha 16.2.** O patch das duas RCE críticas de 25/08/2026 pousou em **16.3.3**, e a 16.2.x não recebe backport. A espinha fixa **16.3.4**. Vale para toda a tabela Stack: as versões foram verificadas na web, não lembradas.
 - **Usar o verde ou o laranja para enfeitar.** No `DESIGN.md` os dois têm sentido fechado: verde é Estoque disponível e `ENTREGUE`; laranja aparece **uma vez por fluxo**, no passo irreversível. Usar qualquer um decorativamente apaga o único mecanismo semântico de cor do sistema.
+- **Rodar `bmad-sprint-planning` direto no `epics.md`.** O parser do `sprint_plan.py` só reconhece `## Epic N:` e `### Story N.M:` em inglês — os nossos cabeçalhos são `## Épica N:` e `### Estória N.M:`, e ele devolve zero épicas **sem um único aviso**. Gere uma cópia temporária antes de chamar o script, e passe a cópia no `--epic-file`:
+  ```
+  sed -E 's/^(#{1,3}) Épica /\1 Epic /; s/^(#{2,4}) Estória /\1 Story /' \\
+    _bmad-output/planning-artifacts/epics.md > /tmp/epics-en.md
+  ```
+  Só a palavra estrutural muda: as chaves do `sprint-status.yaml` continuam saindo do título em português.
 - **Editar a `SPEC.md` à mão.** Ela é **derivada** do `.memlog.md` da spec a cada execução, e `bmad-spec` é a única escritora — uma edição manual é sobrescrita no próximo derive, em silêncio. Mudou algo? Rode `bmad-spec` de novo apontando para a mesma pasta: os `CAP` são preservados por ID. O mesmo vale para o `mapa-de-capacidades.md`.
 
 ## Para colar numa sessão nova

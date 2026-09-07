@@ -1,0 +1,109 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-07-2026 13:12
+last_updated: 09-07-2026 13:12
+project: azamon
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-andaime-do-serviço-os-quatro-contêineres-em-um-comando: backlog
+  1-2-casca-do-navegador-rewrites-shadcn-e-a-base-visual-da-marca: backlog
+  1-3-primeira-migração-e-o-catálogo-semeado-determinístico: backlog
+  1-4-a-medição-do-nfr-4-com-5-000-produtos: backlog
+  1-5-um-comprador-entra-e-vê-um-produto: backlog
+  1-6-um-pedido-nasce-em-aguardando_pagamento: backlog
+  1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: backlog
+  1-8-a-varredura-leva-o-pedido-até-entregue: backlog
+  1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-cadastro-de-comprador: backlog
+  2-2-autenticação-encerramento-de-sessão-e-bloqueio-por-tentativa: backlog
+  2-3-recuperação-de-senha: backlog
+  2-4-autorização-por-dono-do-recurso-e-separação-de-papéis: backlog
+  2-5-endereços-do-comprador: backlog
+  2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-gestão-de-vendedores: backlog
+  3-2-gestão-de-categorias: backlog
+  3-3-gestão-de-produtos: backlog
+  3-4-estoque-disponível-guarda-de-reservas-e-o-predicado-de-visib: backlog
+  3-5-a-vitrine-e-o-envelope-de-listagem: backlog
+  3-6-página-de-produto: backlog
+  3-7-busca-por-texto: backlog
+  3-8-filtros-de-categoria-e-faixa-de-preço: backlog
+  3-9-ordenação: backlog
+  3-10-chrome-da-loja-barra-superior-busca-global-e-faixa-de-catego: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-carrinho-exclusivo-de-comprador-autenticado: backlog
+  4-2-adicionar-produto-ao-carrinho: backlog
+  4-3-alterar-quantidade-remover-item-e-esvaziar-o-carrinho: backlog
+  4-4-revalidação-do-carrinho-na-abertura: backlog
+  4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-a-máquina-de-estados-do-pedido-completa-e-com-testes: backlog
+  5-2-seleção-de-endereço-no-checkout: backlog
+  5-3-cálculo-do-frete: backlog
+  5-4-revisão-do-pedido: backlog
+  5-5-entrada-no-checkout-revalidação-e-confirmação-do-preço-visto: backlog
+  5-6-criação-do-pedido-com-reserva-de-estoque-atômica: backlog
+  5-7-consistência-de-estoque-sob-concorrência: backlog
+  5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento: backlog
+  5-9-confirmação-aprovada-por-webhook: backlog
+  5-10-pagamento-recusado-e-nova-tentativa: backlog
+  5-11-expiração-da-tentativa-de-pagamento: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-meus-pedidos: backlog
+  6-2-detalhe-do-pedido: backlog
+  6-3-cancelamento-pelo-comprador: backlog
+  6-4-painel-de-pedidos-do-administrador: backlog
+  6-5-pagamento-aprovado-sobre-pedido-cancelado-visível-ao-adminis: backlog
+  6-6-simulação-de-entrega: backlog
+  6-7-a-forma-de-exibição-dos-sete-status: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-o-readme-leva-do-clone-ao-sistema-rodando: backlog
+  7-2-o-diagrama-dos-seis-módulos-corresponde-ao-código: backlog
+  7-3-o-addendum-percorrido-contra-o-código: backlog
+  7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: backlog
+  epic-7-retrospective: optional
