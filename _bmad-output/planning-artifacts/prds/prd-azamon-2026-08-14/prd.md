@@ -2,7 +2,7 @@
 title: Azamon
 status: final
 created: 2026-08-14
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # PRD: Azamon
@@ -799,7 +799,7 @@ A nota de arquitetura costuma ser decidida na sequência de perguntas, não na d
 
 *Triadas no fechamento do PRD: nenhuma delas impede este documento de ser usado, mas duas travam a etapa seguinte. Cada uma com dono e condição de revisão.*
 
-1. 🔴 **Front-end: Next.js ou React puro?** Indiferente para este PRD, que é agnóstico de tecnologia; **bloqueante para `bmad-architecture`**. *Dono: o time.* Nada do §4 muda com a resposta; o que muda é a estrutura do front e a decisão sobre renderização no servidor, que este produto não precisa (não há usuário real nem indexação a otimizar).
+1. ✅ **Front-end: Next.js ou React puro?** Resolvida em 2026-09-06 por `bmad-architecture`: **Next.js 16 sobre React 19**, escolhido pelo time por familiaridade — num semestre, aprender do zero custa mais que a economia de um contêiner. Como este PRD antecipava, nada do §4 mudou. A renderização no servidor foi recusada pelo mesmo motivo que esta questão já nomeava: não há usuário real nem indexação a otimizar. O front-end é casca de apresentação sem regra de negócio (`AD-10` da espinha de arquitetura).
 2. 🟡 **Portal do Vendedor é mesmo fase 2?** Ele é a consequência natural do modelo escolhido, mas não apareceu na lista de fase 2 do usuário. Corte consciente ou omissão? *Adiada, condicionada à questão 3.* Segura de adiar porque a reversão é barata: o Item de Pedido já carrega o Vendedor e as telas seriam as da FR-8 e FR-9 restritas por autorização (addendum §6).
 3. 🔴 **Existe rubrica escrita do professor ou enunciado formal do trabalho?** **Bloqueadora.** Quatro suposições do §16 dependem exclusivamente desta resposta — Portal do Vendedor fora do MVP (n.º 1), ausência de verificação de e-mail (n.º 7), ausência de devolução e reembolso (n.º 8) e Pedido não dividido por Vendedor (n.º 2). Não são quatro riscos independentes: são um só, com quatro sintomas. Nenhuma análise adicional os resolve; o enunciado resolve os quatro de uma vez.
 4. 🟢 **Como o time se divide?** Os seis módulos do NFR-2 são as costuras naturais, e o addendum §8 dá a ordem de construção. *Adiada para `bmad-sprint-planning`. Dono: o time.* Não afeta o conteúdo deste PRD.

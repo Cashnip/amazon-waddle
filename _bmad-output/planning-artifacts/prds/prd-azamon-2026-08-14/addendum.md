@@ -2,30 +2,34 @@
 title: Azamon — Addendum Técnico do PRD
 status: final
 created: 2026-08-14
-updated: 2026-09-05
+updated: 2026-09-06
 ---
 
 # Addendum — Azamon
 
 Este documento guarda o que o `prd.md` deliberadamente não carrega: escolhas de tecnologia, desenho de mecanismo, alternativas descartadas e o caminho de migração. É insumo direto para `bmad-architecture` — o PRD diz *o que o sistema faz*, este addendum diz *o que já foi decidido sobre como*.
 
+**A arquitetura já rodou** (2026-09-06). A espinha está em `_bmad-output/planning-artifacts/architecture/architecture-azamon-2026-09-05/ARCHITECTURE-SPINE.md`, com 20 invariantes de ID estável (`AD-1`..`AD-20`). Onde este addendum e a espinha falarem do mesmo assunto, **a espinha decide o mecanismo e este documento guarda o porquê**. O §9 abaixo registra onde cada delegação foi parar.
+
 ## 1. Stack imposta
 
 | Camada | Escolha | Origem |
 |---|---|---|
 | Back-end | **Go** | Imposta pelo usuário |
-| Front-end | **Next.js ou React** — ainda em aberto | Imposta parcialmente (Questão em Aberto 1 do PRD) |
+| Front-end | **Next.js 16** sobre **React 19** | Decidido em `bmad-architecture` (2026-09-06); fecha a Questão em Aberto 1 do PRD |
 | Banco de dados | **PostgreSQL** | Imposta |
 | Cache / apoio | **Redis** | Imposta |
 | Execução | **Docker obrigatório** para subir os serviços | Imposta |
 
-**Observação sobre o Redis, levantada na discussão:** ele precisa de um uso nomeado, senão é dependência decorativa. O Carrinho **não** é um bom candidato — a decisão de carrinho só para autenticado (FR-16) e persistente entre Sessões (§4.4 do PRD) o coloca naturalmente no PostgreSQL, onde ele sobrevive a reinício e não expira sozinho. Usos legítimos no MVP, a confirmar na arquitetura:
+**Observação sobre o Redis, levantada na discussão:** ele precisa de um uso nomeado, senão é dependência decorativa. O Carrinho **não** é um bom candidato — a decisão de carrinho só para autenticado (FR-16) e persistente entre Sessões (§4.4 do PRD) o coloca naturalmente no PostgreSQL, onde ele sobrevive a reinício e não expira sozinho. Três usos foram propostos aqui e levados à arquitetura. **Um sobreviveu, e é dito em voz alta que os outros dois não** — que era exatamente o combinado:
 
-- Armazenamento de Sessão e do token de redefinição de senha (FR-3), onde a expiração nativa do Redis é o mecanismo certo.
-- Cache de listagens da vitrine e de resultados de busca frequentes (apoia NFR-4).
-- Fila leve ou canal para o processamento assíncrono da Tentativa de Pagamento (FR-25) e da simulação de entrega (FR-33), evitando um broker adicional no MVP.
+| Uso proposto | Veredito da arquitetura |
+|---|---|
+| Sessão, token de redefinição de senha (FR-3) e contador de bloqueio de login (FR-2) | **Sobreviveu, e é o emprego único do Redis.** Os três são dado com prazo de validade, que é o que o `TTL` nativo faz melhor que o PostgreSQL. Custo aceito e declarado: reiniciar o Redis encerra todas as Sessões (`AD-20`) |
+| Cache de listagens da vitrine e de busca (NFR-4) | **Recusado.** Com 5.000 Produtos a folga vem do tamanho da tabela, e cache sem medição é uma segunda cópia da verdade para invalidar. Se o NFR-4 falhar em medição, o caminho é índice antes de cache |
+| Fila leve para a Tentativa de Pagamento (FR-25) e a simulação de entrega (FR-33) | **Recusado.** A invariante 6 abaixo já obriga uma varredura do histórico de transições no PostgreSQL — que sobrevive a reinício, o que a fila não faz. Existindo a varredura obrigatória, a fila vira um segundo caminho para o mesmo efeito, com um teste a mais e uma corrida a mais (`AD-6`) |
 
-Se nenhum desses usos sobreviver ao desenho da arquitetura, vale dizer isso em voz alta em vez de manter o Redis no `docker-compose` como enfeite.
+O Redis fica no `docker-compose` com um emprego nomeado, não como enfeite.
 
 **Aderência da stack ao destino declarado:** Go com monólito modular é particularmente favorável ao plano de microsserviços do §11 do PRD — pacote por domínio, interface pública explícita por módulo, e a extração vira mover pacote e substituir chamada de função por chamada de rede. A escolha de stack, feita antes deste PRD, já barateia a fase 2 técnica.
 
@@ -130,6 +134,23 @@ Fechado o esqueleto, a ordem abaixo governa o alargamento:
 
 Os passos 6 e 1–2 são as fronteiras mais limpas para dividir o time em paralelo.
 
-## 9. O que este addendum não decide
+## 9. O que este addendum delegou à arquitetura
 
-Escolha entre Next.js e React; desenho de esquema de banco; estrutura de pastas do repositório; mecanismo de atualização da tela do Pedido; biblioteca de testes; estratégia de migração de banco. Tudo isso é `bmad-architecture`.
+Os seis itens abaixo foram deixados em aberto de propósito e resolvidos por `bmad-architecture` em 2026-09-06. O mecanismo mora na espinha; a linha aqui existe para que ninguém procure no lugar errado.
+
+| Delegação | Onde foi parar |
+|---|---|
+| Escolha entre Next.js e React | **Next.js 16 sobre React 19**, como casca de apresentação sem regra de negócio, reescrevendo `/api/*` para o Go — uma origem só, sem CORS (`AD-10`) |
+| Desenho de esquema de banco | **Um schema do PostgreSQL por módulo, chave estrangeira cruzando schema proibida** (`AD-2`). Entidades e travessias na Semente Estrutural da espinha; colunas vivem nas migrações |
+| Estrutura de pastas do repositório | Árvore na Semente Estrutural: `internal/<módulo>/` com um arquivo público por módulo, `api/` só de tradução, `internal/plataforma/` para o transversal |
+| Mecanismo de atualização da tela do Pedido | **Consulta em intervalo**, em três superfícies e mais nenhuma, com todo instante absoluto e vindo do servidor (`AD-18`) — como a `EXPERIENCE.md` já pedia. Sem WebSocket |
+| Biblioteca de testes | Híbrido: máquina de estados em memória; `testcontainers-go` com PostgreSQL real onde a transação **é** o objeto do teste (NFR-7, NFR-12, FR-24) |
+| Estratégia de migração de banco | **goose** com versionamento por *timestamp*, arquivos SQL embutidos por `embed.FS` e aplicados no arranque do binário, antes da semente. Nunca auto-migração |
+
+**O que a arquitetura decidiu e este addendum não previa** — registrado aqui porque a SM-7 exige que este documento continue vivo:
+
+- **O Catálogo é dono do Estoque, incluindo a Reserva de Estoque** (`AD-5`). A alternativa, o Pedido guardar a Reserva, cria ciclo: calcular o disponível exigiria o Catálogo perguntar ao Pedido, que já pergunta o preço ao Catálogo.
+- **A ordem é metade da corretude do §3 acima.** Bloquear a linha de Produto com `ORDER BY id FOR UPDATE` **antes** de somar as reservas ativas, em dois comandos. Ler a soma antes de segurar a trava vende a mesma última unidade duas vezes, e o `ORDER BY` fecha o impasse entre dois Pedidos com os mesmos dois Produtos em ordem inversa.
+- **A confirmação do pagamento entra por webhook e é aplicada por *inbox*** (`AD-7`): `pagamento` grava com restrição única e **não conhece `pedido`**; a varredura de `pedido` lê e aplica. Sem ciclo, com idempotência estrutural em vez de código defensivo, e sobrevivendo a reinício.
+- **Emitir a confirmação simulada mora em `pagamento`, não em `pedido`** (`AD-6`). É comportamento do Provedor: dentro do Pedido, poria conhecimento de gateway no domínio e quebraria o NFR-3 na primeira troca.
+- **A FR-3 não tem canal de entrega.** Não existe serviço de e-mail (§5 do PRD, e o NFR-15 proíbe rede), então o token vai para o log estruturado (`AD-20`). A FR-3 é a primeira da ordem de corte do §6.3; se sobreviver, o caminho é um contêiner Mailpit, que roda offline.
