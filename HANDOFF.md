@@ -6,20 +6,9 @@ Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestr
 
 ## Setup
 
-O repositório versiona **o trabalho**, não a ferramenta. Depois de clonar você tem os documentos, mas não tem o BMad nem as skills — os dois são instalados e somam mais de 2 MB de código de terceiros.
-
-**Pré-requisito:** [`uv`](https://docs.astral.sh/uv/). Todo script do BMad roda por `uv run`; sem ele nenhuma skill funciona.
-
-| O quê | De onde | Como saber que deu certo |
-|---|---|---|
-| **BMad Method 6.11.0** | Instalador oficial — [docs.bmad-method.org](https://docs.bmad-method.org). Use **a mesma versão**, senão os caminhos de configuração divergem | `_bmad/scripts/memlog.py` existe e `.claude/skills/` tem os `bmad-*` |
-| **Skills de frontend** (opcional) | `skills-lock.json` na raiz: 14 skills de `Leonxlnx/taste-skill`, com hash | `.claude/skills/design-taste-frontend/` existe |
-
-Ao instalar o BMad ele pergunta nome do projeto e idioma. Responda **azamon** e **Português** — é o que está em `_bmad/config.toml` hoje, e o que faz os artefatos saírem no lugar certo.
-
-As skills de frontend **não são usadas neste projeto** e estão no `skills-lock.json` só para reprodutibilidade — o porquê está no memlog da UX. Pular a segunda linha da tabela não quebra nada.
-
-> Quem fizer a primeira instalação limpa: anote aqui o comando exato que funcionou. Vale mais que este parágrafo.
+Está em [`README.md`](README.md), com os comandos exatos e como verificar cada um: o
+repositório versiona **o trabalho**, não a ferramenta — depois de clonar faltam o BMad
+6.11.0 e as skills, ambos reproduzíveis em dois comandos.
 
 ## Onde está o quê
 
