@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-05 · **Estado:** PRD e UX finalizados e reconciliados entre si, nada construído ainda.
+**Atualizado:** 2026-09-06 · **Estado:** PRD, UX e arquitetura finalizados e reconciliados entre si. Nada construído ainda — o próximo passo escreve código.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -27,13 +27,18 @@ As skills de frontend **não são usadas neste projeto** e estão no `skills-loc
 |---|---|
 | `_bmad-output/planning-artifacts/prds/prd-azamon-2026-08-14/prd.md` | O PRD. Comece pelo **Sumário Executivo**, que tem um mapa de leitura por público |
 | `.../addendum.md` | Decisões técnicas, invariantes, 8 alternativas descartadas com o que se perdeu, ordem de construção. Insumo direto da arquitetura |
-| `.../.memlog.md` | 89 decisões em ordem cronológica, com o motivo de cada uma. É o registro canônico — se o PRD e a sua memória divergirem, vale isto |
+| `.../.memlog.md` | 93 decisões em ordem cronológica, com o motivo de cada uma. É o registro canônico — se o PRD e a sua memória divergirem, vale isto |
 | `.../review-rubric.md`, `.../review-consistency.md` | Revisões preservadas. Restam 14 achados médios e 12 baixos, nenhum bloqueante |
 | `_bmad-output/planning-artifacts/ux-designs/ux-azamon-2026-09-02/DESIGN.md` | Identidade visual. shadcn/ui mais uma camada de marca de dez cores. Espinha, não sugestão |
 | `.../EXPERIENCE.md` | Comportamento: IA, estados, interações, piso AA, e as quatro jornadas com a camada de interface |
 | `.../mockups/` | Três telas em HTML que abrem offline. Ilustram; as espinhas vencem em conflito |
 | `.../.memlog.md` | 40 decisões da UX. Mesmo papel do memlog do PRD: é o registro canônico |
 | `.../review-rubric.md`, `.../review-adversarial.md` | As duas revisões da UX. 52 achados, todos resolvidos |
+| `_bmad-output/planning-artifacts/architecture/architecture-azamon-2026-09-05/ARCHITECTURE-SPINE.md` | **A espinha de arquitetura.** 20 invariantes com ID estável (`AD-1`..`AD-20`), cada um com o que prende, a divergência que impede e a regra. É o substrato que as épicas e o `bmad-build` consomem — comece pelo Paradigma de Design e pelo `AD-1` |
+| `.../DIAGRAMA-MODULOS.md` | O diagrama dos seis módulos exigido pelo §6.1 e medido pela SM-7. Lê-se sozinho |
+| `.../deck-banca.html` | Deck da apresentação. Máquina de estados interativa; abre offline |
+| `.../.memlog.md` | 84 decisões da arquitetura. Mesmo papel dos outros memlogs |
+| `.../reviews/` | Sete revisões: três reconciliações (PRD, addendum, UX) e quatro lentes do portão (rubrica, versões, concorrência, adversária) |
 
 Não relea tudo: o PRD tem índice de requisitos no §4 e mapa de leitura no topo.
 
@@ -41,20 +46,26 @@ Não relea tudo: o PRD tem índice de requisitos no §4 e mapa de leitura no top
 
 Estão no Sumário Executivo do PRD. As quatro estruturais, em uma linha: marketplace no modelo de dados mas sem portal de vendedor · pagamento simulado porém assíncrono, com expiração e idempotência · máquina de estados do Pedido como peça central · busca é texto mais filtros, não motor de busca.
 
-Stack imposta: **Go** no back-end, **Postgres + Redis**, **Docker obrigatório**. Front-end em aberto.
+Stack: **Go 1.27** no back-end, **PostgreSQL 18** + **Redis 8**, **Docker obrigatório**, e **Next.js 16 sobre React 19** no front-end — decidido em 2026-09-06.
+
+Da arquitetura, as quatro que mais mudam a construção: **um schema do Postgres por módulo, com chave estrangeira cruzando schema proibida** · **o Catálogo é dono do Estoque, incluindo a Reserva** · **a confirmação do pagamento entra por webhook HTTP e é aplicada por *inbox*** · **um relógio só move o tempo, e ele deriva do histórico de transições**. Versões exatas na tabela Stack da espinha.
 
 ## Bloqueios
 
 | # | O quê | Dono | Destrava o quê |
 |---|---|---|---|
-| 1 | **Next.js ou React** | o time | `bmad-architecture`. Não muda uma linha do PRD |
+| 1 | ~~**Next.js ou React**~~ | — | **Resolvido em 2026-09-06:** Next.js 16 sobre React 19, escolhido por familiaridade do time. Como o PRD antecipava, nada do §4 mudou |
 | 2 | **Enunciado ou rubrica do professor** | Sung | Quatro suposições do §16 (portal do vendedor, verificação de e-mail, devolução, pedido dividido por vendedor). Ao obter: rodar `bmad-prd` em modo atualização, que reconcilia contra o memlog |
 
-Nenhum dos dois impede começar a arquitetura das partes que não dependem do front.
+O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições toca o esqueleto vertical.
+
+**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. A que mais custa se der errado: **o `Set-Cookie` do Go atravessa o `rewrites()` do Next até o navegador?** Um `curl -i` responde, e é exatamente o defeito que o passo 0 existe para achar cedo.
 
 ## Próximo passo
 
-`bmad-architecture`, alimentado por `prd.md` + `addendum.md` + as duas espinhas de UX. Depois `bmad-create-epics-and-stories`, depois `bmad-build`.
+`bmad-spec`, adotando a espinha de arquitetura como companheira do PRD — os `AD` têm ID estável, então as épicas citam por ID sem risco de deriva. Depois `bmad-create-epics-and-stories`, depois `bmad-build`.
+
+E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, um Comprador, um Pedido que nasce, é pago pelo Provedor Simulado e chega a `ENTREGUE`, com telas feias. É onde as cinco verificações acima acontecem.
 
 ## O que uma sessão nova erraria
 
@@ -66,15 +77,21 @@ Nenhum dos dois impede começar a arquitetura das partes que não dependem do fr
 - **Dar ao Administrador um botão para forçar a recusa do pagamento.** Não existe superfície de operador para isso. O Provedor Simulado decide pelos **centavos do total do Pedido** (§7.1 do PRD, addendum §4): o apresentador provoca o desfecho que quer escolhendo Produto e quantidade, sem reconfigurar nada entre os roteiros. A faixa vale para a **primeira** Tentativa de Pagamento; da segunda em diante aprova, senão a nova tentativa da FR-27 não teria o que exercitar.
 - **Construir o checkout em quatro passos.** Resolvido em 2026-09-05: o §9 diz **Endereço → Revisão**, e Frete e pagamento são blocos da Revisão — nenhum dos dois tem dado a pedir. Se você leu quatro passos em algum lugar, era uma cópia velha.
 - **Buscar fonte na rede.** O NFR-15 exige percorrer o Roteiro A com a rede desconectada. Isso proíbe Google Fonts, `@import` remoto e CDN — a fonte é auto-hospedada no repositório. É o erro mais fácil de cometer e quebra a demonstração em silêncio, na sala.
+- **Somar as reservas antes de segurar a trava.** É o defeito que vende a mesma última unidade duas vezes, e o texto da arquitetura só passou a impedi-lo depois que uma lente de concorrência mostrou o entrelaçamento. São **dois comandos, nesta ordem**: `SELECT … FROM catalogo.produto WHERE id = ANY($1) ORDER BY id FOR UPDATE`, e **só então** a soma das reservas ativas. O `ORDER BY id` não é estilo — sem ele, dois Pedidos com os mesmos dois Produtos em ordem inversa travam um no outro (`AD-5`, `AD-4`).
+- **Pôr a emissão da confirmação simulada dentro de `pedido`.** Emitir é comportamento do Provedor e mora em `pagamento` (`AD-6`). Dentro do Pedido, põe conhecimento de gateway no domínio e quebra o NFR-3 e a SM-5 na primeira troca — que é justamente o que a banca vai perguntar.
+- **Tratar "sem reserva ativa" como erro.** `catalogo.Liberar` sem reserva ativa devolve `nil`, `Consolidar` sobre reserva já consolidada é no-op, e `Reservar` com lista vazia é no-op. `pedido` chama `Liberar` **incondicionalmente** em toda transição para `CANCELADO` e em toda recusa. Sem isso, cancelar um Pedido em `PAGAMENTO_RECUSADO` falha sempre, com rollback.
+- **Registrar `GET /api/v1/produtos` em dois lugares.** A rota é de `busca`, com ou sem `termo` — a Vitrine é uma listagem, não uma rota à parte. `catalogo` serve `GET /api/v1/produtos/<id>` e o CRUD administrativo, e não registra handler de listagem. Duas equipes registrando o mesmo padrão no `ServeMux` fazem o binário **entrar em pânico no arranque**: falha de subida, não de comportamento (`AD-16`).
+- **Fixar o Next.js na linha 16.2.** O patch das duas RCE críticas de 25/08/2026 pousou em **16.3.3**, e a 16.2.x não recebe backport. A espinha fixa **16.3.4**. Vale para toda a tabela Stack: as versões foram verificadas na web, não lembradas.
 - **Usar o verde ou o laranja para enfeitar.** No `DESIGN.md` os dois têm sentido fechado: verde é Estoque disponível e `ENTREGUE`; laranja aparece **uma vez por fluxo**, no passo irreversível. Usar qualquer um decorativamente apaga o único mecanismo semântico de cor do sistema.
 
 ## Para colar numa sessão nova
 
 ```
-Projeto Azamon: réplica da Amazon, trabalho de faculdade, Go + Postgres + Redis + Docker.
-O PRD está finalizado em _bmad-output/planning-artifacts/prds/prd-azamon-2026-08-14/prd.md,
-com addendum técnico e memlog no mesmo diretório. Leia HANDOFF.md primeiro.
-Próximo passo: [arquitetura / épicas / implementar X].
+Projeto Azamon: réplica da Amazon, trabalho de faculdade.
+Go 1.27 + Postgres 18 + Redis 8 + Docker, front em Next.js 16 sobre React 19.
+PRD, UX e arquitetura estão finalizados e reconciliados em _bmad-output/planning-artifacts/.
+Leia HANDOFF.md primeiro; a arquitetura é ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
+Próximo passo: [spec / épicas / implementar X].
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
