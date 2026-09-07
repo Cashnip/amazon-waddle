@@ -1,0 +1,801 @@
+<title>Arquitetura do Azamon</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* ---------------------------------------------------------------
+     Azamon — deck de arquitetura.
+     Tema único e escuro, por escolha: a barra superior do produto
+     (chrome #131921) já é quase-preta, e a peça é projetada numa sala.
+     Toda cor é pintada explicitamente para a página se sustentar
+     sobre qualquer fundo do hospedeiro.
+
+     Disciplina cromática herdada do DESIGN.md e mantida aqui:
+       laranja  -> uma vez por fluxo, no passo irreversível
+       verde    -> Estoque disponível e estado terminal bem-sucedido
+     Nenhum dos dois enfeita nada nesta página.
+     --------------------------------------------------------------- */
+  :root {
+    --tinta:        #0A0F14;   /* fundo */
+    --chrome:       #131921;   /* superfície — o chrome do produto */
+    --chrome-alto:  #1C2734;   /* superfície elevada */
+    --fio:          #2A3846;   /* filete */
+    --fio-forte:    #3B4C5E;
+    --claro:        #E9EFF4;   /* texto primário */
+    --giz:          #8DA2B4;   /* texto secundário, neutro puxado ao marinho */
+    --giz-fraco:    #61748A;
+    --elo:          #37A8BE;   /* azul-petróleo — navegação e ênfase estrutural */
+    --brasa:        #FFA41C;   /* Ação Forte — passo irreversível. UMA vez. */
+    --folha:        #3FB068;   /* Disponível — Estoque e ENTREGUE. Só isso. */
+    --amarelo:      #FFD814;
+
+    --display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    --rail: 15rem;
+    --pad: clamp(1.5rem, 4vw, 4.5rem);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--tinta);
+    color: var(--claro);
+    font-family: var(--display);
+    font-size: 16px;
+    line-height: 1.6;
+    font-variation-settings: 'wdth' 100;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- estrutura ---------- */
+  .folha { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
+
+  nav.rail {
+    position: sticky; top: 0; align-self: start;
+    height: 100vh; overflow-y: auto;
+    background: var(--chrome);
+    border-right: 1px solid var(--fio);
+    padding: 2rem 0 2rem 1.5rem;
+    display: flex; flex-direction: column; gap: 1.75rem;
+  }
+  .marca {
+    font-family: var(--display);
+    font-variation-settings: 'wdth' 112;
+    font-weight: 800; font-size: 1.4rem; letter-spacing: -0.02em;
+    color: var(--claro); margin: 0;
+  }
+  .marca em { font-style: normal; color: var(--elo); }
+  .marca-sub {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--giz-fraco); margin: 0.35rem 0 0;
+  }
+  .rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+  .rail a {
+    display: grid; grid-template-columns: 1.9rem 1fr; align-items: baseline;
+    gap: 0.4rem; padding: 0.45rem 1rem 0.45rem 0;
+    color: var(--giz); text-decoration: none; font-size: 0.83rem; line-height: 1.35;
+    border-left: 2px solid transparent; margin-left: -1.5rem; padding-left: 1.5rem;
+    transition: color .15s, border-color .15s;
+  }
+  .rail a .n { font-family: var(--mono); font-size: 0.68rem; color: var(--giz-fraco); }
+  .rail a:hover { color: var(--claro); }
+  .rail a[aria-current="true"] { color: var(--claro); border-left-color: var(--elo); }
+  .rail a[aria-current="true"] .n { color: var(--elo); }
+  .rail-pe {
+    margin-top: auto; padding-right: 1.5rem;
+    font-family: var(--mono); font-size: 0.66rem; line-height: 1.7; color: var(--giz-fraco);
+  }
+  .rail-pe kbd {
+    font-family: var(--mono); font-size: 0.62rem;
+    background: var(--chrome-alto); border: 1px solid var(--fio);
+    border-radius: 3px; padding: 0.05rem 0.3rem; color: var(--giz);
+  }
+
+  main { min-width: 0; }
+  section {
+    padding: clamp(3.5rem, 7vw, 6rem) var(--pad);
+    border-bottom: 1px solid var(--fio);
+    max-width: 68rem;
+  }
+  section:last-of-type { border-bottom: none; }
+
+  /* ---------- tipografia ---------- */
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.7rem; font-weight: 500;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--elo); margin: 0 0 1rem;
+    display: flex; align-items: baseline; gap: 0.7rem;
+  }
+  .eyebrow .n { color: var(--giz-fraco); }
+  h1 {
+    font-variation-settings: 'wdth' 118; font-weight: 800;
+    font-size: clamp(2.4rem, 6vw, 4.2rem); line-height: 1.02;
+    letter-spacing: -0.035em; margin: 0 0 1.25rem; text-wrap: balance;
+  }
+  h2 {
+    font-variation-settings: 'wdth' 112; font-weight: 700;
+    font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.1;
+    letter-spacing: -0.025em; margin: 0 0 1rem; text-wrap: balance;
+  }
+  h3 {
+    font-weight: 600; font-size: 1.02rem; letter-spacing: -0.005em;
+    margin: 0 0 0.4rem; color: var(--claro);
+  }
+  p { margin: 0 0 1rem; max-width: 62ch; color: var(--giz); }
+  p.lede { font-size: clamp(1.05rem, 1.9vw, 1.3rem); line-height: 1.5; color: var(--claro); max-width: 54ch; }
+  p strong, li strong { color: var(--claro); font-weight: 600; }
+  code, .termo {
+    font-family: var(--mono); font-size: 0.86em; color: var(--elo);
+    background: color-mix(in srgb, var(--elo) 11%, transparent);
+    border-radius: 3px; padding: 0.08em 0.34em;
+  }
+  .est { font-family: var(--mono); font-size: 0.82em; color: var(--claro);
+         background: var(--chrome-alto); border: 1px solid var(--fio);
+         border-radius: 3px; padding: 0.08em 0.36em; letter-spacing: -0.01em; }
+
+  /* ---------- abertura ---------- */
+  .abre { padding-top: clamp(4rem, 9vw, 7rem); }
+  .tese {
+    border-left: 2px solid var(--elo); padding-left: 1.4rem; margin: 2.25rem 0 0;
+  }
+  .fatos {
+    display: flex; flex-wrap: wrap; gap: 0 2.5rem; margin-top: 2.75rem;
+    padding-top: 1.5rem; border-top: 1px solid var(--fio);
+    font-family: var(--mono); font-size: 0.78rem; color: var(--giz-fraco);
+  }
+  .fatos b { color: var(--claro); font-weight: 500; }
+
+  /* ---------- listas e grades ---------- */
+  .grade { display: grid; gap: 1px; background: var(--fio); border: 1px solid var(--fio); margin: 2rem 0 0; }
+  .grade.duas { grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+  .grade > div { background: var(--chrome); padding: 1.15rem 1.3rem; }
+  .grade p { margin: 0; font-size: 0.9rem; line-height: 1.55; }
+  .grade .tag {
+    font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--giz-fraco); display: block; margin-bottom: 0.5rem;
+  }
+
+  ul.limpa { list-style: none; margin: 1.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.9rem; }
+  ul.limpa li { display: grid; grid-template-columns: auto 1fr; gap: 0.85rem; align-items: baseline; color: var(--giz); max-width: 62ch; }
+  ul.limpa li .marc { font-family: var(--mono); font-size: 0.7rem; color: var(--elo); }
+
+  /* ---------- tabelas ---------- */
+  .rolo { overflow-x: auto; margin: 2rem 0 0; border: 1px solid var(--fio); }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; font-size: 0.88rem; background: var(--chrome); }
+  th, td { text-align: left; padding: 0.72rem 1rem; border-bottom: 1px solid var(--fio); vertical-align: top; color: var(--giz); }
+  th {
+    font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--giz-fraco); font-weight: 500;
+    background: var(--chrome-alto); border-bottom-color: var(--fio-forte);
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--claro); }
+
+  /* ---------- topologia ---------- */
+  .topo { display: grid; gap: 1px; background: var(--fio); border: 1px solid var(--fio); margin-top: 2rem; }
+  .topo-linha { background: var(--chrome); padding: 1.15rem 1.3rem; display: grid; grid-template-columns: 8.5rem 1fr; gap: 1.3rem; align-items: baseline; }
+  .topo-linha .svc { font-family: var(--mono); font-size: 0.86rem; color: var(--claro); font-weight: 500; }
+  .topo-linha .ver { font-family: var(--mono); font-size: 0.7rem; color: var(--giz-fraco); display: block; }
+  .topo-linha p { margin: 0; font-size: 0.88rem; }
+
+  /* ---------- máquina de estados ---------- */
+  .maq { margin-top: 2.25rem; }
+  .maq-tela { overflow-x: auto; border: 1px solid var(--fio); background: var(--chrome); padding: 1.25rem 1rem; }
+  .maq-tela svg { display: block; min-width: 46rem; width: 100%; height: auto; }
+  .est-cx { cursor: pointer; }
+  .est-cx rect { fill: var(--chrome-alto); stroke: var(--fio-forte); stroke-width: 1; transition: stroke .15s, fill .15s; }
+  .est-cx text { font-family: var(--mono); font-size: 11px; fill: var(--claro); }
+  .est-cx:hover rect { stroke: var(--elo); }
+  .est-cx:focus-visible { outline: none; }
+  .est-cx:focus-visible rect { stroke: var(--elo); stroke-width: 2; }
+  .est-cx[aria-pressed="true"] rect { fill: color-mix(in srgb, var(--elo) 20%, var(--chrome-alto)); stroke: var(--elo); stroke-width: 1.5; }
+  .est-cx.terminal-ok rect { stroke: color-mix(in srgb, var(--folha) 60%, var(--fio-forte)); }
+  .est-cx.terminal-ok text { fill: var(--folha); }
+  .aresta { stroke: var(--fio-forte); stroke-width: 1.4; fill: none; }
+  .aresta-rot { font-family: var(--mono); font-size: 9px; fill: var(--giz-fraco); }
+  .irrev { stroke: var(--brasa); stroke-width: 1.8; }
+  .irrev-rot { font-family: var(--mono); font-size: 9px; fill: var(--brasa); }
+
+  .maq-detalhe {
+    border: 1px solid var(--fio); border-top: none; background: var(--chrome-alto);
+    padding: 1.25rem 1.3rem; display: grid; gap: 1rem;
+  }
+  .maq-detalhe h3 { font-family: var(--mono); font-size: 0.92rem; margin: 0; color: var(--claro); letter-spacing: -0.01em; }
+  .maq-detalhe .saidas { display: flex; flex-direction: column; gap: 0.7rem; margin: 0; padding: 0; list-style: none; }
+  .maq-detalhe .saidas li { display: grid; grid-template-columns: minmax(9.5rem, auto) 1fr; gap: 1rem; font-size: 0.85rem; color: var(--giz); align-items: baseline; }
+  .maq-detalhe .saidas .para { font-family: var(--mono); font-size: 0.76rem; color: var(--claro); }
+  .maq-detalhe .efeito { color: var(--giz); }
+  .maq-detalhe .efeito b { color: var(--claro); font-weight: 500; }
+  .maq-detalhe .nada { color: var(--giz-fraco); font-style: italic; }
+  .maq-detalhe .acoes {
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; padding-top: 0.85rem;
+    border-top: 1px solid var(--fio); font-size: 0.8rem; color: var(--giz-fraco);
+    font-family: var(--mono);
+  }
+  .maq-detalhe .acoes b { color: var(--giz); font-weight: 400; }
+  .legenda {
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.6rem; margin-top: 0.9rem;
+    font-family: var(--mono); font-size: 0.7rem; color: var(--giz-fraco);
+  }
+  .legenda i { font-style: normal; }
+  .legenda .sw { display: inline-block; width: 1.5rem; height: 2px; vertical-align: middle; margin-right: 0.4rem; }
+
+  /* ---------- destaque de invariante ---------- */
+  .inv {
+    border: 1px solid var(--fio); border-left: 2px solid var(--elo);
+    background: var(--chrome); padding: 1.2rem 1.4rem; margin: 2rem 0 0;
+  }
+  .inv .ad {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--giz-fraco); display: block; margin-bottom: 0.55rem;
+  }
+  .inv p { margin: 0; color: var(--claro); font-size: 0.95rem; max-width: 60ch; }
+  .inv p + p { margin-top: 0.7rem; color: var(--giz); }
+
+  pre.sql {
+    font-family: var(--mono); font-size: 0.78rem; line-height: 1.7; margin: 1.5rem 0 0;
+    background: var(--chrome); border: 1px solid var(--fio); border-left: 2px solid var(--fio-forte);
+    padding: 1rem 1.2rem; overflow-x: auto; color: var(--giz);
+  }
+  pre.sql b { color: var(--claro); font-weight: 500; }
+  pre.sql i { color: var(--giz-fraco); font-style: normal; }
+  pre.sql u { text-decoration: none; color: var(--elo); }
+
+  .rodape {
+    padding: 2.5rem var(--pad) 4rem; max-width: 68rem;
+    font-family: var(--mono); font-size: 0.72rem; line-height: 1.9; color: var(--giz-fraco);
+  }
+  .rodape a { color: var(--elo); }
+
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--elo); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+
+  @media (max-width: 60rem) {
+    .folha { grid-template-columns: 1fr; }
+    nav.rail {
+      position: static; height: auto; flex-direction: column;
+      border-right: none; border-bottom: 1px solid var(--fio);
+      padding: 1.5rem var(--pad);
+    }
+    .rail ol { flex-direction: row; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
+    .rail a { margin-left: 0; padding: 0.2rem 0; border-left: none; border-bottom: 2px solid transparent; }
+    .rail a[aria-current="true"] { border-left-color: transparent; border-bottom-color: var(--elo); }
+    .rail-pe { display: none; }
+  }
+</style>
+
+<div class="folha">
+  <nav class="rail" aria-label="Seções">
+    <div>
+      <p class="marca">az<em>a</em>mon</p>
+      <p class="marca-sub">Espinha de arquitetura</p>
+    </div>
+    <ol id="indice">
+      <li><a href="#tese"><span class="n">01</span><span>A tese</span></a></li>
+      <li><a href="#topologia"><span class="n">02</span><span>O que sobe</span></a></li>
+      <li><a href="#modulos"><span class="n">03</span><span>Seis módulos, cinco schemas</span></a></li>
+      <li><a href="#estados"><span class="n">04</span><span>A máquina de estados</span></a></li>
+      <li><a href="#ultima"><span class="n">05</span><span>A última unidade</span></a></li>
+      <li><a href="#pagamento"><span class="n">06</span><span>Pagamento assíncrono</span></a></li>
+      <li><a href="#relogio"><span class="n">07</span><span>Um relógio só</span></a></li>
+      <li><a href="#descartado"><span class="n">08</span><span>O que descartamos</span></a></li>
+      <li><a href="#perguntas"><span class="n">09</span><span>Perguntas prováveis</span></a></li>
+    </ol>
+    <p class="rail-pe"><kbd>↑</kbd> <kbd>↓</kbd> navegam entre seções</p>
+  </nav>
+
+  <main>
+
+    <!-- 01 ---------------------------------------------------------- -->
+    <section id="tese" class="abre">
+      <p class="eyebrow"><span class="n">01</span> A tese</p>
+      <h1>O que separa o sistema da maquete</h1>
+      <p class="lede">O Azamon fecha o ciclo de comércio eletrônico inteiro — buscar, comprar, pagar, acompanhar, cancelar. O valor não está na superfície coberta. Está em quatro comportamentos que não aparecem em tela nenhuma.</p>
+
+      <div class="tese">
+        <ul class="limpa">
+          <li><span class="marc">FR-24</span><span><strong>Reserva de Estoque tudo-ou-nada.</strong> Um Pedido que não consegue reservar todos os itens não nasce pela metade.</span></li>
+          <li><span class="marc">FR-34</span><span><strong>A Tentativa de Pagamento expira.</strong> Uma confirmação que nunca chega não deixa o Pedido preso segurando Estoque para sempre.</span></li>
+          <li><span class="marc">FR-19</span><span><strong>O Carrinho é revalidado.</strong> Preço e disponibilidade são confrontados contra o Catálogo antes do checkout, não depois.</span></li>
+          <li><span class="marc">NFR-7</span><span><strong>Duas pessoas não levam a última unidade.</strong> Verificado por teste de concorrência, não por confiança.</span></li>
+        </ul>
+      </div>
+
+      <p style="margin-top:2rem">Nenhum dos quatro tem botão. Todos são o motivo de a arquitetura existir — e todos permanecem quando o Provedor Simulado vira Stripe.</p>
+
+      <div class="fatos">
+        <span><b>6</b> módulos</span>
+        <span><b>5</b> schemas</span>
+        <span><b>20</b> invariantes</span>
+        <span><b>4</b> contêineres</span>
+        <span><b>1</b> relógio</span>
+        <span><b>0</b> chamadas de rede externa</span>
+      </div>
+    </section>
+
+    <!-- 02 ---------------------------------------------------------- -->
+    <section id="topologia">
+      <p class="eyebrow"><span class="n">02</span> O que sobe em um comando</p>
+      <h2>Quatro serviços, uma origem</h2>
+      <p><code>docker compose up</code> e nada mais. O navegador conhece um endereço só: o Next.js reescreve <code>/api/*</code> para o Go, então não há CORS, não há <code>SameSite=None</code>, e o cookie de Sessão nunca atravessa porta nenhuma.</p>
+
+      <div class="topo">
+        <div class="topo-linha">
+          <span class="svc">web<span class="ver">Next.js 16.3.4 · Node 24</span></span>
+          <p>Casca de apresentação. Renderiza e chama <code>/api</code>. Sem Server Actions, sem acesso a banco, sem nenhuma regra de negócio — o processo não guarda estado de domínio.</p>
+        </div>
+        <div class="topo-linha">
+          <span class="svc">azamon<span class="ver">Go 1.27.1</span></span>
+          <p>O sistema. API HTTP, os seis módulos de domínio e o relógio que move o tempo. Serve também as imagens do Catálogo Semeado.</p>
+        </div>
+        <div class="topo-linha">
+          <span class="svc">postgres<span class="ver">18.6</span></span>
+          <p>Cinco schemas, um por módulo. Chave primária <code>uuidv7()</code>, nativa da versão 18. Dinheiro em <code>bigint</code> de centavos, nunca ponto flutuante.</p>
+        </div>
+        <div class="topo-linha">
+          <span class="svc">redis<span class="ver">8.10.1</span></span>
+          <p>Um emprego só, e nomeado: Sessão, token de redefinição e contador de bloqueio de login. Os três são dado com prazo de validade, que é o que o <code>TTL</code> faz melhor que o Postgres. Sem cache decorativo.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:1.75rem">O Catálogo Semeado é determinístico e versionado: subir duas vezes produz exatamente os mesmos dados. Nenhuma fonte, folha de estilo ou imagem vem da rede em tempo de execução — a apresentação roda com o Wi-Fi desligado.</p>
+    </section>
+
+    <!-- 03 ---------------------------------------------------------- -->
+    <section id="modulos">
+      <p class="eyebrow"><span class="n">03</span> A decomposição</p>
+      <h2>A fronteira não é disciplina. É objeto do banco.</h2>
+      <p>Seis módulos de domínio, e um módulo só é alcançado pela sua interface pública. Isso todo projeto promete. A diferença aqui é onde a fronteira existe fisicamente.</p>
+
+      <div class="inv">
+        <span class="ad">AD-2 · fronteira física</span>
+        <p>Um schema do Postgres por módulo. <strong>Chave estrangeira cruzando schema é proibida.</strong></p>
+        <p>O <code>JOIN</code> de três tabelas e dois módulos, escrito às onze da noite porque era mais rápido, deixa de ser possível sem alguém decidir que é. E o marco de extrair um serviço vira mover um schema, não reescrever um pacote.</p>
+      </div>
+
+      <div class="rolo">
+        <table>
+          <thead><tr><th>Schema</th><th>Tabelas</th><th>Do que é dono</th></tr></thead>
+          <tbody>
+            <tr><td>identidade</td><td><code>comprador</code> <code>administrador</code> <code>endereco</code></td><td>Quem está falando</td></tr>
+            <tr><td>catalogo</td><td><code>vendedor</code> <code>categoria</code> <code>produto</code> <code>reserva_estoque</code></td><td>O Estoque, inclusive a Reserva</td></tr>
+            <tr><td>carrinho</td><td><code>carrinho</code> <code>item_carrinho</code></td><td>A intenção, sem compromisso</td></tr>
+            <tr><td>pedido</td><td><code>pedido</code> <code>item_pedido</code> <code>transicao_status</code> <code>faixa_frete</code></td><td>O compromisso e sua história</td></tr>
+            <tr><td>pagamento</td><td><code>tentativa_pagamento</code> <code>confirmacao_recebida</code></td><td>A fronteira com o dinheiro</td></tr>
+            <tr><td>busca</td><td><em>nenhuma</em> — uma VIEW sobre <code>catalogo</code></td><td>A costura do Elasticsearch</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:1.75rem">O custo é real e foi aceito: <code>item_pedido.produto_id</code> não tem chave estrangeira. Em troca, o Item de Pedido congela nome, preço praticado e Vendedor na criação — então o Detalhe do Pedido se lê sem tocar em nenhum outro schema, e uma mudança de preço no Catálogo não altera Pedido nenhum.</p>
+
+      <div class="grade duas">
+        <div>
+          <span class="tag">Verificação no código</span>
+          <p><code>internal/fronteira_test.go</code> lê o grafo de importação com <code>go list -deps -json</code> e falha se aparecer uma aresta fora da tabela declarada.</p>
+        </div>
+        <div>
+          <span class="tag">Verificação no banco</span>
+          <p>Uma consulta a <code>information_schema</code> falha se existir chave estrangeira cruzando schema. Fronteira sem mecanismo é intenção.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 ---------------------------------------------------------- -->
+    <section id="estados">
+      <p class="eyebrow"><span class="n">04</span> A peça central</p>
+      <h2>A máquina de estados do Pedido</h2>
+      <p>Histórico, cancelamento, painel do Administrador e simulação de entrega são a mesma máquina vista de quatro ângulos. O conteúdo do Pedido é escrito uma vez e nunca mais — só o Status muda, e só por uma função. <strong>Clique num estado</strong> para ver o que sai dele e o efeito obrigatório sobre o Estoque.</p>
+
+      <div class="maq">
+        <div class="maq-tela">
+          <svg viewBox="0 0 900 250" role="img" aria-label="Máquina de estados do Pedido: sete estados e suas transições">
+            <defs>
+              <marker id="seta" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B4C5E"></path>
+              </marker>
+              <marker id="seta-brasa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#FFA41C"></path>
+              </marker>
+            </defs>
+
+            <!-- entrada: o único passo irreversível do fluxo -->
+            <path class="aresta irrev" d="M 20 40 L 20 61 L 60 61" marker-end="url(#seta-brasa)"></path>
+            <text class="irrev-rot" x="24" y="32">criação · FR-23 · irreversível</text>
+
+            <!-- caminho principal -->
+            <path class="aresta" d="M 245 61 L 300 61" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="256" y="52">FR-26</text>
+            <path class="aresta" d="M 400 61 L 455 61" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="455" y="52" text-anchor="end">FR-32/33</text>
+            <path class="aresta" d="M 590 61 L 645 61" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="645" y="52" text-anchor="end">FR-32/33</text>
+            <path class="aresta" d="M 765 61 L 820 61" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="820" y="52" text-anchor="end">FR-32/33</text>
+
+            <!-- recusa e nova tentativa -->
+            <path class="aresta" d="M 90 82 L 90 170" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="98" y="122">FR-27 · FR-34</text>
+            <path class="aresta" d="M 175 170 L 175 82" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="183" y="140">FR-27</text>
+
+            <!-- cancelamento -->
+            <path class="aresta" style="stroke-dasharray:4 4" d="M 245 191 L 300 191" marker-end="url(#seta)"></path>
+            <text class="aresta-rot" x="200" y="228">de AGUARDANDO_PAGAMENTO, PAGAMENTO_RECUSADO, PAGO ou SEPARANDO — Comprador, FR-31</text>
+
+            <!-- estados -->
+            <g class="est-cx" data-est="AGUARDANDO_PAGAMENTO" role="button" tabindex="0" aria-pressed="true">
+              <rect x="60" y="40" width="185" height="42" rx="2"></rect>
+              <text x="152" y="66" text-anchor="middle">AGUARDANDO_PAGAMENTO</text>
+            </g>
+            <g class="est-cx" data-est="PAGO" role="button" tabindex="0" aria-pressed="false">
+              <rect x="300" y="40" width="100" height="42" rx="2"></rect>
+              <text x="350" y="66" text-anchor="middle">PAGO</text>
+            </g>
+            <g class="est-cx" data-est="SEPARANDO" role="button" tabindex="0" aria-pressed="false">
+              <rect x="455" y="40" width="135" height="42" rx="2"></rect>
+              <text x="522" y="66" text-anchor="middle">SEPARANDO</text>
+            </g>
+            <g class="est-cx" data-est="ENVIADO" role="button" tabindex="0" aria-pressed="false">
+              <rect x="645" y="40" width="120" height="42" rx="2"></rect>
+              <text x="705" y="66" text-anchor="middle">ENVIADO</text>
+            </g>
+            <g class="est-cx terminal-ok" data-est="ENTREGUE" role="button" tabindex="0" aria-pressed="false">
+              <rect x="820" y="40" width="70" height="42" rx="2"></rect>
+              <text x="855" y="66" text-anchor="middle">ENTREGUE</text>
+            </g>
+            <g class="est-cx" data-est="PAGAMENTO_RECUSADO" role="button" tabindex="0" aria-pressed="false">
+              <rect x="60" y="170" width="185" height="42" rx="2"></rect>
+              <text x="152" y="196" text-anchor="middle">PAGAMENTO_RECUSADO</text>
+            </g>
+            <g class="est-cx" data-est="CANCELADO" role="button" tabindex="0" aria-pressed="false">
+              <rect x="300" y="170" width="125" height="42" rx="2"></rect>
+              <text x="362" y="196" text-anchor="middle">CANCELADO</text>
+            </g>
+          </svg>
+        </div>
+
+        <div class="maq-detalhe" aria-live="polite">
+          <h3 id="maq-nome">AGUARDANDO_PAGAMENTO</h3>
+          <ul class="saidas" id="maq-saidas"></ul>
+          <div class="acoes" id="maq-acoes"></div>
+        </div>
+
+        <div class="legenda">
+          <span><i class="sw" style="background:#FFA41C"></i>passo irreversível — aparece uma vez</span>
+          <span><i class="sw" style="background:#3FB068"></i>estado terminal bem-sucedido</span>
+          <span>tracejado — origem múltipla</span>
+        </div>
+      </div>
+
+      <div class="inv">
+        <span class="ad">AD-3 · compare-and-swap</span>
+        <p>A transição é literalmente <code>UPDATE pedido SET status = $novo WHERE id = $1 AND status = $esperado</code>. Zero linhas afetadas significa <em>outro ator chegou primeiro</em>.</p>
+        <p>É assim que a corrida entre o Administrador e a simulação de entrega se resolve, sem bloqueio explícito: quem chega segundo perde e recebe uma recusa nomeada. E o efeito sobre o Estoque só roda para quem ganhou — então ninguém libera uma Reserva duas vezes.</p>
+      </div>
+    </section>
+
+    <!-- 05 ---------------------------------------------------------- -->
+    <section id="ultima">
+      <p class="eyebrow"><span class="n">05</span> Concorrência</p>
+      <h2>Duas pessoas, a última unidade</h2>
+      <p>O Estoque disponível nunca é armazenado. Ele é <code>estoque_total − Σ reservas ativas</code>, calculado na consulta. Isso elimina o contador mutável espalhado — e cria um problema mais interessante: <strong>a linha que serve de trava mora numa tabela, e a grandeza que ela protege mora em outra.</strong></p>
+      <p>Escolher o mecanismo certo não basta. A ordem é metade da corretude, e é a metade que costuma ficar por escrever.</p>
+
+      <pre class="sql"><i>-- 1. segurar a trava, em ordem determinística</i>
+<b>SELECT</b> id <b>FROM</b> catalogo.produto
+ <b>WHERE</b> id = <b>ANY</b>($1)
+ <u>ORDER BY id</u>            <i>-- sem isto, dois Pedidos com os mesmos</i>
+   <b>FOR UPDATE</b>;            <i>--   dois Produtos em ordem inversa travam</i>
+
+<i>-- 2. só então somar as reservas ativas</i>
+<b>SELECT</b> produto_id, <b>sum</b>(quantidade)
+  <b>FROM</b> catalogo.reserva_estoque
+ <b>WHERE</b> produto_id = <b>ANY</b>($1) <b>AND</b> estado = 'ATIVA'
+ <b>GROUP BY</b> produto_id;</pre>
+
+      <p style="margin-top:1.5rem">Ler a soma antes de segurar a trava é o defeito que vende a mesma última unidade duas vezes. Com os dois comandos nesta ordem, e o isolamento declarado em <code>READ COMMITTED</code>, N requisições paralelas produzem exatamente um Pedido — que é o que o teste de concorrência do NFR-7 dispara e verifica.</p>
+
+      <div class="grade duas">
+        <div>
+          <span class="tag">A Reserva tem estado</span>
+          <p><code>ATIVA → LIBERADA | CONSOLIDADA</code>, com índice único parcial sobre a Reserva ativa. Liberar ou consolidar duas vezes deixa de ser improvável e passa a ser impossível.</p>
+        </div>
+        <div>
+          <span class="tag">Consolidação no envio</span>
+          <p>A Reserva vive exatamente enquanto o cancelamento é possível. Em <code>SEPARANDO → ENVIADO</code> o total baixa e a Reserva encerra — o mesmo ponto em que a FR-31 deixa de valer.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 ---------------------------------------------------------- -->
+    <section id="pagamento">
+      <p class="eyebrow"><span class="n">06</span> A fronteira com o dinheiro</p>
+      <h2>Simulado, mas assíncrono de verdade</h2>
+      <p>O pagamento é simulado. A confirmação, não: ela chega <strong>fora da requisição do checkout</strong>, por um <code>POST</code> HTTP no mesmo endpoint que o Stripe usaria.</p>
+
+      <div class="rolo">
+        <table>
+          <thead><tr><th>Etapa</th><th>O que acontece</th><th>Por que assim</th></tr></thead>
+          <tbody>
+            <tr><td>Porta</td><td><code>ProvedorDePagamento</code> tem duas operações: iniciar Tentativa e receber confirmação. O total vai como valor.</td><td>O adapter nunca consulta o Pedido — é o que impede o ciclo de dependência</td></tr>
+            <tr><td>Decisão</td><td>Os centavos do total decidem: aprovado, recusado, ou confirmação que nunca chega. Só na primeira Tentativa.</td><td>Determinístico e acionável ao vivo escolhendo Produto e quantidade — sem tela de operador, sem reconfigurar nada entre roteiros</td></tr>
+            <tr><td>Entrada</td><td><code>POST /api/v1/webhooks/pagamento</code>, com chave de idempotência.</td><td>Trocar pelo Stripe é apontar a URL e trocar a implementação. A SM-5 vira verificável, não declarada</td></tr>
+            <tr><td>Idempotência</td><td>Restrição única no banco. Receber duas vezes é um <code>INSERT</code> que falha.</td><td>Estrutural, não código defensivo — é o comportamento exato que um webhook real exige</td></tr>
+            <tr><td>Aplicação</td><td>O módulo <code>pagamento</code> grava; a varredura de <code>pedido</code> lê e aplica.</td><td>Padrão <em>inbox</em>: <code>pagamento</code> não conhece <code>pedido</code>, então não há ciclo — e nada se perde num reinício</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="inv">
+        <span class="ad">AD-7 · a corrida clássica do checkout</span>
+        <p>Uma confirmação só é aplicada se pertence à Tentativa de Pagamento <em>corrente</em> e o Pedido está em <span class="est">AGUARDANDO_PAGAMENTO</span>.</p>
+        <p>Sem essa condição, uma recusa atrasada da primeira Tentativa derruba a Reserva que a segunda acabou de criar. E uma aprovação que chega depois do cancelamento é registrada e sinalizada ao Administrador — nunca aplicada, e nunca perdida em silêncio.</p>
+      </div>
+    </section>
+
+    <!-- 07 ---------------------------------------------------------- -->
+    <section id="relogio">
+      <p class="eyebrow"><span class="n">07</span> O tempo</p>
+      <h2>Um relógio, quatro requisitos</h2>
+      <p>Nenhum estado do Azamon é alcançado por temporizador em memória. Não há <code>time.AfterFunc</code>, não há agendamento de processo — em módulo nenhum, inclusive no Provedor Simulado.</p>
+      <p><strong>Reiniciar o contêiner na véspera da apresentação não pode congelar Pedido nenhum.</strong> Então o tempo é derivado do histórico de transições: "está neste estado desde quando". Um <em>goroutine</em> tica a cada segundo, não decide nada, e chama quatro passos em ordem normativa.</p>
+
+      <div class="rolo">
+        <table>
+          <thead><tr><th>Ordem</th><th>Passo</th><th>Dono</th><th>Requisito</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Aplica as confirmações recebidas e ainda não aplicadas</td><td><code>pedido</code></td><td>FR-26, FR-27</td></tr>
+            <tr><td>2</td><td>Expira a Tentativa de Pagamento cujo prazo venceu</td><td><code>pedido</code></td><td>FR-34</td></tr>
+            <tr><td>3</td><td>Avança a etapa devida da simulação de entrega</td><td><code>pedido</code></td><td>FR-33</td></tr>
+            <tr><td>4</td><td>Emite a confirmação cujo atraso venceu</td><td><code>pagamento</code></td><td>FR-25</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:1.75rem">A ordem não é arbitrária. <strong>Aplicar vem antes de expirar</strong> — senão uma aprovação que chegou dentro do prazo é descartada por um relógio que rodou primeiro. E <strong>emitir mora em <code>pagamento</code></strong>, não em <code>pedido</code>: emitir é comportamento do Provedor, e colocá-lo no Pedido poria conhecimento de gateway dentro do domínio, quebrando a fronteira na primeira troca.</p>
+      <p>Uma transação por Pedido, nunca uma por tique: um Pedido que falhe não derruba a varredura dos outros.</p>
+    </section>
+
+    <!-- 08 ---------------------------------------------------------- -->
+    <section id="descartado">
+      <p class="eyebrow"><span class="n">08</span> As alternativas</p>
+      <h2>A defesa vale mais pelo que foi rejeitado</h2>
+      <p>Oito alternativas foram consideradas e descartadas, cada uma com o que se perdeu registrado. Estas são as quatro que a banca mais provavelmente questiona.</p>
+
+      <div class="rolo">
+        <table>
+          <thead><tr><th>Alternativa</th><th>Por que ficou fora</th><th>O que se perdeu</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Microsserviços desde o início</td>
+              <td>Consome o semestre em orquestração e entrega serviços que não conversam</td>
+              <td><strong>Perda real.</strong> Resposta: marco opcional de extrair <em>exatamente um</em> serviço depois que o ciclo fechar</td>
+            </tr>
+            <tr>
+              <td>Stripe em <em>sandbox</em> desde o MVP</td>
+              <td>Conflita com a exigência de a demonstração rodar sem internet</td>
+              <td>A integração real. Compensado: expiração, idempotência e webhook já implementam a parte difícil</td>
+            </tr>
+            <tr>
+              <td>Pagamento síncrono simulado</td>
+              <td>Menos código hoje, reescrita do checkout amanhã</td>
+              <td>Nada que valha o preço</td>
+            </tr>
+            <tr>
+              <td>Carrinho anônimo com fusão no login</td>
+              <td>O custo não é a fusão — é o estado anônimo com ciclo de vida próprio, num sistema sem visitantes reais</td>
+              <td>Aderência ao comportamento canônico. É a rejeição mais visível para quem abrir o sistema sem conta</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grade duas">
+        <div>
+          <span class="tag">Elasticsearch</span>
+          <p>A 5.000 Produtos a folga vem do tamanho da tabela, não do índice. A busca fica atrás da própria interface, então trocar o motor não toca em <code>catalogo</code>.</p>
+        </div>
+        <div>
+          <span class="tag">Cache no Redis</span>
+          <p>Recusado sem medição que o justifique: é uma segunda cópia da verdade para invalidar. Se o alvo de desempenho falhar, o caminho é índice antes de cache.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 09 ---------------------------------------------------------- -->
+    <section id="perguntas">
+      <p class="eyebrow"><span class="n">09</span> A arguição</p>
+      <h2>Onde mora cada resposta</h2>
+      <p>A nota de arquitetura costuma ser decidida na sequência de perguntas, não na demonstração. Cada pergunta tem um responsável nomeado antes da apresentação, e ninguém responde por uma parte que não construiu.</p>
+
+      <div class="rolo">
+        <table>
+          <thead><tr><th>Pergunta</th><th>Resposta em uma linha</th><th>Fonte</th></tr></thead>
+          <tbody>
+            <tr><td>Por que o pagamento é assíncrono, se é simulado?</td><td>Porque o gateway real confirma por fora. Se o MVP confirmasse por dentro, a virada seria reescrita do checkout</td><td><code>AD-7</code> <code>AD-8</code></td></tr>
+            <tr><td>Como impedem que dois Compradores levem a última unidade?</td><td>Bloqueio pessimista por linha de Produto, em ordem determinística, <em>antes</em> de somar as reservas — verificado por teste de concorrência</td><td><code>AD-5</code> <code>NFR-7</code></td></tr>
+            <tr><td>E se o pagamento nunca confirmar?</td><td>A Tentativa expira por varredura do histórico, o Pedido vai a recusado e a Reserva é liberada. Reiniciar o sistema não congela nada</td><td><code>AD-6</code> <code>FR-34</code></td></tr>
+            <tr><td>Por que não usaram microsserviços?</td><td>Monólito modular com as fronteiras já nos pontos de corte — inclusive no banco. Microsserviços é destino, não ponto de partida</td><td><code>AD-1</code> <code>AD-2</code></td></tr>
+            <tr><td>Isso é um <em>marketplace</em> ou uma loja?</td><td>O Vendedor existe no modelo e o Pedido sabe de quem veio; o portal do Vendedor ficou fora por sequenciamento, não por custo</td><td><code>AD-2</code></td></tr>
+            <tr><td>Por que não tem Carrinho para visitante?</td><td>O custo não é a fusão, é o estado anônimo com ciclo de vida próprio — sessão, expiração e limpeza de órfão</td><td>PRD §4.4</td></tr>
+            <tr><td>Onde exatamente o Redis é usado?</td><td>Sessão, token de redefinição e bloqueio de login. Os três têm prazo de validade; cache foi recusado por falta de medição</td><td><code>AD-20</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="rodape">
+      Espinha de arquitetura · 20 invariantes · altitude de iniciativa<br>
+      Destilada de 80 decisões registradas, reconciliada contra o PRD, o addendum técnico e as duas espinhas de UX, e submetida a quatro lentes de revisão independentes.<br>
+      Versões verificadas em 2026-09-06.
+    </p>
+  </main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- máquina de estados: dados vindos da tabela exaustiva do AD-3 ---- */
+  var MAQ = {
+    AGUARDANDO_PAGAMENTO: {
+      saidas: [
+        { para: "PAGO", quem: "Confirmação do Provedor (FR-26)", efeito: null, nota: "a Reserva permanece" },
+        { para: "PAGAMENTO_RECUSADO", quem: "Confirmação de recusa (FR-27)", efeito: "Liberar" },
+        { para: "PAGAMENTO_RECUSADO", quem: "Expiração por tempo esgotado (FR-34)", efeito: "Liberar" },
+        { para: "CANCELADO", quem: "Comprador (FR-31)", efeito: "Liberar" }
+      ],
+      comprador: "Relógio de expiração · Cancelar Pedido",
+      admin: "Nenhuma ação"
+    },
+    PAGAMENTO_RECUSADO: {
+      saidas: [
+        { para: "AGUARDANDO_PAGAMENTO", quem: "Nova Tentativa pelo Comprador (FR-27)", efeito: "Reservar", nota: "falha se indisponível" },
+        { para: "CANCELADO", quem: "Comprador (FR-31)", efeito: "Liberar", nota: "se ativa" }
+      ],
+      comprador: "Motivo · Tentar pagar de novo, enquanto houver tentativa e Estoque · Cancelar Pedido",
+      admin: "Nenhuma ação"
+    },
+    PAGO: {
+      saidas: [
+        { para: "SEPARANDO", quem: "Administrador (FR-32) ou simulação (FR-33)", efeito: null },
+        { para: "CANCELADO", quem: "Comprador (FR-31)", efeito: "Liberar" }
+      ],
+      comprador: "Cancelar Pedido",
+      admin: "Avançar para Separando"
+    },
+    SEPARANDO: {
+      saidas: [
+        { para: "ENVIADO", quem: "Administrador (FR-32) ou simulação (FR-33)", efeito: "Consolidar", nota: "o Estoque total baixa e a Reserva encerra" },
+        { para: "CANCELADO", quem: "Comprador (FR-31)", efeito: "Liberar" }
+      ],
+      comprador: "Cancelar Pedido — o último estado em que é possível",
+      admin: "Avançar para Enviado"
+    },
+    ENVIADO: {
+      saidas: [
+        { para: "ENTREGUE", quem: "Administrador (FR-32) ou simulação (FR-33)", efeito: null }
+      ],
+      comprador: "Nenhuma ação · a tela explica por que não dá mais para cancelar",
+      admin: "Avançar para Entregue"
+    },
+    ENTREGUE: {
+      saidas: [],
+      comprador: "Nenhuma ação",
+      admin: "Nenhuma ação"
+    },
+    CANCELADO: {
+      saidas: [],
+      comprador: "Nenhuma ação",
+      admin: "Nenhuma ação, salvo o marcador de pagamento aprovado sobre Pedido cancelado (FR-26)"
+    }
+  };
+
+  var nome = document.getElementById("maq-nome");
+  var saidas = document.getElementById("maq-saidas");
+  var acoes = document.getElementById("maq-acoes");
+  var caixas = Array.prototype.slice.call(document.querySelectorAll(".est-cx"));
+
+  function pinta(chave) {
+    var d = MAQ[chave];
+    if (!d) { return; }
+    nome.textContent = chave;
+    saidas.textContent = "";
+
+    if (d.saidas.length === 0) {
+      var li = document.createElement("li");
+      var vazio = document.createElement("span");
+      vazio.className = "nada";
+      vazio.textContent = "Estado terminal — nenhuma transição sai daqui.";
+      li.appendChild(vazio);
+      li.style.gridTemplateColumns = "1fr";
+      saidas.appendChild(li);
+    } else {
+      d.saidas.forEach(function (s) {
+        var li = document.createElement("li");
+        var p = document.createElement("span");
+        p.className = "para";
+        p.textContent = "→ " + s.para;
+        var e = document.createElement("span");
+        e.className = "efeito";
+        var txt = s.quem + " · ";
+        e.appendChild(document.createTextNode(txt));
+        if (s.efeito) {
+          var b = document.createElement("b");
+          b.textContent = "Estoque: " + s.efeito;
+          e.appendChild(b);
+        } else {
+          var n = document.createElement("span");
+          n.className = "nada";
+          n.textContent = "sem efeito sobre o Estoque";
+          e.appendChild(n);
+        }
+        if (s.nota) { e.appendChild(document.createTextNode(" (" + s.nota + ")")); }
+        li.appendChild(p); li.appendChild(e);
+        saidas.appendChild(li);
+      });
+    }
+
+    acoes.textContent = "";
+    [["Comprador vê", d.comprador], ["Administrador vê", d.admin]].forEach(function (par) {
+      var s = document.createElement("span");
+      var b = document.createElement("b");
+      b.textContent = par[0] + ": ";
+      s.appendChild(b);
+      s.appendChild(document.createTextNode(par[1]));
+      acoes.appendChild(s);
+    });
+
+    caixas.forEach(function (c) {
+      c.setAttribute("aria-pressed", String(c.dataset.est === chave));
+    });
+  }
+
+  caixas.forEach(function (c) {
+    c.addEventListener("click", function () { pinta(c.dataset.est); });
+    c.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pinta(c.dataset.est); }
+    });
+  });
+
+  pinta("AGUARDANDO_PAGAMENTO");
+
+  /* ---- rail: seção corrente + navegação por teclado ---- */
+  var secoes = Array.prototype.slice.call(document.querySelectorAll("main section"));
+  var links = Array.prototype.slice.call(document.querySelectorAll("#indice a"));
+
+  function marca(id) {
+    links.forEach(function (a) {
+      a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + id));
+    });
+  }
+  marca(secoes[0].id);
+
+  if ("IntersectionObserver" in window) {
+    var obs = new IntersectionObserver(function (entradas) {
+      entradas.forEach(function (e) { if (e.isIntersecting) { marca(e.target.id); } });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    secoes.forEach(function (s) { obs.observe(s); });
+  }
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") { return; }
+    var alvo = ev.target;
+    if (alvo && (alvo.closest(".est-cx") || alvo.tagName === "INPUT" || alvo.tagName === "TEXTAREA")) { return; }
+    var meio = window.innerHeight * 0.35;
+    var atual = 0;
+    secoes.forEach(function (s, i) { if (s.getBoundingClientRect().top <= meio) { atual = i; } });
+    var prox = ev.key === "ArrowDown" ? Math.min(atual + 1, secoes.length - 1) : Math.max(atual - 1, 0);
+    if (prox !== atual) {
+      ev.preventDefault();
+      secoes[prox].scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+})();
+</script>
