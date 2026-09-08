@@ -2,7 +2,7 @@
 title: Azamon — Addendum Técnico do PRD
 status: final
 created: 2026-08-14
-updated: 2026-09-06
+updated: 2026-09-08
 ---
 
 # Addendum — Azamon
@@ -154,3 +154,17 @@ Os seis itens abaixo foram deixados em aberto de propósito e resolvidos por `bm
 - **A confirmação do pagamento entra por webhook e é aplicada por *inbox*** (`AD-7`): `pagamento` grava com restrição única e **não conhece `pedido`**; a varredura de `pedido` lê e aplica. Sem ciclo, com idempotência estrutural em vez de código defensivo, e sobrevivendo a reinício.
 - **Emitir a confirmação simulada mora em `pagamento`, não em `pedido`** (`AD-6`). É comportamento do Provedor: dentro do Pedido, poria conhecimento de gateway no domínio e quebraria o NFR-3 na primeira troca.
 - **A FR-3 não tem canal de entrega.** Não existe serviço de e-mail (§5 do PRD, e o NFR-15 proíbe rede), então o token vai para o log estruturado (`AD-20`). A FR-3 é a primeira da ordem de corte do §6.3; se sobreviver, o caminho é um contêiner Mailpit, que roda offline.
+
+## 10. O que a construção decidiu
+
+A SM-7 exige que este documento continue vivo: decisão de arquitetura tomada durante a construção volta para cá, na mesma estória que a tomou.
+
+**Estória 1.1 — andaime do serviço** (2026-09-08):
+
+- **`internal/plataforma` é aresta permitida para todos.** A tabela do `AD-1` não a lista porque ela não é um dos seis módulos do NFR-2: é a camada de config, log, correlação, transação e tradução de erro que a própria espinha define. O teste de fronteira (`internal/fronteira_test.go`) trata `plataforma` como universalmente importável e mantém todo o resto exaustivo — importar `internal/pedido/db/gerado` de fora de `pedido`, por exemplo, continua sendo falha de teste.
+- **Convenção de nome das variáveis `AZAMON_*`.** Nenhuma fonte nomeava uma sequer, e a partir daqui outras estórias dependem delas: `AZAMON_<ÁREA>_<PARÂMETRO>`, duração no formato do Go (`15m`, `60s`, `168h`), valor monetário com sufixo `_CENTAVOS`, booleano `true`/`false`. As 23 estão no `.env` versionado. A regra do Provedor Simulado (`§7.1`) virou duas variáveis, `AZAMON_PROVEDOR_APROVADO_ATE_CENTAVOS` e `AZAMON_PROVEDOR_RECUSADO_ATE_CENTAVOS`, porque são duas faixas e a terceira é o complemento.
+- **DSN e credenciais ficam no `.env` versionado.** Não existe produção (só demonstração e teste), então as credenciais de demonstração não são segredo e versioná-las é o que faz o `docker compose up` de clone limpo funcionar (NFR-1). Segredo real, se um dia existir, não entra no repositório — por isso `AZAMON_POSTGRES_DSN` e `AZAMON_REDIS_URL` são as duas únicas variáveis **sem padrão no código**: faltando, o processo não sobe.
+- **`default_transaction_isolation` não é declarado no `docker-compose.yml`.** O padrão do PostgreSQL já é `READ COMMITTED`, que é o que o `AD-4` exige; declará-lo no compose criaria uma segunda fonte de verdade que nenhum teste vigia. A corretude do `AD-5` depende de bloqueio explícito, não do nível de isolamento.
+- **A mensagem do envelope de erro é a do sentinela, nunca a do erro embrulhado.** Descoberto ao escrever o tradutor do `AD-14`: `err.Error()` de um `fmt.Errorf("reservar: %w", …)` levaria o contexto de desenvolvedor para dentro de um texto que a *Voice and Tone* governa. O tradutor usa o `Error()` do sentinela que casou, e o específico ("restam 2 unidades") viaja em `dados`.
+- **O `//go:embed` das migrações mora em `db/embutido.go`, não em `internal/plataforma/migracao.go`.** A diretiva não atravessa `..` — só enxerga a árvore do próprio pacote. `plataforma.Migrar` recebe o `fs.FS` como parâmetro, o que de quebra torna o caso "migração quebrada derruba o arranque" testável sem banco.
+- **O healthcheck do serviço `azamon` é o próprio binário, por `/azamon -saude`.** A imagem é `scratch` — sem shell e sem `curl` —, e a alternativa seria engordar a imagem só para o compose conseguir perguntar se o serviço está de pé. O subcomando faz um GET em `127.0.0.1:<porta>/api/v1/saude` e sai com 0 ou 1, o que dá ao `web` um `depends_on: service_healthy` de verdade e faz o endpoint de saúde ser usado por alguém, em vez de só existir.
