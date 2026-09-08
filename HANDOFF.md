@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-07 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. Sprint planning passou no portão de prontidão e o rastreamento existe. Nada de código ainda — a Estória 1.1 é o próximo passo.
+**Atualizado:** 2026-09-08 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. A Estória 1.1 está feita e em revisão no PR #5 — o andaime sobe com `docker compose up`. A 1.2 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -57,9 +57,24 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 1.1** — o andaime dos quatro contêineres. As sete épicas e as 52 estórias estão em
-`_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
-`_bmad-output/implementation-artifacts/sprint-status.yaml`, tudo em `backlog`.
+`bmad-build` na **Estória 1.2** — a casca do navegador. A **1.1 está feita** (PR #5): a árvore do `AD-1`, os
+quatro contêineres, e as quatro peças transversais de `internal/plataforma`. As sete épicas e as 52 estórias
+estão em `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
+`_bmad-output/implementation-artifacts/sprint-status.yaml`.
+
+### Quanto custa uma estória, e o que fazer com isso
+
+A 1.1 consumiu ~795.000 tokens de subagente. **As três lentes de revisão adversarial do `bmad-build`, mais a
+rodada de patches que elas geram, foram 56% disso** — e escalam com o tamanho do diff, não com a dificuldade da
+estória. Sobram 51 estórias; nesse ritmo o orçamento não fecha.
+
+A 1.1 foi o pior caso — greenfield, a maior estória do épico, e 14 lacunas de documentação que precisaram virar
+decisão nomeada (estão no addendum §10). Mas a parte cara é justamente a que se repete. Três medidas:
+
+- **Três lentes só onde há raio de alcance real:** reserva de Estoque sob concorrência (5-6, 5-7), máquina de
+  estados do Pedido (5-1), webhook e idempotência (5-9). Para CRUD de mesma forma, uma lente basta.
+- **Agrupar estórias de mesma forma numa spec só.** 3-1, 3-2 e 3-3 são o mesmo CRUD três vezes.
+- **Limpar o contexto entre estórias.** O `epic-N-context.md` e a spec em disco bastam para retomar.
 
 A spec rodou em 2026-09-06 e adotou os seis documentos como companheiros, sem absorver nenhum; as épicas
 rodaram em 2026-09-07 e citam `CAP`, `FR`, `NFR`, `AD` e `UX-DR` por ID, sem copiar enunciado.
