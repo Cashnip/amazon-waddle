@@ -1,0 +1,56 @@
+# `docker compose up`, sem argumento, sobe os quatro serviços em modo
+# demonstração (NFR-1). Nenhum outro serviço existe.
+services:
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    depends_on:
+      azamon:
+        condition: service_healthy
+
+  azamon:
+    build: .
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # A imagem é `scratch`: sem shell e sem curl, quem sonda a saúde é o
+    # próprio binário, pelo mesmo endpoint que a banca vê.
+    healthcheck:
+      test: ["CMD", "/azamon", "-saude"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  postgres:
+    image: postgres:18.6
+    environment:
+      POSTGRES_USER: azamon
+      POSTGRES_PASSWORD: azamon
+      POSTGRES_DB: azamon
+    volumes:
+      - azamon-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U azamon -d azamon"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  redis:
+    image: redis:8.10.1
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+# Volume nomeado: `docker compose down -v` é o botão de reinício da demonstração.
+volumes:
+  azamon-postgres:

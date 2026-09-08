@@ -78,12 +78,14 @@ nenhum é exigido pelo projeto. Dentro do Claude Code:
 
 ## 5. Rodando o projeto
 
-Ainda não existe código — a Estória 1.1 é o próximo passo. Quando existir:
-
 ```bash
 docker compose up   # web (Next.js) · azamon (Go) · postgres · redis, em modo demonstração
 go test ./...       # suíte completa
 ```
+
+Depois do `up`: a casca em <http://localhost:3000> e a saúde do serviço em
+<http://localhost:8080/api/v1/saude>. `docker compose down -v` devolve o ambiente ao
+estado inicial. O README de 15 minutos que o NFR-1 exige é da Estória 1.9.
 
 ## 6. Convenções que pegam quem chega
 
