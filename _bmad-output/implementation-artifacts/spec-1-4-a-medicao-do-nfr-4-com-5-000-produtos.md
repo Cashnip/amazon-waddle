@@ -2,7 +2,7 @@
 title: 'Estória 1.4 — A medição do NFR-4 com 5.000 Produtos'
 type: 'feature'
 created: '2026-09-11'
-status: 'review'
+status: 'done'
 baseline_commit: '87d97ee82314deff7b0e2b62ebe4c86b6d2f6ff9'
 review_loop_iteration: 0
 context:
