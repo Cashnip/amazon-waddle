@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-08 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. A Estória 1.1 está feita e em revisão no PR #5 — o andaime sobe com `docker compose up`. A 1.2 é o próximo passo.
+**Atualizado:** 2026-09-11 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 e 1.2 estão feitas e mescladas (PR #5 e #6) — o andaime sobe com `docker compose up` e o Next já é casca, com `rewrites()`, shadcn e a base visual da marca. A 1.3 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -53,13 +53,15 @@ Da arquitetura, as quatro que mais mudam a construção: **um schema do Postgres
 
 O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições toca o esqueleto vertical.
 
-**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. A que mais custa se der errado: **o `Set-Cookie` do Go atravessa o `rewrites()` do Next até o navegador?** Um `curl -i` responde, e é exatamente o defeito que o passo 0 existe para achar cedo.
+**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. **Duas já fecharam na Estória 1.2, as duas positivas:** o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada; e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares. Os desfechos estão no `addendum.md` §10. Restam a análise de `DEFAULT uuidv7()` pelo sqlc e o p95 da busca com 5.000 Produtos.
 
 ## Próximo passo
 
-`bmad-build` na **Estória 1.2** — a casca do navegador. A **1.1 está feita** (PR #5): a árvore do `AD-1`, os
-quatro contêineres, e as quatro peças transversais de `internal/plataforma`. As sete épicas e as 52 estórias
-estão em `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
+`bmad-build` na **Estória 1.3** — a primeira migração e o Catálogo Semeado determinístico. As duas anteriores
+estão feitas: a **1.1** (PR #5) trouxe a árvore do `AD-1`, os quatro contêineres e as quatro peças transversais
+de `internal/plataforma`; a **1.2** (PR #6) trouxe o `rewrites()` de `/api` para o Go, os 15 componentes do
+shadcn, os dez tokens de marca e a fonte auto-hospedada. As sete épicas e as 52 estórias estão em
+`_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
 `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
 ### Quanto custa uma estória, e o que fazer com isso
