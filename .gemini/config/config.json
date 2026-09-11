@@ -1,0 +1,26 @@
+{
+  "plugins": {
+    "chrome-devtools-plugin": {
+      "enabled": true
+    },
+    "data-agent-kit-plugin": {
+      "enabled": true
+    },
+    "firebase": {
+      "enabled": true
+    },
+    "gemini-api": {
+      "enabled": true
+    },
+    "google-antigravity-sdk": {
+      "enabled": true
+    },
+    "modern-web-guidance-plugin": {
+      "enabled": true
+    }
+  },
+  "userSettings": {
+    "remoteControlHostname": "desktop-71mkngv-solar-sky",
+    "themeMode": "THEME_MODE_INHERIT"
+  }
+}

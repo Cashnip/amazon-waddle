@@ -180,7 +180,7 @@ func gerar() error {
 	}
 	sql.WriteString(strings.Join(linhas, ",\n") + ";\n\n")
 
-	sql.WriteString("INSERT INTO catalogo.produto (id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id) VALUES\n")
+	sql.WriteString("INSERT INTO catalogo.produto (id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, busca_normalizada) VALUES\n")
 	linhas = linhas[:0]
 	for _, p := range produtos {
 		cor, ok := corDe[p.categoria]
@@ -191,9 +191,11 @@ func gerar() error {
 		if err := os.WriteFile(filepath.Join(dirMedia, arquivo), []byte(svg(p.nome, p.categoria, cor)), 0o644); err != nil {
 			return err
 		}
-		linhas = append(linhas, fmt.Sprintf("  (%s, %s, %s, %d, %s, %s, %s)",
+		buscaNormalizada := normalizarBusca(p.nome, p.descricao)
+		linhas = append(linhas, fmt.Sprintf("  (%s, %s, %s, %d, %s, %s, %s, %s)",
 			literal(id("produto", p.nome)), literal(p.nome), literal(p.descricao), p.centavos,
-			literal(baseURL+arquivo), literal(id("vendedor", p.vendedor)), literal(id("categoria", p.categoria))))
+			literal(baseURL+arquivo), literal(id("vendedor", p.vendedor)), literal(id("categoria", p.categoria)),
+			literal(buscaNormalizada)))
 	}
 	sql.WriteString(strings.Join(linhas, ",\n") + ";\n\n")
 
@@ -243,6 +245,13 @@ func apelido(nome string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+func normalizarBusca(nome, descricao string) string {
+	s := strings.ToLower(nome + " " + descricao)
+	s = semAcento.Replace(s)
+	campos := strings.Fields(s)
+	return strings.Join(campos, " ")
 }
 
 // svg desenha o placeholder: fundo na cor da Categoria, nome do Produto no

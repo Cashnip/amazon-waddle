@@ -1,0 +1,36 @@
+{
+  "session_id": "6f0046f9-81df-44e8-aa3c-cbc310c98a8c",
+  "cwd": "C:\\Users\\Usuario\\Desktop\\AWS\\Workshop 1 - Kiro",
+  "created_at": "2026-07-30T02:30:12.813136Z",
+  "updated_at": "2026-07-30T02:31:07.272686500Z",
+  "title": "Hi, can you read the requirements in README.md and build the streamlit app as described there. Place the code in a new file called doc.py.",
+  "session_created_reason": "subagent",
+  "session_state": {
+    "version": "v1",
+    "conversation_metadata": {
+      "user_turn_metadatas": [],
+      "user_turn_start_request": null,
+      "last_request": null
+    },
+    "rts_model_state": {
+      "conversation_id": "6f0046f9-81df-44e8-aa3c-cbc310c98a8c",
+      "model_info": null,
+      "context_usage_percentage": null
+    },
+    "permissions": {
+      "filesystem": {
+        "allowed_read_paths": [
+          "C:\\Users\\Usuario\\Desktop\\AWS\\Workshop 1 - Kiro"
+        ],
+        "allowed_write_paths": [],
+        "denied_read_paths": [],
+        "denied_write_paths": []
+      },
+      "trusted_tools": [],
+      "denied_tools": [],
+      "allowed_commands": []
+    },
+    "agent_name": null,
+    "goal": null
+  }
+}

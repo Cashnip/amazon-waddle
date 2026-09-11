@@ -1,0 +1,22 @@
+{"name":".dockerignore", "sizeBytes":"73"}
+{"name":".env", "sizeBytes":"1151"}
+{"name":".git", "isDir":true}
+{"name":".gitignore", "sizeBytes":"370"}
+{"name":"AGENTS.md", "sizeBytes":"6871"}
+{"name":"Dockerfile", "sizeBytes":"301"}
+{"name":"HANDOFF.md", "sizeBytes":"13864"}
+{"name":"README.md", "sizeBytes":"4465"}
+{"name":"_bmad-output", "isDir":true}
+{"name":"api", "isDir":true}
+{"name":"cmd", "isDir":true}
+{"name":"db", "isDir":true}
+{"name":"docker-compose.yml", "sizeBytes":"1392"}
+{"name":"docs", "isDir":true}
+{"name":"go.mod", "sizeBytes":"560"}
+{"name":"go.sum", "sizeBytes":"4504"}
+{"name":"internal", "isDir":true}
+{"name":"media", "isDir":true}
+{"name":"skills-lock.json", "sizeBytes":"3351"}
+{"name":"web", "isDir":true}
+
+Summary: This directory contains 9 subdirectories and 11 files.
