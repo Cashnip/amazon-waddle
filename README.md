@@ -96,6 +96,11 @@ credenciais não são segredo; elas estão versionadas junto com a lista, em `me
 | Comprador | `comprador@azamon.test` | `azamon-comprador` |
 | Administrador | `admin@azamon.test` | `azamon-admin` |
 
+Para medir a busca em volume, `AZAMON_SEMENTE_GRANDE=true` no `.env` acrescenta 5.000
+Produtos de bancada no arranque, com marcador próprio. Não é o catálogo da demonstração,
+que continua com 50 — a medição do NFR-4 vive em `go test ./db -run TestMedicaoNFR4` e
+não precisa da variável.
+
 `go test ./...` precisa do Docker no ar: o teste de schema sobe um PostgreSQL de verdade
 por `testcontainers-go`. Mexeu na lista de Produtos? Ela mora em `media/gerar.go`, e
 `go run media/gerar.go` reescreve os SVG e o SQL da semente — nenhum dos dois se edita

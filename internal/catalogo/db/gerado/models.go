@@ -15,13 +15,14 @@ type CatalogoCategoria struct {
 }
 
 type CatalogoProduto struct {
-	ID            pgtype.UUID
-	Nome          string
-	Descricao     string
-	PrecoCentavos int64
-	ImagemUrl     string
-	VendedorID    pgtype.UUID
-	CategoriaID   pgtype.UUID
+	ID               pgtype.UUID
+	Nome             string
+	Descricao        string
+	PrecoCentavos    int64
+	ImagemUrl        string
+	VendedorID       pgtype.UUID
+	CategoriaID      pgtype.UUID
+	BuscaNormalizada string
 }
 
 type CatalogoVendedor struct {

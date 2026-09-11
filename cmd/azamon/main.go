@@ -72,6 +72,18 @@ func executar(ctx context.Context, saida io.Writer) error {
 		logger.InfoContext(ctx, "Catálogo Semeado pulado; o marcador já existe", "versao", db.VersaoSemente)
 	}
 
+	// O conjunto de medição do NFR-4 (Estória 1.4) é ligado só por
+	// configuração e entra depois do Catálogo Semeado, porque multiplica os
+	// 50 Produtos dele. O catálogo da demonstração nunca vira 5.000 (SM-C3).
+	if cfg.SementeGrande {
+		aplicada, err := plataforma.Semear(ctx, cfg.PostgresDSN, db.SementeGrande, db.DirSementeGrande, db.VersaoSementeGrande)
+		if err != nil {
+			logger.ErrorContext(ctx, "conjunto de medição falhou; o processo não sobe", "erro", err.Error())
+			return err
+		}
+		logger.InfoContext(ctx, "conjunto de medição do NFR-4", "versao", db.VersaoSementeGrande, "aplicado", aplicada)
+	}
+
 	servidor := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.Rotas(),

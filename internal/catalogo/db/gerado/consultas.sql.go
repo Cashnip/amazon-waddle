@@ -13,7 +13,7 @@ import (
 
 const buscarProdutoPorID = `-- name: BuscarProdutoPorID :one
 
-SELECT id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id
+SELECT id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, busca_normalizada
 FROM catalogo.produto
 WHERE id = $1
 `
@@ -32,6 +32,7 @@ func (q *Queries) BuscarProdutoPorID(ctx context.Context, id pgtype.UUID) (Catal
 		&i.ImagemUrl,
 		&i.VendedorID,
 		&i.CategoriaID,
+		&i.BuscaNormalizada,
 	)
 	return i, err
 }

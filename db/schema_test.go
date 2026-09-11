@@ -67,6 +67,31 @@ func TestSchemaESemente(t *testing.T) {
 		}
 	})
 
+	t.Run("a busca tem coluna normalizada e os três índices da 1.4", func(t *testing.T) {
+		// O índice GIN é a decisão "índice antes de serviço" como objeto no
+		// banco; os dois B-tree fecham o adiado da 1.3, onde toda leitura por
+		// Categoria ou por Vendedor era varredura sequencial.
+		tem := map[string]string{}
+		for _, def := range textos(t, ctx, conexao, `
+			SELECT indexname || ' ' || indexdef
+			FROM pg_indexes WHERE schemaname = 'catalogo' AND tablename = 'produto'`) {
+			nome, corpo, _ := strings.Cut(def, " ")
+			tem[nome] = corpo
+		}
+		for _, quer := range []struct{ indice, trecho string }{
+			{"produto_busca_normalizada_idx", "USING gin (busca_normalizada gin_trgm_ops)"},
+			{"produto_vendedor_id_idx", "(vendedor_id)"},
+			{"produto_categoria_id_idx", "(categoria_id)"},
+		} {
+			corpo, ok := tem[quer.indice]
+			if !ok {
+				t.Errorf("falta o índice %s em catalogo.produto", quer.indice)
+			} else if !strings.Contains(corpo, quer.trecho) {
+				t.Errorf("%s = %q; quero conter %q", quer.indice, corpo, quer.trecho)
+			}
+		}
+	})
+
 	t.Run("as convenções de coluna do AD-2 valem em toda coluna", func(t *testing.T) {
 		snake := regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 		linhas, err := conexao.Query(ctx, `
@@ -158,10 +183,16 @@ func TestSchemaESemente(t *testing.T) {
 				t.Errorf("imagem_url %q não tem arquivo: %v", url, err)
 			}
 		}
+		// A normalização é na escrita (AD-16): o que o Go gravou tem de estar
+		// em caixa baixa e sem diacrítico, ou o índice de trigrama indexa
+		// texto que nenhum termo digitado vai casar.
 		for _, consulta := range []struct {
 			sql string
 			n   int
 		}{
+			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada = ''`, 0},
+			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada <> lower(busca_normalizada)`, 0},
+			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada ~ '[^[:ascii:]]'`, 0},
 			{`SELECT count(*) FROM catalogo.categoria`, 5},
 			{`SELECT count(*) FROM catalogo.vendedor`, 5},
 			{`SELECT count(*) FROM identidade.comprador`, 1},

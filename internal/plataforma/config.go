@@ -43,6 +43,8 @@ type Config struct {
 	VarreduraIntervalo time.Duration
 	ConfirmacaoAtraso  time.Duration
 	WebhookBaseURL     string
+
+	SementeGrande bool
 }
 
 // CarregarConfig lê o ambiente uma única vez, no arranque. Os padrões são os de
@@ -90,6 +92,8 @@ func carregar(l *leitor) Config {
 		VarreduraIntervalo: l.duracao("AZAMON_VARREDURA_INTERVALO", time.Second),
 		ConfirmacaoAtraso:  l.duracao("AZAMON_CONFIRMACAO_ATRASO", 5*time.Second),
 		WebhookBaseURL:     l.texto("AZAMON_WEBHOOK_BASE_URL", "http://localhost:8080"),
+
+		SementeGrande: l.booleano("AZAMON_SEMENTE_GRANDE", false),
 	}
 	// Faixa, não só formato: um `-5` ou um `0s` que passa aqui só aparece como
 	// comportamento absurdo lá na frente, e a configuração é fronteira de

@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 )
 
 // ---------------------------------------------------------------------------
@@ -180,7 +182,7 @@ func gerar() error {
 	}
 	sql.WriteString(strings.Join(linhas, ",\n") + ";\n\n")
 
-	sql.WriteString("INSERT INTO catalogo.produto (id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id) VALUES\n")
+	sql.WriteString("INSERT INTO catalogo.produto (id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, busca_normalizada) VALUES\n")
 	linhas = linhas[:0]
 	for _, p := range produtos {
 		cor, ok := corDe[p.categoria]
@@ -191,9 +193,11 @@ func gerar() error {
 		if err := os.WriteFile(filepath.Join(dirMedia, arquivo), []byte(svg(p.nome, p.categoria, cor)), 0o644); err != nil {
 			return err
 		}
-		linhas = append(linhas, fmt.Sprintf("  (%s, %s, %s, %d, %s, %s, %s)",
+		buscaNormalizada := catalogo.NormalizarBusca(p.nome, p.descricao)
+		linhas = append(linhas, fmt.Sprintf("  (%s, %s, %s, %d, %s, %s, %s, %s)",
 			literal(id("produto", p.nome)), literal(p.nome), literal(p.descricao), p.centavos,
-			literal(baseURL+arquivo), literal(id("vendedor", p.vendedor)), literal(id("categoria", p.categoria))))
+			literal(baseURL+arquivo), literal(id("vendedor", p.vendedor)), literal(id("categoria", p.categoria)),
+			literal(buscaNormalizada)))
 	}
 	sql.WriteString(strings.Join(linhas, ",\n") + ";\n\n")
 
@@ -225,16 +229,12 @@ func id(tipo, nome string) string {
 // que o Postgres pede em literal padrão, e toda entrada daqui é do repositório.
 func literal(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
-// apelido reduz o nome do Produto a um nome de arquivo estável.
-var semAcento = strings.NewReplacer(
-	"á", "a", "à", "a", "â", "a", "ã", "a", "ä", "a",
-	"é", "e", "ê", "e", "í", "i", "ó", "o", "ô", "o", "õ", "o",
-	"ú", "u", "ü", "u", "ç", "c",
-)
-
+// apelido reduz o nome do Produto a um nome de arquivo estável. A caixa e os
+// acentos saem por catalogo.Normalizar, a mesma função que preenche
+// busca_normalizada — duas tabelas de acento divergindo é defeito à espera.
 func apelido(nome string) string {
 	var b strings.Builder
-	for _, r := range semAcento.Replace(strings.ToLower(nome)) {
+	for _, r := range catalogo.Normalizar(nome) {
 		switch {
 		case r >= 'a' && r <= 'z', unicode.IsDigit(r):
 			b.WriteRune(r)
