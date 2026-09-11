@@ -30,3 +30,15 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `spec-1-1-andaime-do-servico.md`
   summary: `api/` não tem middleware de recuperação de pânico nem `http.MaxBytesReader`, apesar de o doc do pacote citar "os limites do NFR-14".
   evidence: Um pânico em qualquer handler futuro derruba a conexão, imprime stack trace não estruturado em stderr (furando o AD-15) e escapa do envelope do AD-14. Os limites de corpo do NFR-14 só ganham consumidor quando existir o primeiro DTO.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-casca-do-navegador.md`
+  summary: Nenhum teste exercita o caminho `:3000 → rewrites() → :8080` de ponta a ponta, então a linha do `Dockerfile` que copia o `next.config.ts` para o estágio de execução pode ser removida sem que nada fique vermelho.
+  evidence: A camada de revisão de lacunas reverteu essa linha, construiu a imagem e rodou o contêiner — `/` devolveu 200 e `/api` voltou ao 404 do Next, com `npm test` e a suíte Go verdes. Fechar exige um contêiner de fumaça, e o repositório não tem CI nem arreio de teste de integração onde pendurá-lo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-casca-do-navegador.md`
+  summary: O `Badge` do shadcn usa texto de 12px, e a regra de acessibilidade do `DESIGN.md` manda nada abaixo de 14px — as duas regras vêm da mesma espinha de UX, que também proíbe editar o componente.
+  evidence: Confirmado em `web/components/ui/badge.tsx` (`text-xs`). O `DESIGN.md` diz ao mesmo tempo "usados do shadcn sem alteração: … Badge" e "todo texto de conteúdo … em no mínimo 14px", e o selo de Status do Pedido é um `Badge` que carrega texto de conteúdo. A tensão é da espinha, não desta estória; quem a resolve é o dono da UX, decidindo se rótulo de selo conta como texto de conteúdo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-casca-do-navegador.md`
+  summary: A imagem de execução do `web` carrega 505 MB de `node_modules` porque o estágio de execução copia tudo sem podar.
+  evidence: Medido pela camada de revisão de lacunas dentro da imagem construída. Reclassificar as ferramentas para `devDependencies` já foi feito, mas `npm prune --omit=dev` ainda não é seguro: o `next start` lê `next.config.ts` em tempo de execução e precisa do TypeScript instalado. Resolver exige ou converter a configuração para `.js` na imagem, ou adotar `output: "standalone"`.
