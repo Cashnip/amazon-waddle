@@ -42,3 +42,11 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-casca-do-navegador.md`
   summary: A imagem de execução do `web` carrega 505 MB de `node_modules` porque o estágio de execução copia tudo sem podar.
   evidence: Medido pela camada de revisão de lacunas dentro da imagem construída. Reclassificar as ferramentas para `devDependencies` já foi feito, mas `npm prune --omit=dev` ainda não é seguro: o `next start` lê `next.config.ts` em tempo de execução e precisa do TypeScript instalado. Resolver exige ou converter a configuração para `.js` na imagem, ou adotar `output: "standalone"`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-primeira-migracao-e-catalogo-semeado.md`
+  summary: `catalogo.produto.vendedor_id` e `categoria_id` nascem sem índice, e a 1.4 é quem mede p95 com 5.000 Produtos.
+  evidence: O Postgres cria índice só no lado referenciado da chave estrangeira, então toda leitura por Categoria ou por Vendedor é varredura sequencial. Com 50 Produtos isso não aparece; a 1.4 é a estória que mede o limiar do NFR-4 e já é dona do índice GIN da busca, então é ela quem deve decidir estes dois no mesmo movimento. Fecha com dois `CREATE INDEX` numa migração.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-primeira-migracao-e-catalogo-semeado.md`
+  summary: O mesmo e-mail pode existir ao mesmo tempo como Comprador e como Administrador, e nada define a precedência na autenticação.
+  evidence: `identidade.comprador` e `identidade.administrador` são tabelas separadas por decisão humana registrada na 1.3, e `UNIQUE` vale por tabela. Hoje não há leitor: a semente usa dois endereços distintos e nenhuma estória autentica. A estória que construir autenticação precisa decidir de qualquer forma — ou a sobreposição é proibida por restrição compartilhada dentro do schema `identidade`, ou é permitida e a ordem de consulta vira regra escrita no addendum.

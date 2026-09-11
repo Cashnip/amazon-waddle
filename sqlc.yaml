@@ -1,0 +1,28 @@
+# sqlc v1.31.1. O schema de cada módulo é recortado pelo prefixo no nome do
+# arquivo de migração — é para isso que o prefixo existe. Um módulo nunca
+# enxerga o schema do outro, o que é a mesma fronteira do AD-2, um nível acima.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: "db/migracoes/*_identidade_*.sql"
+    queries: "internal/identidade/db/consultas.sql"
+    gen:
+      go:
+        package: gerado
+        out: "internal/identidade/db/gerado"
+        sql_package: pgx/v5
+        # Os nomes já são snake_case singular por convenção (AD-2); a inflexão
+        # do sqlc só os estragaria — "categoria" vira "Categorium" sem isto.
+        emit_exact_table_names: true
+  - engine: postgresql
+    schema: "db/migracoes/*_catalogo_*.sql"
+    queries: "internal/catalogo/db/consultas.sql"
+    gen:
+      go:
+        package: gerado
+        out: "internal/catalogo/db/gerado"
+        sql_package: pgx/v5
+        # Os nomes já são snake_case singular por convenção (AD-2); a inflexão
+        # do sqlc só os estragaria — "categoria" vira "Categorium" sem isto.
+        emit_exact_table_names: true
+

@@ -87,6 +87,21 @@ Depois do `up`: a casca em <http://localhost:3000> e a saúde do serviço em
 <http://localhost:8080/api/v1/saude>. `docker compose down -v` devolve o ambiente ao
 estado inicial. O README de 15 minutos que o NFR-1 exige é da Estória 1.9.
 
+O arranque aplica as migrações e, uma vez só, o **Catálogo Semeado** — 50 Produtos em 5
+Categorias, com as duas contas de demonstração abaixo. Não existe produção, então estas
+credenciais não são segredo; elas estão versionadas junto com a lista, em `media/gerar.go`.
+
+| Papel | E-mail | Senha |
+|---|---|---|
+| Comprador | `comprador@azamon.test` | `azamon-comprador` |
+| Administrador | `admin@azamon.test` | `azamon-admin` |
+
+`go test ./...` precisa do Docker no ar: o teste de schema sobe um PostgreSQL de verdade
+por `testcontainers-go`. Mexeu na lista de Produtos? Ela mora em `media/gerar.go`, e
+`go run media/gerar.go` reescreve os SVG e o SQL da semente — nenhum dos dois se edita
+à mão. Para ver a semente nova, `docker compose down -v` e suba de novo: o marcador em
+`public.semente` faz o banco já semeado ignorar qualquer mudança.
+
 ## 6. Convenções que pegam quem chega
 
 - Todo script do BMad roda por `uv run`, **a partir da raiz**. Sem o prefixo, roda fora

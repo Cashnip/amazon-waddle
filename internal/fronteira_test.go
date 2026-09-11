@@ -18,7 +18,7 @@ const modulo = "github.com/Cashnip/amazon-waddle"
 // arestas é a tabela do AD-1, exaustiva: origem → destinos permitidos.
 // Uma seta que não está aqui é defeito; uma seta invertida é ciclo.
 var arestas = map[string][]string{
-	"api":        {"identidade", "catalogo", "busca", "carrinho", "pedido", "pagamento", "plataforma"},
+	"api":        {"identidade", "catalogo", "busca", "carrinho", "pedido", "pagamento", "plataforma", "media"},
 	"cmd/azamon": {"api", "db", "pedido", "pagamento", "plataforma"}, // monta o servidor; o relógio: Varrer() e EmitirDevidas()
 	"identidade": {},
 	"catalogo":   {},
@@ -27,6 +27,7 @@ var arestas = map[string][]string{
 	"pedido":     {"catalogo", "carrinho", "identidade", "pagamento"},
 	"pagamento":  {}, // AD-7: pagamento não conhece pedido
 	"db":         {},
+	"media":      {}, // só os bytes das imagens do Catálogo Semeado
 }
 
 // portaPlataforma é a única isenção universal (addendum §10): o pacote exato,

@@ -59,6 +59,19 @@ func executar(ctx context.Context, saida io.Writer) error {
 		return err
 	}
 
+	// A semente vem depois, e nunca antes: semear sobre schema que falhou
+	// mascararia a falha de migração (AD-16).
+	aplicada, err := plataforma.Semear(ctx, cfg.PostgresDSN, db.Semente, db.DirSemente, db.VersaoSemente)
+	if err != nil {
+		logger.ErrorContext(ctx, "semente falhou; o processo não sobe", "erro", err.Error())
+		return err
+	}
+	if aplicada {
+		logger.InfoContext(ctx, "Catálogo Semeado aplicado", "versao", db.VersaoSemente)
+	} else {
+		logger.InfoContext(ctx, "Catálogo Semeado pulado; o marcador já existe", "versao", db.VersaoSemente)
+	}
+
 	servidor := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.Rotas(),

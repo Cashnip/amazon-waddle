@@ -17,6 +17,7 @@ func Rotas() http.Handler {
 	mux.HandleFunc("GET /api/v1/saude", saude)
 	// Temporária: a estória 1.5 remove esta rota junto com api/sonda_cookie.go.
 	mux.HandleFunc("GET /api/v1/sonda-cookie", sondaCookie)
+	mux.HandleFunc("GET /api/v1/media/{arquivo}", midia)
 	// Sem isto o ServeMux responderia "404 page not found" em texto puro, e a
 	// API teria dois contratos de erro conforme a rota exista ou não (AD-14).
 	mux.HandleFunc("/", naoEncontrado)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800" role="img" aria-label="Carregador Rápido 65W Relâmpago">
+  <title>Carregador Rápido 65W Relâmpago</title>
+  <rect width="800" height="800" fill="#2C3E50"/>
+  <rect x="48" y="48" width="704" height="704" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="4"/>
+  <text x="400" y="150" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="26" font-weight="600" letter-spacing="6" fill="#ffffff" fill-opacity="0.72">ELETRÔNICOS</text>
+  <text text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="48" font-weight="700" fill="#ffffff">
+    <tspan x="400" y="390">Carregador Rápido</tspan>
+    <tspan x="400" y="450">65W Relâmpago</tspan>
+  </text>
+</svg>

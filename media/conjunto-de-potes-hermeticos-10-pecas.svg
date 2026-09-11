@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800" role="img" aria-label="Conjunto de Potes Herméticos 10 Peças">
+  <title>Conjunto de Potes Herméticos 10 Peças</title>
+  <rect width="800" height="800" fill="#6B5B95"/>
+  <rect x="48" y="48" width="704" height="704" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="4"/>
+  <text x="400" y="150" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="26" font-weight="600" letter-spacing="6" fill="#ffffff" fill-opacity="0.72">CASA E COZINHA</text>
+  <text text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="48" font-weight="700" fill="#ffffff">
+    <tspan x="400" y="360">Conjunto de Potes</tspan>
+    <tspan x="400" y="420">Herméticos 10</tspan>
+    <tspan x="400" y="480">Peças</tspan>
+  </text>
+</svg>
