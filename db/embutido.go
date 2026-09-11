@@ -29,3 +29,17 @@ const DirSemente = "semente"
 // É texto, e não número, porque quem lê a tabela quer saber *qual* semente
 // está lá, não quantas vieram antes.
 const VersaoSemente = "2026-09-11-catalogo-inicial"
+
+// SementeGrande é o conjunto de medição do NFR-4: 5.000 Produtos que só
+// entram com AZAMON_SEMENTE_GRANDE=true. Fica fora de Semente de propósito —
+// o catálogo da demonstração continua com 50 Produtos (SM-C3).
+//
+//go:embed semente-grande
+var SementeGrande embed.FS
+
+// DirSementeGrande é o caminho do conjunto de medição dentro de SementeGrande.
+const DirSementeGrande = "semente-grande"
+
+// VersaoSementeGrande é o marcador próprio do conjunto de medição: ele e o
+// Catálogo Semeado são semeados e versionados de forma independente.
+const VersaoSementeGrande = "2026-09-11-medicao-nfr4"

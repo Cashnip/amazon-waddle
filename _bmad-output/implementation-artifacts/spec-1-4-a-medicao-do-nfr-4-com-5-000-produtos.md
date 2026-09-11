@@ -2,7 +2,7 @@
 title: 'Estória 1.4 — A medição do NFR-4 com 5.000 Produtos'
 type: 'feature'
 created: '2026-09-11'
-status: 'in-progress'
+status: 'review'
 baseline_commit: '87d97ee82314deff7b0e2b62ebe4c86b6d2f6ff9'
 review_loop_iteration: 0
 context:
@@ -61,11 +61,11 @@ context:
 - `db/semente/001_catalogo_semeado.sql` -- Arquivo regenerado com a coluna `busca_normalizada` preenchida nos INSERTs.
 - `internal/plataforma/config.go` -- Adição da variável `AZAMON_SEMENTE_GRANDE` (booleano) na struct `Config` e leitor de configuração.
 - `.env` -- Declaração de `AZAMON_SEMENTE_GRANDE=false` mantendo a sincronia exigida por `internal/plataforma/env_test.go`.
-- `db/semente_grande.go` -- Gerador e aplicador determinístico do conjunto de 5.000 Produtos com nomes plausíveis, categorias, vendedores e `busca_normalizada` calculada na escrita.
-- `cmd/azamon/main.go` -- Chamada da semeadura estendida quando `cfg.SementeGrande` estiver habilitada.
-- `db/medicao_nfr4_test.go` -- Teste com `testcontainers-go` que aplica migrações, semeia 5.000 Produtos, executa bateria de `EXPLAIN ANALYZE` sobre consultas com termo, categoria e faixa de preço, calcula a distribuição de latência e valida formalmente p95 ≤ 500 ms (NFR-4).
+- `db/semente-grande/001_catalogo_grande.sql` -- Conjunto de medição: 5.000 Produtos por `CROSS JOIN` de 10 linhas × 10 séries sobre os 50 do Catálogo Semeado, em semente e marcador separados. Substitui o `db/semente_grande.go` previsto: `db` não pode importar `internal/catalogo` (AD-1), e 5.000 `INSERT` literais custariam ~1,6 MB de SQL versionado pelo mesmo efeito.
+- `cmd/azamon/main.go` -- Segunda chamada a `plataforma.Semear`, com o `fs.FS` e o marcador do conjunto de medição, quando `cfg.SementeGrande` estiver ligada.
+- `db/medicao_nfr4_test.go` -- Teste com `testcontainers-go` que aplica migrações, semeia os dois conjuntos, roda `ANALYZE` e mede 100 execuções de duas sondas sob `EXPLAIN (ANALYZE, FORMAT JSON)` — termo + Categoria + faixa de preço, e só termo —, achata a árvore do plano e valida p95 ≤ 500 ms (NFR-4).
 - `db/schema_test.go` -- Atualização dos testes de schema para verificar a existência da coluna `busca_normalizada`, do índice GIN `pg_trgm` e dos índices em FKs.
-- `internal/catalogo/db/consultas.sql` -- Atualização das queries sqlc para incluir `busca_normalizada` e query de busca de produto com filtros para a sonda.
+- `internal/catalogo/db/consultas.sql` -- `BuscarProdutoPorID` passou a trazer `busca_normalizada`. A sonda de medição NÃO virou consulta sqlc: ela mora no teste, e a busca de verdade é da Épica 3 — gerar agora código que ninguém chama seria código morto.
 - `internal/catalogo/db/gerado/` -- Arquivos regenerados pelo `sqlc generate`.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- Atualização do ledger marcando o item de índices de vendedor_id e categoria_id como resolvido nesta estória.
 - `_bmad-output/planning-artifacts/prds/prd-azamon-2026-08-14/addendum.md` §10 -- Registro do resultado da verificação 4 (p95 medido, confirmação do índice GIN vs Elasticsearch).
@@ -73,17 +73,17 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `internal/catalogo/normalizar.go` + `internal/catalogo/normalizar_test.go` -- Implementar `Normalizar(s string) string` e `NormalizarBusca(nome, descricao string) string` tratando minúsculas e acentos portugueses com testes unitários.
-- [ ] `db/migracoes/20260911140000_catalogo_busca_e_indices.sql` -- Criar migração goose com `ALTER TABLE catalogo.produto ADD COLUMN busca_normalizada text NOT NULL DEFAULT ''`, índice GIN `pg_trgm` sobre `busca_normalizada gin_trgm_ops` e índices B-tree sobre `vendedor_id` e `categoria_id`.
-- [ ] `media/gerar.go` -- Atualizar gerador para incluir `busca_normalizada` nos INSERTs de produtos e regenerar `db/semente/001_catalogo_semeado.sql`.
-- [ ] `internal/plataforma/config.go` + `.env` -- Adicionar `AZAMON_SEMENTE_GRANDE` como parâmetro booleano (padrão `false`), mantendo paridade em `env_test.go`.
-- [ ] `db/semente_grande.go` -- Implementar geração e inserção determinística dos 5.000 Produtos com categoria, vendedor, preço e `busca_normalizada` calculada na escrita.
-- [ ] `cmd/azamon/main.go` -- Integrar chamada de semeadura dos 5.000 produtos condicionada a `cfg.SementeGrande`.
-- [ ] `internal/catalogo/db/consultas.sql` + `sqlc generate` -- Atualizar consultas e regenerar código de catálogo com `sqlc generate`.
-- [ ] `db/schema_test.go` -- Atualizar testes de schema para verificar os novos índices e coluna normalizada.
-- [ ] `db/medicao_nfr4_test.go` -- Criar teste automatizado sobre PostgreSQL real (testcontainers) com 5.000 produtos executando `EXPLAIN ANALYZE` sobre consulta com termo, filtro de categoria e faixa de preço, confirmando p95 ≤ 500 ms.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md` -- Registrar a inclusão dos índices de `vendedor_id` e `categoria_id`.
-- [ ] `_bmad-output/planning-artifacts/prds/prd-azamon-2026-08-14/addendum.md` §10 + `.memlog.md` -- Registrar o desfecho da verificação 4 (latência p95 obtida e decisão "índice antes de serviço").
+- [x] `internal/catalogo/normalizar.go` + `internal/catalogo/normalizar_test.go` -- Implementar `Normalizar(s string) string` e `NormalizarBusca(nome, descricao string) string` tratando minúsculas e acentos portugueses com testes unitários.
+- [x] `db/migracoes/20260911140000_catalogo_busca_e_indices.sql` -- Criar migração goose com `ALTER TABLE catalogo.produto ADD COLUMN busca_normalizada text NOT NULL DEFAULT ''`, índice GIN `pg_trgm` sobre `busca_normalizada gin_trgm_ops` e índices B-tree sobre `vendedor_id` e `categoria_id`.
+- [x] `media/gerar.go` -- Atualizar gerador para incluir `busca_normalizada` nos INSERTs de produtos e regenerar `db/semente/001_catalogo_semeado.sql`.
+- [x] `internal/plataforma/config.go` + `.env` -- Adicionar `AZAMON_SEMENTE_GRANDE` como parâmetro booleano (padrão `false`), mantendo paridade em `env_test.go`.
+- [x] `db/semente-grande/001_catalogo_grande.sql` -- Conjunto de medição determinístico e idempotente pelo marcador próprio (o conteúdo é determinístico; o `id` fica com o `DEFAULT uuidv7()`, que é o certo para dado de bancada).
+- [x] `cmd/azamon/main.go` -- Integrar chamada de semeadura dos 5.000 produtos condicionada a `cfg.SementeGrande`.
+- [x] `internal/catalogo/db/consultas.sql` + `sqlc generate` -- `busca_normalizada` na consulta e `internal/catalogo/db/gerado/` regenerado pelo sqlc v1.31.1, que analisou a migração nova sem erro.
+- [x] `db/schema_test.go` -- Atualizar testes de schema para verificar os novos índices e coluna normalizada.
+- [x] `db/medicao_nfr4_test.go` -- Criar teste automatizado sobre PostgreSQL real (testcontainers) com 5.000 produtos executando `EXPLAIN ANALYZE` sobre consulta com termo, filtro de categoria e faixa de preço, confirmando p95 ≤ 500 ms.
+- [x] `_bmad-output/implementation-artifacts/deferred-work.md` -- Registrar a inclusão dos índices de `vendedor_id` e `categoria_id`.
+- [x] `_bmad-output/planning-artifacts/prds/prd-azamon-2026-08-14/addendum.md` §10 + `.memlog.md` -- Registrar o desfecho da verificação 4 (latência p95 obtida e decisão "índice antes de serviço").
 
 **Acceptance Criteria:**
 - Dado o banco migrado, quando consulto os índices de `catalogo.produto`, então existem o índice GIN `pg_trgm` sobre `busca_normalizada` e os índices B-tree sobre `vendedor_id` e `categoria_id`.
@@ -112,3 +112,16 @@ O índice `gin (busca_normalizada gin_trgm_ops)` suporta buscas textuais por sub
 
 **Manual checks (if no CLI):**
 - Conferir no `psql` via `\d catalogo.produto` que a coluna `busca_normalizada` e os três índices (`produto_busca_normalizada_idx`, `produto_vendedor_id_idx`, `produto_categoria_id_idx`) estão presentes e ativos.
+
+## Desfecho
+
+Rodado em 2026-09-11 sobre PostgreSQL 18.6 por `testcontainers-go`, com 5.050 Produtos no banco.
+
+| Sonda | Mediana | p95 | Máximo | Plano |
+|---|---|---|---|---|
+| termo + Categoria + faixa de preço | 0,24 ms | 0,34 ms | 0,56 ms | `Bitmap Index Scan em produto_categoria_id_idx → Bitmap Heap Scan` |
+| só termo | 0,93 ms | 1,33 ms | 1,89 ms | `Seq Scan sobre produto` |
+
+O teto do NFR-4 é 500 ms. A verificação 4 do passo 0 fecha positiva e a decisão **"índice antes de serviço"** está confirmada — nem Elasticsearch, nem cache.
+
+O achado que vale mais que o número: **nesta escala o planejador não escolhe o índice GIN `pg_trgm` em nenhuma das duas sondas.** 5.000 linhas cabem em memória e varrer é barato. O GIN fica como seguro de crescimento, não como a causa do p95 verde — concluir o contrário a partir desta mesma medição é o erro fácil. Está registrado no `addendum.md` §10 e no `.memlog.md` do PRD.

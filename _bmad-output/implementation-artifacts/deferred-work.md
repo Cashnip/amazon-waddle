@@ -50,3 +50,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-primeira-migracao-e-catalogo-semeado.md`
   summary: O mesmo e-mail pode existir ao mesmo tempo como Comprador e como Administrador, e nada define a precedência na autenticação.
   evidence: `identidade.comprador` e `identidade.administrador` são tabelas separadas por decisão humana registrada na 1.3, e `UNIQUE` vale por tabela. Hoje não há leitor: a semente usa dois endereços distintos e nenhuma estória autentica. A estória que construir autenticação precisa decidir de qualquer forma — ou a sobreposição é proibida por restrição compartilhada dentro do schema `identidade`, ou é permitida e a ordem de consulta vira regra escrita no addendum.
+
+- source_spec: `spec-1-4-a-medicao-do-nfr-4-com-5-000-produtos.md`
+  summary: RESOLVIDO — os índices de `catalogo.produto(vendedor_id)` e `(categoria_id)`, adiados na 1.3, entraram na migração `20260911140000_catalogo_busca_e_indices.sql`.
+  evidence: A medição do NFR-4 mostrou que `produto_categoria_id_idx` é o índice que o planejador de fato escolhe para a consulta com termo, Categoria e faixa de preço — o adiamento não era higiene, era o índice que paga. `db/schema_test.go` passou a verificar os três índices pelo `pg_indexes`.

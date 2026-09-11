@@ -3,7 +3,15 @@
 -- +goose Up
 ALTER TABLE catalogo.produto ADD COLUMN busca_normalizada text NOT NULL DEFAULT '';
 
-UPDATE catalogo.produto SET busca_normalizada = lower(nome || ' ' || descricao) WHERE busca_normalizada = '';
+-- Preenchimento das linhas que já existiam. O `translate()` repete o mesmo
+-- mapa de catalogo.Normalizar porque `unaccent()` não é IMMUTABLE e a
+-- extensão nem está instalada; num banco novo a semente já grava o texto
+-- normalizado pelo Go e este UPDATE não toca em nada.
+UPDATE catalogo.produto SET busca_normalizada = lower(translate(
+    nome || ' ' || descricao,
+    'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑáàâãäéèêëíìîïóòôõöúùûüçñ',
+    'AAAAAEEEEIIIIOOOOOUUUUCNaaaaaeeeeiiiiooooouuuucn'))
+  WHERE busca_normalizada = '';
 
 CREATE INDEX produto_busca_normalizada_idx ON catalogo.produto USING gin (busca_normalizada gin_trgm_ops);
 CREATE INDEX produto_vendedor_id_idx ON catalogo.produto (vendedor_id);
