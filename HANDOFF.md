@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-11 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 e 1.2 estão feitas e mescladas (PR #5 e #6) — o andaime sobe com `docker compose up` e o Next já é casca, com `rewrites()`, shadcn e a base visual da marca. A 1.3 é o próximo passo.
+**Atualizado:** 2026-09-11 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1, 1.2 e 1.3 estão feitas e em `main` (PR #5, PR #6 e o commit `d8850b4`, este empurrado direto) — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, e o banco nasce com os dois schemas e 50 Produtos semeados. A 1.4 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -53,14 +53,19 @@ Da arquitetura, as quatro que mais mudam a construção: **um schema do Postgres
 
 O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições toca o esqueleto vertical.
 
-**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. **Duas já fecharam na Estória 1.2, as duas positivas:** o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada; e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares. Os desfechos estão no `addendum.md` §10. Restam a análise de `DEFAULT uuidv7()` pelo sqlc e o p95 da busca com 5.000 Produtos.
+**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. **Três já fecharam, as três positivas:** na 1.2, o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada, e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares; na 1.3, o sqlc v1.31.1 analisa `DEFAULT uuidv7()` sem erro, então a chave primária continua sendo gerada pelo banco. Os desfechos estão no `addendum.md` §10. Resta só o p95 da busca com 5.000 Produtos, que é a própria Estória 1.4.
 
 ## Próximo passo
 
-`bmad-build` na **Estória 1.3** — a primeira migração e o Catálogo Semeado determinístico. As duas anteriores
-estão feitas: a **1.1** (PR #5) trouxe a árvore do `AD-1`, os quatro contêineres e as quatro peças transversais
-de `internal/plataforma`; a **1.2** (PR #6) trouxe o `rewrites()` de `/api` para o Go, os 15 componentes do
-shadcn, os dez tokens de marca e a fonte auto-hospedada. As sete épicas e as 52 estórias estão em
+`bmad-build` na **Estória 1.4** — a medição do NFR-4 com 5.000 Produtos, que é a última das checagens de risco
+da épica. As três anteriores estão feitas: a **1.1** (PR #5) trouxe a árvore do `AD-1`, os quatro contêineres e
+as quatro peças transversais de `internal/plataforma`; a **1.2** (PR #6) trouxe o `rewrites()` de `/api` para o
+Go, os 15 componentes do shadcn, os dez tokens de marca e a fonte auto-hospedada; a **1.3** (`d8850b4`) trouxe
+os schemas `identidade` e `catalogo`, o Catálogo Semeado determinístico de 50 Produtos servido do binário, e o
+`sqlc` gerando sobre as migrações goose. Duas coisas foram adiadas na 1.3 e esperam quem as pegar: os índices
+das chaves estrangeiras de `catalogo.produto`, que são da 1.4 junto com a medição, e a sobreposição de e-mail
+entre Comprador e Administrador, que é da estória de autenticação. Estão em
+`_bmad-output/implementation-artifacts/deferred-work.md`. As sete épicas e as 52 estórias estão em
 `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
 `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
