@@ -44,3 +44,73 @@ func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) 
 	)
 	return i, err
 }
+
+const criarReservaAtiva = `-- name: CriarReservaAtiva :exec
+INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
+VALUES ($1, $2, $3, 'ATIVA')
+`
+
+type CriarReservaAtivaParams struct {
+	ProdutoID  pgtype.UUID
+	PedidoID   pgtype.UUID
+	Quantidade int32
+}
+
+func (q *Queries) CriarReservaAtiva(ctx context.Context, arg CriarReservaAtivaParams) error {
+	_, err := q.db.Exec(ctx, criarReservaAtiva, arg.ProdutoID, arg.PedidoID, arg.Quantidade)
+	return err
+}
+
+const somarReservasAtivas = `-- name: SomarReservasAtivas :one
+SELECT coalesce(sum(quantidade), 0)::bigint AS reservado
+FROM catalogo.reserva_estoque
+WHERE produto_id = $1 AND estado = 'ATIVA'
+`
+
+// Só depois a soma. Com a trava segura, nenhuma Reserva nova entra entre a
+// soma e o INSERT que a sucede.
+func (q *Queries) SomarReservasAtivas(ctx context.Context, produtoID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, somarReservasAtivas, produtoID)
+	var reservado int64
+	err := row.Scan(&reservado)
+	return reservado, err
+}
+
+const travarProdutosParaReserva = `-- name: TravarProdutosParaReserva :many
+SELECT id, estoque_total
+FROM catalogo.produto
+WHERE id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE
+`
+
+type TravarProdutosParaReservaRow struct {
+	ID           pgtype.UUID
+	EstoqueTotal int32
+}
+
+// As duas consultas abaixo são o AD-5, e são duas de propósito: é a ordem
+// entre elas que protege o Estoque. Uma consulta só não teria como errá-la —
+// e errá-la é vender a mesma última unidade duas vezes.
+//
+// Primeiro a trava. O `ORDER BY id` não é estilo: sem ele, dois Pedidos com os
+// mesmos dois Produtos em ordem inversa travam um no outro.
+func (q *Queries) TravarProdutosParaReserva(ctx context.Context, ids []pgtype.UUID) ([]TravarProdutosParaReservaRow, error) {
+	rows, err := q.db.Query(ctx, travarProdutosParaReserva, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TravarProdutosParaReservaRow
+	for rows.Next() {
+		var i TravarProdutosParaReservaRow
+		if err := rows.Scan(&i.ID, &i.EstoqueTotal); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

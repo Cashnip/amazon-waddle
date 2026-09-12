@@ -35,6 +35,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	mux.HandleFunc("GET /api/v1/sessao", s.lerSessao)
 	// Só o detalhe: a listagem (GET /api/v1/produtos) é de `busca`, na Épica 3.
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
+	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A rota de
+	// leitura — a tela de acompanhamento — é da 1.7.
+	mux.HandleFunc("POST /api/v1/pedidos", s.criarPedido)
 	// Sem isto o ServeMux responderia "404 page not found" em texto puro, e a
 	// API teria dois contratos de erro conforme a rota exista ou não (AD-14).
 	mux.HandleFunc("/", naoEncontrado)
@@ -45,9 +48,13 @@ func naoEncontrado(w http.ResponseWriter, r *http.Request) {
 	erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
 }
 
-// escreverJSON é o único lugar que serializa resposta de sucesso. O erro de
-// codificação não vira envelope: o cabeçalho já foi, e o cliente já está lendo.
-func escreverJSON(w http.ResponseWriter, valor any) {
+// escreverJSON é o único lugar que serializa resposta de sucesso. O status é
+// parâmetro porque o 201 do Pedido precisa dele, e escrever o cabeçalho fora
+// daqui perderia o Content-Type — WriteHeader congela o que já foi posto. O
+// erro de codificação não vira envelope: o cabeçalho já foi, e o cliente já
+// está lendo.
+func escreverJSON(w http.ResponseWriter, status int, valor any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(valor)
 }

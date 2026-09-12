@@ -54,3 +54,11 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `spec-1-4-a-medicao-do-nfr-4-com-5-000-produtos.md`
   summary: RESOLVIDO — os índices de `catalogo.produto(vendedor_id)` e `(categoria_id)`, adiados na 1.3, entraram na migração `20260911140000_catalogo_busca_e_indices.sql`.
   evidence: A medição do NFR-4 mostrou que `produto_categoria_id_idx` é o índice que o planejador de fato escolhe para a consulta com termo, Categoria e faixa de preço — o adiamento não era higiene, era o índice que paga. `db/schema_test.go` passou a verificar os três índices pelo `pg_indexes`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-um-pedido-nasce-em-aguardando-pagamento.md`
+  summary: A trava da linha do contador de número serializa a criação de Pedidos antes de a Reserva travar o Produto, e com isso a ordem trava-depois-soma do AD-5 fica inalcançável — a prova de concorrência do NFR-7 passaria sem testar nada.
+  evidence: `ProximoNumeroDoAno` faz `INSERT … ON CONFLICT (ano) DO UPDATE` e segura a trava da linha do ano até o commit, antes de `catalogo.Reservar` ser chamado. Duas criações do mesmo ano nunca estão dentro de `Reservar` ao mesmo tempo. Nada está errado hoje e ninguém vende duas vezes; o que fica sem valor é a prova. Quem construir o teste de concorrência do NFR-7 precisa primeiro tirar o contador da frente da trava do Produto — travar o Produto antes de numerar, ou numerar fora da transação do caso de uso.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-um-pedido-nasce-em-aguardando-pagamento.md`
+  summary: `catalogo.Reservar` recebe um Produto só, então o `ORDER BY id FOR UPDATE` ordena uma linha e não protege nada; com Carrinho, a única forma de usar a API é laço por Produto, que é o entrelaçamento que o AD-5 existe para impedir.
+  evidence: A assinatura é `Reservar(ctx, tx, produtoID, pedidoID string, quantidade int32)` e monta uma fatia de um elemento para `TravarProdutosParaReserva`. A Épica 4 traz o Carrinho com vários Produtos por Pedido e precisa da assinatura em fatia, com um único comando de trava. Vale conferir junto, contra o plano de execução real, se o `ORDER BY id` de fato determina a ordem de travamento — o Postgres trava durante a varredura, e a ordenação pode ser aplicada depois.

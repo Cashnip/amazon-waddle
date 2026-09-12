@@ -41,7 +41,7 @@ development_status:
   1-3-primeira-migração-e-o-catálogo-semeado-determinístico: done
   1-4-a-medição-do-nfr-4-com-5-000-produtos: done
   1-5-um-comprador-entra-e-vê-um-produto: review
-  1-6-um-pedido-nasce-em-aguardando_pagamento: backlog
+  1-6-um-pedido-nasce-em-aguardando_pagamento: review
   1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: backlog
   1-8-a-varredura-leva-o-pedido-até-entregue: backlog
   1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: backlog

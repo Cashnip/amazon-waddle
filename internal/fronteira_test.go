@@ -24,7 +24,7 @@ var arestas = map[string][]string{
 	// internal/plataforma/erro — então `plataforma` alcança a porta de cada
 	// módulo cujo sentinela ele traduz, e só ela. A seta contrária continua
 	// proibida: módulo de domínio não conhece `plataforma/erro` (addendum §10).
-	"plataforma": {"identidade"},
+	"plataforma": {"identidade", "catalogo", "pedido"},
 	"identidade": {},
 	"catalogo":   {},
 	"busca":      {"catalogo"},

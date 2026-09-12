@@ -23,6 +23,15 @@ type CatalogoProduto struct {
 	VendedorID       pgtype.UUID
 	CategoriaID      pgtype.UUID
 	BuscaNormalizada string
+	EstoqueTotal     int32
+}
+
+type CatalogoReservaEstoque struct {
+	ID         pgtype.UUID
+	ProdutoID  pgtype.UUID
+	PedidoID   pgtype.UUID
+	Quantidade int32
+	Estado     string
 }
 
 type CatalogoVendedor struct {

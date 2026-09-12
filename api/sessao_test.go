@@ -45,7 +45,7 @@ const (
 // aos dois lugares que prometem prazo — o Max-Age do cookie e o TTL no Redis.
 const expiracaoDeTeste = 7 * 24 * time.Hour
 
-func ambiente(t *testing.T) (http.Handler, *redis.Client) {
+func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -99,11 +99,14 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client) {
 	}
 	t.Cleanup(func() { _ = rdb.Close() })
 
-	return Rotas(plataforma.Config{SessaoExpiracao: expiracaoDeTeste}, pool, rdb), rdb
+	// O pool sai junto porque as linhas da matriz do Pedido são sobre o que
+	// ficou no banco — histórico da transição, Item congelado e Reserva ATIVA
+	// não aparecem em resposta nenhuma.
+	return Rotas(plataforma.Config{SessaoExpiracao: expiracaoDeTeste}, pool, rdb), rdb, pool
 }
 
 func TestSessaoEProduto(t *testing.T) {
-	rotas, rdb := ambiente(t)
+	rotas, rdb, pool := ambiente(t)
 
 	var cookieValido *http.Cookie
 
@@ -257,6 +260,23 @@ func TestSessaoEProduto(t *testing.T) {
 
 	t.Run("detalhe do Produto semeado", func(t *testing.T) { produtoSemeadoSai(t, rotas) })
 	t.Run("Produto inexistente e identificador malformado", func(t *testing.T) { produtoAusenteDa404(t, rotas) })
+
+	// A partir daqui a ordem importa: a numeração é por ano e conta do
+	// primeiro Pedido, então o subteste que a confere nasce antes dos outros.
+	var pedidoCriado string
+	t.Run("dois Pedidos nascem em AGUARDANDO_PAGAMENTO, numerados por ano", func(t *testing.T) {
+		pedidoCriado = pedidoNasceAguardandoPagamento(t, rotas, pool, cookieValido)
+	})
+	t.Run("sem Sessão não nasce Pedido", func(t *testing.T) { pedidoSemSessaoDa401(t, rotas, pool) })
+	t.Run("Produto ausente, corpo inválido e corpo grande demais", func(t *testing.T) {
+		pedidoComEntradaRuim(t, rotas, pool, cookieValido)
+	})
+	t.Run("Estoque esgotado recusa a compra", func(t *testing.T) {
+		pedidoSemEstoqueDa409(t, rotas, pool, cookieValido)
+	})
+	t.Run("Transicionar sobre estado já avançado", func(t *testing.T) {
+		transicaoRepetidaNaoAvanca(t, pool, pedidoCriado)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

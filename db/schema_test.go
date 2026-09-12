@@ -28,7 +28,7 @@ import (
 
 const imagem = "postgres:18.6"
 
-var schemasDeModulo = []string{"identidade", "catalogo"}
+var schemasDeModulo = []string{"identidade", "catalogo", "pedido"}
 
 func TestSchemaESemente(t *testing.T) {
 	ctx := context.Background()
@@ -39,14 +39,15 @@ func TestSchemaESemente(t *testing.T) {
 	}
 	conexao := conectar(t, ctx, dsn)
 
-	t.Run("existem só as cinco tabelas do esqueleto", func(t *testing.T) {
+	t.Run("existem só as dez tabelas do esqueleto", func(t *testing.T) {
 		tem := textos(t, ctx, conexao, `
 			SELECT table_schema || '.' || table_name
 			FROM information_schema.tables
 			WHERE table_schema = ANY($1) ORDER BY 1`, schemasDeModulo)
 		quer := []string{
-			"catalogo.categoria", "catalogo.produto", "catalogo.vendedor",
+			"catalogo.categoria", "catalogo.produto", "catalogo.reserva_estoque", "catalogo.vendedor",
 			"identidade.administrador", "identidade.comprador",
+			"pedido.contador_numero", "pedido.item_pedido", "pedido.pedido", "pedido.transicao_status",
 		}
 		if !slices.Equal(tem, quer) {
 			t.Errorf("tabelas = %v, quero %v", tem, quer)
@@ -113,7 +114,11 @@ func TestSchemaESemente(t *testing.T) {
 				}
 				// Singular: os identificadores são os do glossário, e nenhum
 				// termina em "s". Plural entrando aqui é desvio de convenção.
-				if strings.HasSuffix(nome, "s") && !strings.HasSuffix(nome, "_centavos") {
+				// "Status" é invariável em português e é termo do glossário —
+				// os dois identificadores isentos são nomeados, e não um
+				// sufixo que absolveria qualquer nome futuro.
+				if strings.HasSuffix(nome, "s") && !strings.HasSuffix(nome, "_centavos") &&
+					nome != "transicao_status" && nome != "status" {
 					t.Errorf("%q parece plural; a convenção é snake_case singular", nome)
 				}
 			}
@@ -139,13 +144,52 @@ func TestSchemaESemente(t *testing.T) {
 			  ON c.table_schema = k.table_schema AND c.table_name = k.table_name AND c.column_name = k.column_name
 			WHERE r.constraint_type = 'PRIMARY KEY' AND r.table_schema = ANY($1)
 			ORDER BY 1`, schemasDeModulo)
-		if len(tem) != 5 {
-			t.Fatalf("%d chaves primárias, quero 5: %v", len(tem), tem)
+		if len(tem) != 10 {
+			t.Fatalf("%d chaves primárias, quero 10: %v", len(tem), tem)
 		}
 		for _, pk := range tem {
+			// O contador do número por ano é a exceção declarada: não é
+			// entidade com identidade própria, é a linha que serializa a
+			// numeração de um ano, e a chave é o ano.
+			if strings.HasPrefix(pk, "contador_numero.") {
+				if pk != "contador_numero.ano integer <sem default>" {
+					t.Errorf("chave do contador = %q; quero o ano sem default", pk)
+				}
+				continue
+			}
 			if !strings.HasSuffix(pk, "id uuid uuidv7()") {
 				t.Errorf("chave primária %q; quero id uuid DEFAULT uuidv7()", pk)
 			}
+		}
+	})
+
+	t.Run("a Reserva tem o índice único parcial do AD-5 e o total tem CHECK", func(t *testing.T) {
+		// O índice parcial é o AD-5 como objeto no banco: um Pedido tem no
+		// máximo uma Reserva ATIVA por Produto, e LIBERADA/CONSOLIDADA podem
+		// repetir. Sem o WHERE, cancelar e recomprar viraria conflito.
+		indices := textos(t, ctx, conexao, `
+			SELECT indexdef FROM pg_indexes
+			WHERE schemaname = 'catalogo' AND indexname = 'reserva_estoque_ativa_idx'`)
+		if len(indices) != 1 {
+			t.Fatalf("reserva_estoque_ativa_idx = %v; quero exatamente um", indices)
+		}
+		for _, trecho := range []string{"CREATE UNIQUE INDEX", "(pedido_id, produto_id)", "WHERE (estado = 'ATIVA'"} {
+			if !strings.Contains(indices[0], trecho) {
+				t.Errorf("índice = %q; quero conter %q", indices[0], trecho)
+			}
+		}
+
+		// total_centavos é coluna com CHECK, nunca derivação de leitura
+		// (AD-3): a restrição existir no banco é o que impede um total zerado
+		// ou negativo de entrar por caminho nenhum.
+		restricoes := textos(t, ctx, conexao, `
+			SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE contype = 'c' AND conrelid = 'pedido.pedido'::regclass`)
+		if !slices.ContainsFunc(restricoes, func(d string) bool { return strings.Contains(d, "total_centavos > 0") }) {
+			t.Errorf("CHECK de pedido.pedido = %v; quero um sobre total_centavos", restricoes)
+		}
+		if !slices.ContainsFunc(restricoes, func(d string) bool { return strings.Contains(d, "AGUARDANDO_PAGAMENTO") }) {
+			t.Errorf("CHECK de pedido.pedido = %v; o Status é text com CHECK, e não enum", restricoes)
 		}
 	})
 
@@ -199,6 +243,11 @@ func TestSchemaESemente(t *testing.T) {
 			{`SELECT count(*) FROM identidade.administrador`, 1},
 			// A semente não cria Pedido, e nada nela consome `numero`.
 			{`SELECT count(*) FROM catalogo.categoria WHERE categoria_pai_id IS NOT NULL`, 0},
+			{`SELECT count(*) FROM pedido.pedido`, 0},
+			// estoque_total entrou com padrão justamente para que a semente
+			// não precisasse mudar: sem teto, a Reserva não teria com o que
+			// comparar e nenhuma compra seria recusada.
+			{`SELECT count(*) FROM catalogo.produto WHERE estoque_total <= 0`, 0},
 		} {
 			if n := inteiro(t, ctx, conexao, consulta.sql); n != consulta.n {
 				t.Errorf("%s = %d, quero %d", consulta.sql, n, consulta.n)

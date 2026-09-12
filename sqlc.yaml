@@ -25,4 +25,15 @@ sql:
         # Os nomes já são snake_case singular por convenção (AD-2); a inflexão
         # do sqlc só os estragaria — "categoria" vira "Categorium" sem isto.
         emit_exact_table_names: true
+  - engine: postgresql
+    schema: "db/migracoes/*_pedido_*.sql"
+    queries: "internal/pedido/db/consultas.sql"
+    gen:
+      go:
+        package: gerado
+        out: "internal/pedido/db/gerado"
+        sql_package: pgx/v5
+        # Os nomes já são snake_case singular por convenção (AD-2); a inflexão
+        # do sqlc só os estragaria — "categoria" vira "Categorium" sem isto.
+        emit_exact_table_names: true
 

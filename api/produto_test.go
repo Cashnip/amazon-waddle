@@ -15,6 +15,11 @@ func produtoSemeadoSai(t *testing.T, rotas http.Handler) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s), quero 200", resp.Code, resp.Body.String())
 	}
+	// escreverJSON põe o cabeçalho antes do WriteHeader, e a ordem é carga:
+	// invertida, toda resposta de sucesso sairia em text/plain.
+	if v := resp.Header().Get("Content-Type"); v != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type = %q", v)
+	}
 	corpo := decodificar(t, resp)
 
 	if corpo["nome"] != "Fone de Ouvido Bluetooth Aurora" {

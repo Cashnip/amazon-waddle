@@ -37,7 +37,7 @@ func (s *servidor) detalheDoProduto(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
-	escreverJSON(w, saidaProduto{
+	escreverJSON(w, http.StatusOK, saidaProduto{
 		ID:            produto.ID,
 		Nome:          produto.Nome,
 		Descricao:     produto.Descricao,

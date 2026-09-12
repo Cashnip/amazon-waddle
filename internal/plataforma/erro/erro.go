@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 	"github.com/Cashnip/amazon-waddle/internal/identidade"
+	"github.com/Cashnip/amazon-waddle/internal/pedido"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
@@ -37,6 +39,10 @@ var registro = []traducao{
 	{ErrEntradaInvalida, http.StatusBadRequest, "ENTRADA_INVALIDA"},
 	{identidade.ErrCredencialInvalida, http.StatusUnauthorized, "CREDENCIAL_INVALIDA"},
 	{identidade.ErrSessaoInvalida, http.StatusUnauthorized, "SESSAO_INVALIDA"},
+	// 409 nos dois: a requisição está correta, o estado do mundo é que não
+	// comporta. O disponível viaja em `dados`, e não na mensagem.
+	{catalogo.ErrEstoqueInsuficiente, http.StatusConflict, "ESTOQUE_INSUFICIENTE"},
+	{pedido.ErrEstadoJaAvancado, http.StatusConflict, "ESTADO_JA_AVANCADO"},
 }
 
 // CodigoInterno é o código de todo erro que não está no registro.

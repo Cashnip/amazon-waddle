@@ -2,6 +2,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Saudacao } from "./saudacao";
+import { Comprar } from "./comprar";
 
 // Página de Produto crua da estória 1.5. A composição de marca — Estoque,
 // Adicionar ao Carrinho, avaliações — é da Épica 3; aqui o que importa é o
@@ -86,6 +87,8 @@ export default async function PaginaDeProduto({
           </p>
           <Preco centavos={produto.preco_centavos} />
           <p className="text-sm">{produto.descricao}</p>
+          {/* Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). */}
+          <Comprar produtoId={produto.id} />
         </div>
       </main>
     </div>
