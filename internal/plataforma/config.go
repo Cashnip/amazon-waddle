@@ -43,6 +43,7 @@ type Config struct {
 	VarreduraIntervalo time.Duration
 	ConfirmacaoAtraso  time.Duration
 	WebhookBaseURL     string
+	WebhookSegredo     string
 
 	SementeGrande bool
 }
@@ -92,6 +93,10 @@ func carregar(l *leitor) Config {
 		VarreduraIntervalo: l.duracao("AZAMON_VARREDURA_INTERVALO", time.Second),
 		ConfirmacaoAtraso:  l.duracao("AZAMON_CONFIRMACAO_ATRASO", 5*time.Second),
 		WebhookBaseURL:     l.texto("AZAMON_WEBHOOK_BASE_URL", "http://localhost:8080"),
+		// Sem padrão, como a DSN e a URL do Redis: é credencial, e credencial
+		// não mora no código (AD-13). Um padrão aqui seria um segredo público,
+		// e o webhook é a única rota que escreve sem Sessão.
+		WebhookSegredo: l.obrigatorio("AZAMON_WEBHOOK_SEGREDO"),
 
 		SementeGrande: l.booleano("AZAMON_SEMENTE_GRANDE", false),
 	}

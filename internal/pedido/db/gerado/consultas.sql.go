@@ -33,6 +33,46 @@ func (q *Queries) AvancarStatus(ctx context.Context, arg AvancarStatusParams) (i
 	return result.RowsAffected(), nil
 }
 
+const buscarPedidoDoComprador = `-- name: BuscarPedidoDoComprador :one
+SELECT p.id, p.numero, p.status, p.total_centavos,
+       -- O cast é carga: sem ele o sqlc não infere o tipo da subconsulta e
+       -- devolve ` + "`" + `interface{}` + "`" + `, que só falharia no Scan em tempo de execução.
+       (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS atualizado_em
+FROM pedido.pedido p
+WHERE p.id = $1 AND p.comprador_id = $2
+`
+
+type BuscarPedidoDoCompradorParams struct {
+	PedidoID    pgtype.UUID
+	CompradorID pgtype.UUID
+}
+
+type BuscarPedidoDoCompradorRow struct {
+	ID            pgtype.UUID
+	Numero        string
+	Status        string
+	TotalCentavos int64
+	AtualizadoEm  pgtype.Timestamptz
+}
+
+// A leitura da tela de acompanhamento. O dono entra no WHERE, e não numa
+// checagem depois: Pedido de outro Comprador e Pedido inexistente saem os dois
+// como "nenhuma linha", que é o mesmo 404 — não vaza existência.
+// O instante é o da última transição, absoluto e vindo do servidor: o
+// navegador nunca conta duração.
+func (q *Queries) BuscarPedidoDoComprador(ctx context.Context, arg BuscarPedidoDoCompradorParams) (BuscarPedidoDoCompradorRow, error) {
+	row := q.db.QueryRow(ctx, buscarPedidoDoComprador, arg.PedidoID, arg.CompradorID)
+	var i BuscarPedidoDoCompradorRow
+	err := row.Scan(
+		&i.ID,
+		&i.Numero,
+		&i.Status,
+		&i.TotalCentavos,
+		&i.AtualizadoEm,
+	)
+	return i, err
+}
+
 const criarItemPedido = `-- name: CriarItemPedido :exec
 INSERT INTO pedido.item_pedido
     (pedido_id, produto_id, nome, vendedor_nome, preco_praticado_centavos, quantidade)
@@ -139,4 +179,18 @@ func (q *Queries) RegistrarTransicao(ctx context.Context, arg RegistrarTransicao
 		arg.Autor,
 	)
 	return err
+}
+
+const travarPedido = `-- name: TravarPedido :one
+SELECT status FROM pedido.pedido WHERE id = $1 FOR UPDATE SKIP LOCKED
+`
+
+// A leitura travada da varredura. SKIP LOCKED porque o tique que encontra o
+// Pedido já travado não tem o que esperar: o outro caminho está aplicando, e
+// insistir só serializaria a varredura inteira num Pedido.
+func (q *Queries) TravarPedido(ctx context.Context, pedidoID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, travarPedido, pedidoID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }

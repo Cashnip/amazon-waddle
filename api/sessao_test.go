@@ -45,6 +45,10 @@ const (
 // aos dois lugares que prometem prazo — o Max-Age do cookie e o TTL no Redis.
 const expiracaoDeTeste = 7 * 24 * time.Hour
 
+// segredoDeTeste é o AZAMON_WEBHOOK_SEGREDO do ambiente de teste: é ele que
+// autentica o webhook do Provedor, e sem ele a rota responde 401.
+const segredoDeTeste = "segredo-de-teste"
+
 func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
@@ -102,7 +106,8 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	// O pool sai junto porque as linhas da matriz do Pedido são sobre o que
 	// ficou no banco — histórico da transição, Item congelado e Reserva ATIVA
 	// não aparecem em resposta nenhuma.
-	return Rotas(plataforma.Config{SessaoExpiracao: expiracaoDeTeste}, pool, rdb), rdb, pool
+	cfg := plataforma.Config{SessaoExpiracao: expiracaoDeTeste, WebhookSegredo: segredoDeTeste}
+	return Rotas(cfg, pool, rdb), rdb, pool
 }
 
 func TestSessaoEProduto(t *testing.T) {
@@ -276,6 +281,29 @@ func TestSessaoEProduto(t *testing.T) {
 	})
 	t.Run("Transicionar sobre estado já avançado", func(t *testing.T) {
 		transicaoRepetidaNaoAvanca(t, pool, pedidoCriado)
+	})
+
+	// A partir daqui é a 1.7, e a ordem continua importando: o caminho feliz
+	// deixa um Pedido em PAGO, e os dois seguintes partem dele.
+	t.Run("a confirmação aprovada leva o Pedido a PAGO", func(t *testing.T) {
+		confirmacaoAprovadaLevaOPedidoAPago(t, rotas, pool, cookieValido)
+	})
+	t.Run("confirmação sobre Pedido que já avançou é sinalizada", func(t *testing.T) {
+		confirmacaoForaDeAguardandoPagamento(t, rotas, pool)
+	})
+	t.Run("confirmação de Tentativa superada não aplica", func(t *testing.T) {
+		confirmacaoDeTentativaSuperada(t, rotas, pool)
+	})
+	t.Run("webhook com corpo ruim ou chave desconhecida", func(t *testing.T) {
+		webhookRecusaEntradaRuim(t, rotas, pool)
+	})
+	t.Run("webhook sem o segredo não grava nem avança", func(t *testing.T) {
+		webhookExigeOSegredo(t, rotas, pool, cookieValido)
+	})
+	// Por último: este subteste cria um Pedido de outro Comprador, e o número
+	// dele antecede os do ano corrente na ordenação que os outros usam.
+	t.Run("a tela do Pedido lê pelo dono", func(t *testing.T) {
+		leituraDoPedido(t, rotas, pool, cookieValido, pedidoCriado)
 	})
 }
 

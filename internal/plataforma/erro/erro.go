@@ -24,6 +24,12 @@ var ErrNaoEncontrado = errors.New("Recurso não encontrado.")
 // porque é falha de tradução — o mesmo motivo de ErrNaoEncontrado.
 var ErrEntradaInvalida = errors.New("Requisição inválida.")
 
+// ErrNaoAutorizado cobre quem chama sem a credencial que a rota exige e não
+// tem Sessão para exibir — hoje só o webhook do Provedor, autenticado por
+// segredo compartilhado. Mora aqui pelo mesmo motivo de ErrEntradaInvalida:
+// é falha de tradução, e não de domínio.
+var ErrNaoAutorizado = errors.New("Requisição não autorizada.")
+
 type traducao struct {
 	sentinela error
 	status    int
@@ -37,6 +43,7 @@ type traducao struct {
 var registro = []traducao{
 	{ErrNaoEncontrado, http.StatusNotFound, "NAO_ENCONTRADO"},
 	{ErrEntradaInvalida, http.StatusBadRequest, "ENTRADA_INVALIDA"},
+	{ErrNaoAutorizado, http.StatusUnauthorized, "NAO_AUTORIZADO"},
 	{identidade.ErrCredencialInvalida, http.StatusUnauthorized, "CREDENCIAL_INVALIDA"},
 	{identidade.ErrSessaoInvalida, http.StatusUnauthorized, "SESSAO_INVALIDA"},
 	// 409 nos dois: a requisição está correta, o estado do mundo é que não

@@ -10,6 +10,8 @@ import (
 func TestConfigUsaPadroesDeProducao(t *testing.T) {
 	t.Setenv("AZAMON_POSTGRES_DSN", "postgres://azamon@postgres:5432/azamon")
 	t.Setenv("AZAMON_REDIS_URL", "redis://redis:6379/0")
+	// Obrigatória como as duas acima: credencial não tem padrão no código.
+	t.Setenv("AZAMON_WEBHOOK_SEGREDO", "segredo-de-teste")
 
 	c, err := CarregarConfig()
 	if err != nil {

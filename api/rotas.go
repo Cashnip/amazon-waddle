@@ -35,9 +35,15 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	mux.HandleFunc("GET /api/v1/sessao", s.lerSessao)
 	// Só o detalhe: a listagem (GET /api/v1/produtos) é de `busca`, na Épica 3.
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
-	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A rota de
-	// leitura — a tela de acompanhamento — é da 1.7.
+	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura
+	// é a tela do Pedido em processamento, consultada a cada 3 s.
 	mux.HandleFunc("POST /api/v1/pedidos", s.criarPedido)
+	mux.HandleFunc("GET /api/v1/pedidos/{id}", s.lerPedido)
+	// O webhook não é autenticado por Sessão: quem chama é o Provedor, e o que
+	// o autentica é o segredo compartilhado no cabeçalho. A chave de
+	// idempotência não autentica ninguém — ela é derivada do identificador do
+	// Pedido, que o próprio Comprador conhece.
+	mux.HandleFunc("POST /api/v1/webhooks/pagamento", s.receberConfirmacao)
 	// Sem isto o ServeMux responderia "404 page not found" em texto puro, e a
 	// API teria dois contratos de erro conforme a rota exista ou não (AD-14).
 	mux.HandleFunc("/", naoEncontrado)

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -28,7 +30,7 @@ import (
 
 const imagem = "postgres:18.6"
 
-var schemasDeModulo = []string{"identidade", "catalogo", "pedido"}
+var schemasDeModulo = []string{"identidade", "catalogo", "pedido", "pagamento"}
 
 func TestSchemaESemente(t *testing.T) {
 	ctx := context.Background()
@@ -39,7 +41,7 @@ func TestSchemaESemente(t *testing.T) {
 	}
 	conexao := conectar(t, ctx, dsn)
 
-	t.Run("existem só as dez tabelas do esqueleto", func(t *testing.T) {
+	t.Run("existem só as doze tabelas do esqueleto", func(t *testing.T) {
 		tem := textos(t, ctx, conexao, `
 			SELECT table_schema || '.' || table_name
 			FROM information_schema.tables
@@ -47,6 +49,7 @@ func TestSchemaESemente(t *testing.T) {
 		quer := []string{
 			"catalogo.categoria", "catalogo.produto", "catalogo.reserva_estoque", "catalogo.vendedor",
 			"identidade.administrador", "identidade.comprador",
+			"pagamento.confirmacao_recebida", "pagamento.tentativa_pagamento",
 			"pedido.contador_numero", "pedido.item_pedido", "pedido.pedido", "pedido.transicao_status",
 		}
 		if !slices.Equal(tem, quer) {
@@ -144,8 +147,8 @@ func TestSchemaESemente(t *testing.T) {
 			  ON c.table_schema = k.table_schema AND c.table_name = k.table_name AND c.column_name = k.column_name
 			WHERE r.constraint_type = 'PRIMARY KEY' AND r.table_schema = ANY($1)
 			ORDER BY 1`, schemasDeModulo)
-		if len(tem) != 10 {
-			t.Fatalf("%d chaves primárias, quero 10: %v", len(tem), tem)
+		if len(tem) != 12 {
+			t.Fatalf("%d chaves primárias, quero 12: %v", len(tem), tem)
 		}
 		for _, pk := range tem {
 			// O contador do número por ano é a exceção declarada: não é
@@ -190,6 +193,39 @@ func TestSchemaESemente(t *testing.T) {
 		}
 		if !slices.ContainsFunc(restricoes, func(d string) bool { return strings.Contains(d, "AGUARDANDO_PAGAMENTO") }) {
 			t.Errorf("CHECK de pedido.pedido = %v; o Status é text com CHECK, e não enum", restricoes)
+		}
+	})
+
+	t.Run("a inbox tem a restrição única sobre a chave de idempotência", func(t *testing.T) {
+		// A restrição é o mecanismo inteiro da idempotência: sem ela, a mesma
+		// confirmação entregue duas vezes vira duas linhas e dois efeitos. Ela
+		// existir como objeto no banco é o que torna o 23505 um sinal confiável.
+		unica := textos(t, ctx, conexao, `
+			SELECT pg_get_constraintdef(oid) FROM pg_constraint
+			WHERE contype = 'u' AND conrelid = 'pagamento.confirmacao_recebida'::regclass`)
+		if len(unica) != 1 || !strings.Contains(unica[0], "UNIQUE (chave_idempotencia)") {
+			t.Errorf("restrições únicas = %v; quero uma sobre chave_idempotencia", unica)
+		}
+
+		// E vale contra o banco de verdade: a segunda gravação da mesma chave
+		// levanta 23505, que é o que o código absorve.
+		const tentativa = `
+			INSERT INTO pagamento.tentativa_pagamento (pedido_id, total_centavos, id_externo, numero)
+			VALUES (uuidv7(), 1000, 'sim-teste-1', 1) RETURNING id`
+		var id string
+		if err := conexao.QueryRow(ctx, tentativa).Scan(&id); err != nil {
+			t.Fatalf("criar a Tentativa: %v", err)
+		}
+		const confirmacao = `
+			INSERT INTO pagamento.confirmacao_recebida (tentativa_id, chave_idempotencia, resultado, estado)
+			VALUES ($1::uuid, 'confirmacao:sim-teste-1', 'APROVADO', 'PENDENTE')`
+		if _, err := conexao.Exec(ctx, confirmacao, id); err != nil {
+			t.Fatalf("primeira gravação: %v", err)
+		}
+		_, err := conexao.Exec(ctx, confirmacao, id)
+		var pg *pgconn.PgError
+		if !errors.As(err, &pg) || pg.Code != "23505" {
+			t.Errorf("segunda gravação = %v; quero 23505", err)
 		}
 	})
 

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/Cashnip/amazon-waddle/internal/pagamento"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -19,6 +21,7 @@ func TestExecutarNaoServeSemBanco(t *testing.T) {
 	t.Setenv("AZAMON_HTTP_ADDR", endereco)
 	t.Setenv("AZAMON_POSTGRES_DSN", "postgres://azamon@127.0.0.1:1/azamon")
 	t.Setenv("AZAMON_REDIS_URL", "redis://127.0.0.1:1/0")
+	t.Setenv("AZAMON_WEBHOOK_SEGREDO", "segredo-de-teste")
 
 	ctx, cancelar := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancelar()
@@ -61,6 +64,12 @@ func TestExecutarDeixaOCatalogoSemeado(t *testing.T) {
 	t.Setenv("AZAMON_HTTP_ADDR", endereco)
 	t.Setenv("AZAMON_POSTGRES_DSN", dsn)
 	t.Setenv("AZAMON_REDIS_URL", "redis://127.0.0.1:1/0")
+	t.Setenv("AZAMON_WEBHOOK_SEGREDO", "segredo-de-teste")
+	// O webhook do Provedor Simulado volta para o próprio binário, que é como
+	// ele roda em compose. Com isso o tique, o transporte HTTP de verdade, a
+	// rota e a varredura entram todos no caminho do teste.
+	t.Setenv("AZAMON_WEBHOOK_BASE_URL", "http://"+endereco)
+	t.Setenv("AZAMON_CONFIRMACAO_ATRASO", "100ms")
 
 	servindo, parar := context.WithCancel(ctx)
 	fim := make(chan error, 1)
@@ -92,5 +101,61 @@ func TestExecutarDeixaOCatalogoSemeado(t *testing.T) {
 	}
 	if n == 0 {
 		t.Error("o arranque terminou com o catálogo vazio; Semear não rodou")
+	}
+
+	varreduraLevaOPedidoAPago(t, ctx, conexao)
+}
+
+// varreduraLevaOPedidoAPago é o comportamento-título da estória 1.7 medido no
+// binário inteiro: sem isto, apagar o `go varrer(...)` de executar() ou trocar
+// o caminho do webhook deixaria `go test ./...` verde.
+//
+// O Pedido e a Tentativa entram direto no banco — o que se exercita aqui é o
+// relógio e o transporte, não a compra, que api/ já cobre. O total tem centavos
+// em `,00`, que é a faixa que o Simulado aprova.
+func varreduraLevaOPedidoAPago(t *testing.T, ctx context.Context, conexao *pgx.Conn) {
+	t.Helper()
+	var pedidoID string
+	if err := conexao.QueryRow(ctx, `
+		INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
+		VALUES ('AZ-VARREDURA-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 32900)
+		RETURNING id::text`).Scan(&pedidoID); err != nil {
+		t.Fatalf("criar o Pedido: %v", err)
+	}
+	if _, err := conexao.Exec(ctx, `
+		INSERT INTO pagamento.tentativa_pagamento (pedido_id, total_centavos, id_externo, numero)
+		VALUES ($1::uuid, 32900, $2, 1)`, pedidoID, pagamento.IDExterno(pedidoID, 1)); err != nil {
+		t.Fatalf("criar a Tentativa: %v", err)
+	}
+
+	// Mesmo estilo de espera do arranque: o tique é de 1 s e o atraso da
+	// confirmação, de 100 ms.
+	prazo := time.Now().Add(30 * time.Second)
+	for {
+		var status string
+		if err := conexao.QueryRow(ctx,
+			`SELECT status FROM pedido.pedido WHERE id = $1::uuid`, pedidoID).Scan(&status); err != nil {
+			t.Fatalf("ler o Status: %v", err)
+		}
+		if status == "PAGO" {
+			break
+		}
+		if time.Now().After(prazo) {
+			t.Fatalf("o Pedido ficou em %s; a varredura do binário não o levou a PAGO", status)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// E a confirmação atravessou a rota de verdade, com o segredo no
+	// cabeçalho: uma linha na inbox, aplicada.
+	var estado string
+	if err := conexao.QueryRow(ctx, `
+		SELECT c.estado FROM pagamento.confirmacao_recebida c
+		JOIN pagamento.tentativa_pagamento t ON t.id = c.tentativa_id
+		WHERE t.pedido_id = $1::uuid`, pedidoID).Scan(&estado); err != nil {
+		t.Fatalf("ler a confirmação: %v", err)
+	}
+	if estado != "APLICADA" {
+		t.Errorf("estado da confirmação = %s, quero APLICADA", estado)
 	}
 }

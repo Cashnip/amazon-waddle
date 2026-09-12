@@ -1,10 +1,13 @@
-// Command azamon é o binário único do sistema: servidor HTTP e, a partir da
-// estória 1.8, a varredura que é o único motor do tempo (AD-6).
+// Command azamon é o binário único do sistema: servidor HTTP e a varredura que
+// é o único motor do tempo (AD-6).
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -18,6 +21,8 @@ import (
 
 	"github.com/Cashnip/amazon-waddle/api"
 	"github.com/Cashnip/amazon-waddle/db"
+	"github.com/Cashnip/amazon-waddle/internal/pagamento"
+	"github.com/Cashnip/amazon-waddle/internal/pedido"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
@@ -25,6 +30,13 @@ import (
 // cabeçalho. Não é limiar do NFR-16 — é higiene de servidor, como o orçamento
 // de espera pelo Postgres, e por isso não vira variável AZAMON_.
 const tempoDeCabecalho = 10 * time.Second
+
+// tempoDoWebhook fecha o POST da confirmação simulada que não responde. A
+// emissão é serial dentro do goroutine da varredura, então um envio
+// pendurado congelaria aplicar e emitir para o sistema inteiro — e o
+// http.DefaultClient não tem prazo nenhum. Higiene de cliente, como o
+// tempoDeCabecalho é de servidor, e por isso não vira variável AZAMON_.
+const tempoDoWebhook = 5 * time.Second
 
 func main() {
 	// O healthcheck do compose roda o próprio binário: a imagem é `scratch`,
@@ -109,6 +121,8 @@ func executar(ctx context.Context, saida io.Writer) error {
 		Handler:           api.Rotas(cfg, pool, rdb),
 		ReadHeaderTimeout: tempoDeCabecalho,
 	}
+	go varrer(ctx, plataforma.ComModulo(raiz, "varredura"), cfg, pool)
+
 	encerrado := make(chan struct{})
 	go func() {
 		<-ctx.Done()
@@ -126,6 +140,75 @@ func executar(ctx context.Context, saida io.Writer) error {
 	}
 	<-encerrado
 	return nil
+}
+
+// varrer é o único relógio do sistema (AD-6). Ele não decide nada: só chama,
+// nesta ordem, o passo que aplica o que chegou e o que emite o que venceu.
+// Módulo nenhum tem `time.Timer` — a decisão de quando mora aqui, e só aqui.
+//
+// Os passos `expirar` e `simular` entram na 1.8 e na Épica 5, na mesma lista.
+func varrer(ctx context.Context, logger *slog.Logger, cfg plataforma.Config, pool *pgxpool.Pool) {
+	tique := time.NewTicker(cfg.VarreduraIntervalo)
+	defer tique.Stop()
+
+	simulado := pagamento.Simulado{
+		AprovadoAteCentavos: cfg.ProvedorAprovadoAteCentavos,
+		RecusadoAteCentavos: cfg.ProvedorRecusadoAteCentavos,
+	}
+	// É daqui que sai o transporte do webhook: `pagamento` é módulo de
+	// domínio e não conhece `net/http`, então quem fala HTTP é quem já monta o
+	// servidor.
+	enviar := enviarConfirmacao(cfg.WebhookBaseURL, cfg.WebhookSegredo)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tique.C:
+			if err := pedido.Varrer(ctx, pool); err != nil {
+				logger.ErrorContext(ctx, "aplicar as confirmações", "erro", err.Error())
+			}
+			if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simulado, cfg.ConfirmacaoAtraso, enviar); err != nil {
+				logger.ErrorContext(ctx, "emitir as confirmações devidas", "erro", err.Error())
+			}
+		}
+	}
+}
+
+// enviarConfirmacao monta a função de envio que `pagamento` recebe. O POST vai
+// para o próprio binário: o Provedor Simulado entra pela mesma porta da frente
+// que um gateway real usaria, e é isso que faz o caminho do webhook ser
+// exercitado de verdade.
+func enviarConfirmacao(base, segredo string) pagamento.Enviar {
+	url := base + "/api/v1/webhooks/pagamento"
+	cliente := &http.Client{Timeout: tempoDoWebhook}
+	return func(ctx context.Context, c pagamento.Confirmacao) error {
+		corpo, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(corpo))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		// É este cabeçalho que autentica a rota: sem ele, qualquer um leva um
+		// Pedido a PAGO.
+		req.Header.Set("X-Azamon-Segredo", segredo)
+		resp, err := cliente.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		// O corpo é drenado para a conexão poder ser reaproveitada, e o status
+		// é conferido: um 404 em silêncio faria a emissão parecer bem-sucedida
+		// e a Tentativa ficaria reemitindo para sempre sem ninguém notar.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("webhook devolveu %d", resp.StatusCode)
+		}
+		return nil
+	}
 }
 
 // sondarSaude é o `/azamon -saude` do healthcheck: um GET em si mesmo.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -27,6 +28,14 @@ type saidaPedido struct {
 	Numero        string `json:"numero"`
 	Status        string `json:"status"`
 	TotalCentavos int64  `json:"total_centavos"`
+}
+
+// saidaPedidoDetalhe é o que a tela do Pedido em processamento consulta a cada
+// 3 s. O instante é absoluto e em RFC 3339, vindo do servidor: o navegador
+// exibe, e nunca conta.
+type saidaPedidoDetalhe struct {
+	saidaPedido
+	AtualizadoEm string `json:"atualizado_em"`
 }
 
 // criarPedido é o primeiro pgx.Tx do repositório: uma transação por caso de
@@ -90,5 +99,41 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 		Numero:        novo.Numero,
 		Status:        novo.Status,
 		TotalCentavos: novo.TotalCentavos,
+	})
+}
+
+// lerPedido é a terceira rota autenticada. Não abre transação: é uma consulta
+// só, e o pool é a DBTX que `pedido.Buscar` espera.
+func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
+	semCache(w)
+
+	comprador, err := s.compradorDaRequisicao(r)
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	p, err := pedido.Buscar(r.Context(), s.pool, r.PathValue("id"), comprador.ID)
+	if err != nil {
+		// Pedido de outro Comprador, Pedido inexistente e uuid malformado são
+		// o mesmo 404: responder diferente vazaria a existência do Pedido.
+		if errors.Is(err, pgx.ErrNoRows) {
+			erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
+			return
+		}
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	escreverJSON(w, http.StatusOK, saidaPedidoDetalhe{
+		saidaPedido: saidaPedido{
+			ID:            p.ID,
+			Numero:        p.Numero,
+			Status:        p.Status,
+			TotalCentavos: p.TotalCentavos,
+		},
+		// Nano, e não segundos: duas transições do mesmo Pedido cabem no mesmo
+		// segundo, e a tela que compara instantes não teria como distingui-las.
+		// RFC3339Nano continua sendo RFC 3339.
+		AtualizadoEm: p.AtualizadoEm.Format(time.RFC3339Nano),
 	})
 }

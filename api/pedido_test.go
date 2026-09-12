@@ -189,6 +189,12 @@ func pedidoSemEstoqueDa409(t *testing.T, rotas http.Handler, pool *pgxpool.Pool,
 	if depois := contarPedidos(t, pool); depois != antes {
 		t.Errorf("%d Pedidos depois do 409, quero os %d de antes; a transação tinha de ser revertida", depois, antes)
 	}
+	// A Tentativa de Pagamento nasce na mesma transação do Pedido, e por isso
+	// é revertida junto: uma Tentativa órfã aqui seria emitida pela varredura
+	// para um Pedido que nunca existiu.
+	if n := contarTentativas(t, pool); n != antes {
+		t.Errorf("%d Tentativas depois do 409, quero uma por Pedido (%d)", n, antes)
+	}
 
 	// A recusa não queima um número: o contador é incrementado dentro da
 	// transação revertida, que é a justificativa escrita de ele ser tabela e
@@ -238,6 +244,108 @@ func transicaoRepetidaNaoAvanca(t *testing.T, pool *pgxpool.Pool, pedidoID strin
 	}
 }
 
+// leituraDoPedido cobre as três linhas da matriz da tela de acompanhamento: o
+// dono lê, quem não é dono recebe o mesmo 404 de quem pede um Pedido que não
+// existe, e sem Sessão é 401.
+func leituraDoPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie, pedidoID string) {
+	if pedidoID == "" {
+		t.Skip("sem Pedido: a criação falhou antes")
+	}
+
+	resp := pegarPedido(t, rotas, pedidoID, cookie)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s), quero 200", resp.Code, resp.Body.String())
+	}
+	if v := resp.Header().Get("Cache-Control"); v != "no-store" {
+		t.Errorf("Cache-Control = %q, quero no-store", v)
+	}
+	corpo := decodificar(t, resp)
+	if corpo["status"] != "AGUARDANDO_PAGAMENTO" {
+		t.Errorf("status = %v", corpo["status"])
+	}
+	if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990 {
+		t.Errorf("total_centavos = %v, quero 24990 inteiro", corpo["total_centavos"])
+	}
+	if !strings.HasPrefix(fmt.Sprint(corpo["numero"]), "AZ-") {
+		t.Errorf("numero = %v", corpo["numero"])
+	}
+	// Instante absoluto, RFC 3339, vindo do servidor: é o que a tela exibe, e
+	// o navegador nunca conta duração. Analisar não basta — trocar o max por
+	// min na consulta, ou devolver o ano 0001, passaria. O que se compara é o
+	// instante contra a última transição que o Pedido de fato tem.
+	if quer := ultimaTransicao(t, pool, pedidoID); !instanteDe(t, corpo).Equal(quer) {
+		t.Errorf("atualizado_em = %v, quero %v (o max de ocorrido_em)", instanteDe(t, corpo), quer)
+	}
+
+	// Pedido de outro Comprador entra pelo banco: a semente tem uma conta só,
+	// e o que se prova aqui é o dono no WHERE, não a segunda Sessão.
+	deOutro := textoDe(t, pool, `
+		INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
+		VALUES ('AZ-0000-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 100)
+		RETURNING id::text`)
+	if len(deOutro) != 1 {
+		t.Fatalf("criar o Pedido de outro Comprador: %v", deOutro)
+	}
+	for _, id := range []string{
+		deOutro[0],
+		"00000000-0000-7000-8000-000000000000",
+		"nao-e-uuid",
+	} {
+		resp := pegarPedido(t, rotas, id, cookie)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("%s: status = %d (%s), quero 404", id, resp.Code, resp.Body.String())
+		}
+		if codigo := decodificar(t, resp)["codigo"]; codigo != "NAO_ENCONTRADO" {
+			t.Errorf("%s: codigo = %v", id, codigo)
+		}
+	}
+
+	semCookie := pegarPedido(t, rotas, pedidoID, nil)
+	if semCookie.Code != http.StatusUnauthorized {
+		t.Fatalf("sem cookie: status = %d, quero 401", semCookie.Code)
+	}
+	if codigo := decodificar(t, semCookie)["codigo"]; codigo != "SESSAO_INVALIDA" {
+		t.Errorf("sem cookie: codigo = %v", codigo)
+	}
+}
+
+// instanteDe extrai o `atualizado_em` do corpo e exige que ele seja RFC 3339.
+func instanteDe(t *testing.T, corpo map[string]any) time.Time {
+	t.Helper()
+	texto, ok := corpo["atualizado_em"].(string)
+	if !ok {
+		t.Fatalf("atualizado_em = %v; quero o instante da última transição", corpo["atualizado_em"])
+	}
+	instante, err := time.Parse(time.RFC3339Nano, texto)
+	if err != nil {
+		t.Fatalf("atualizado_em = %q não é RFC 3339: %v", texto, err)
+	}
+	return instante
+}
+
+// ultimaTransicao é a resposta certa vinda do banco.
+func ultimaTransicao(t *testing.T, pool *pgxpool.Pool, pedidoID string) time.Time {
+	t.Helper()
+	var quando time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT max(ocorrido_em) FROM pedido.transicao_status WHERE pedido_id = $1::uuid`,
+		pedidoID).Scan(&quando); err != nil {
+		t.Fatalf("ler a última transição: %v", err)
+	}
+	return quando.UTC()
+}
+
+func pegarPedido(t *testing.T, rotas http.Handler, id string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedidos/"+id, nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	resp := httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	return resp
+}
+
 func postarPedido(t *testing.T, rotas http.Handler, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pedidos", strings.NewReader(corpo))
@@ -254,6 +362,16 @@ func contarPedidos(t *testing.T, pool *pgxpool.Pool) int {
 	var n int
 	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM pedido.pedido`).Scan(&n); err != nil {
 		t.Fatalf("contar Pedidos: %v", err)
+	}
+	return n
+}
+
+func contarTentativas(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM pagamento.tentativa_pagamento`).Scan(&n); err != nil {
+		t.Fatalf("contar Tentativas: %v", err)
 	}
 	return n
 }
