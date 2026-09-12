@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-11 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1, 1.2 e 1.3 estão em `main` (PR #5, PR #6 e o commit `d8850b4`, este empurrado direto) e a **1.4 está pronta na branch `estoria-1.4`, esperando revisão e merge** — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os dois schemas e 50 Produtos semeados, e o p95 da busca está medido. A 1.5 é o próximo passo.
+**Atualizado:** 2026-09-12 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 a 1.6 estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os dois schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, e o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque. A 1.7 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -57,16 +57,14 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-Revisar e mesclar a **Estória 1.4**, que está pronta na branch `estoria-1.4`, e então `bmad-build` na **1.5** —
-o Comprador que entra e vê um Produto, onde o cookie de Sessão prova que atravessa a casca do Next.
-A 1.4 fechou a última das checagens de risco da épica: a busca com termo, Categoria e faixa de preço sobre
-5.050 Produtos mede p95 de 0,34 ms, três ordens de grandeza abaixo do teto do NFR-4, e o achado que vale mais
-que o número é que **nesta escala o planejador não escolhe o índice GIN** — 5.000 linhas cabem em memória, e o
-GIN é seguro de crescimento, não a causa do p95 verde. Ela também trouxe a coluna `busca_normalizada`
-preenchida na escrita pelo Go, os dois índices de chave estrangeira adiados na 1.3, e o conjunto de 5.000 como
-semente separada ligada por `AZAMON_SEMENTE_GRANDE=true`, que nunca vira o catálogo da demonstração (SM-C3).
-Continua aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da
-estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`. As sete épicas e as
+`bmad-build` na **Estória 1.7** — o Provedor Simulado confirma por webhook e o Pedido vai a `PAGO`. É a
+primeira vez que o resultado chega fora da requisição do Comprador: a porta de pagamento com duas operações e
+nada mais, a confirmação gravada em `pagamento.confirmacao_recebida` com restrição única sobre a chave de
+idempotência, e a varredura lendo o *inbox* e aplicando — `pagamento` nunca conhece `pedido`.
+A 1.6 deixou o objeto sobre o qual a 1.7 age: o schema `pedido`, a Reserva de Estoque `ATIVA`, o total em
+centavos inteiros e `Transicionar` em compare-and-swap, que é o único ponto de mutação do Status. Continua
+aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da estória de
+autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`. As sete épicas e as
 52 estórias estão em `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
 `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
