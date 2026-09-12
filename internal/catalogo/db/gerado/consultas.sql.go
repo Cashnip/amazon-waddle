@@ -11,28 +11,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const buscarProdutoPorID = `-- name: BuscarProdutoPorID :one
-
-SELECT id, nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, busca_normalizada
-FROM catalogo.produto
-WHERE id = $1
+const buscarProdutoComVendedor = `-- name: BuscarProdutoComVendedor :one
+SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url, v.nome AS vendedor_nome
+FROM catalogo.produto p
+JOIN catalogo.vendedor v ON v.id = p.vendedor_id
+WHERE p.id = $1
 `
 
-// Uma consulta por módulo nesta estória: o que a 1.3 precisa provar é que o
-// sqlc analisa `DEFAULT uuidv7()` (verificação 2 do passo 0). As consultas de
-// verdade chegam com a regra, nas Épicas 2 e 3.
-func (q *Queries) BuscarProdutoPorID(ctx context.Context, id pgtype.UUID) (CatalogoProduto, error) {
-	row := q.db.QueryRow(ctx, buscarProdutoPorID, id)
-	var i CatalogoProduto
+type BuscarProdutoComVendedorRow struct {
+	ID            pgtype.UUID
+	Nome          string
+	Descricao     string
+	PrecoCentavos int64
+	ImagemUrl     string
+	VendedorNome  string
+}
+
+// A consulta da Página de Produto (FR-9). O JOIN é dentro do mesmo schema —
+// chave estrangeira cruzando schema é proibida (AD-2), e esta não cruza.
+// `busca_normalizada` fica de fora: é dado de índice, e a busca de verdade,
+// com paginação, é da Épica 3.
+func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) (BuscarProdutoComVendedorRow, error) {
+	row := q.db.QueryRow(ctx, buscarProdutoComVendedor, id)
+	var i BuscarProdutoComVendedorRow
 	err := row.Scan(
 		&i.ID,
 		&i.Nome,
 		&i.Descricao,
 		&i.PrecoCentavos,
 		&i.ImagemUrl,
-		&i.VendedorID,
-		&i.CategoriaID,
-		&i.BuscaNormalizada,
+		&i.VendedorNome,
 	)
 	return i, err
 }

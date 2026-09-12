@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/Cashnip/amazon-waddle/api"
 	"github.com/Cashnip/amazon-waddle/db"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
@@ -84,9 +86,27 @@ func executar(ctx context.Context, saida io.Writer) error {
 		logger.InfoContext(ctx, "conjunto de medição do NFR-4", "versao", db.VersaoSementeGrande, "aplicado", aplicada)
 	}
 
+	// pgxpool.New não disca: analisa a DSN e devolve. Quem já garantiu que o
+	// banco responde é o Migrar acima; aqui o erro é DSN malformada.
+	pool, err := pgxpool.New(ctx, cfg.PostgresDSN)
+	if err != nil {
+		logger.ErrorContext(ctx, "pool do Postgres falhou; o processo não sobe", "erro", err.Error())
+		return err
+	}
+	defer pool.Close()
+
+	// O cliente Redis é preguiçoso de propósito (AD-9): a Sessão é o único
+	// que o usa, e exigir Redis aqui derrubaria /api/v1/saude junto.
+	rdb, err := plataforma.AbrirRedis(cfg.RedisURL)
+	if err != nil {
+		logger.ErrorContext(ctx, "cliente Redis falhou; o processo não sobe", "erro", err.Error())
+		return err
+	}
+	defer rdb.Close()
+
 	servidor := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.Rotas(),
+		Handler:           api.Rotas(cfg, pool, rdb),
 		ReadHeaderTimeout: tempoDeCabecalho,
 	}
 	encerrado := make(chan struct{})

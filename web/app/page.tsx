@@ -90,6 +90,19 @@ export default function Conferencia() {
             <a className="text-link text-sm underline" href="/api/v1/saude">
               /api/v1/saude pelo rewrite
             </a>
+            {/* TEMPORÁRIO (estória 1.5): o roteiro chega à Página de Produto
+                por aqui enquanto não existe busca. O identificador é o v5
+                derivado do nome em media/gerar.go, estável por construção.
+                A Épica 3 entrega a busca e REMOVE estes dois links. */}
+            <a className="text-link text-sm underline" href="/entrar">
+              /entrar
+            </a>
+            <a
+              className="text-link text-sm underline"
+              href="/produtos/3400cd00-3f5e-5433-9171-fde099a52005"
+            >
+              Produto semeado: Fone de Ouvido Bluetooth Aurora
+            </a>
           </CardContent>
         </Card>
       </main>

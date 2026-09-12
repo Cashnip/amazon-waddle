@@ -20,6 +20,11 @@ const modulo = "github.com/Cashnip/amazon-waddle"
 var arestas = map[string][]string{
 	"api":        {"identidade", "catalogo", "busca", "carrinho", "pedido", "pagamento", "plataforma", "media"},
 	"cmd/azamon": {"api", "db", "pedido", "pagamento", "plataforma"}, // monta o servidor; o relógio: Varrer() e EmitirDevidas()
+	// O AD-14 manda traduzir todo sentinela num arquivo só, e esse arquivo é
+	// internal/plataforma/erro — então `plataforma` alcança a porta de cada
+	// módulo cujo sentinela ele traduz, e só ela. A seta contrária continua
+	// proibida: módulo de domínio não conhece `plataforma/erro` (addendum §10).
+	"plataforma": {"identidade"},
 	"identidade": {},
 	"catalogo":   {},
 	"busca":      {"catalogo"},

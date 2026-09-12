@@ -9,12 +9,18 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Cashnip/amazon-waddle/internal/identidade"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
 // ErrNaoEncontrado cobre a rota que não existe — sem ele o ServeMux
 // responderia texto puro e a API teria dois contratos de erro.
 var ErrNaoEncontrado = errors.New("Recurso não encontrado.")
+
+// ErrEntradaInvalida cobre o corpo que nem chega ao domínio: JSON malformado
+// ou acima do limite do http.MaxBytesReader. Mora aqui, e não num módulo,
+// porque é falha de tradução — o mesmo motivo de ErrNaoEncontrado.
+var ErrEntradaInvalida = errors.New("Requisição inválida.")
 
 type traducao struct {
 	sentinela error
@@ -28,6 +34,9 @@ type traducao struct {
 // o mesmo erro embrulhado — e a ordem de iteração de mapa em Go é aleatória.
 var registro = []traducao{
 	{ErrNaoEncontrado, http.StatusNotFound, "NAO_ENCONTRADO"},
+	{ErrEntradaInvalida, http.StatusBadRequest, "ENTRADA_INVALIDA"},
+	{identidade.ErrCredencialInvalida, http.StatusUnauthorized, "CREDENCIAL_INVALIDA"},
+	{identidade.ErrSessaoInvalida, http.StatusUnauthorized, "SESSAO_INVALIDA"},
 }
 
 // CodigoInterno é o código de todo erro que não está no registro.

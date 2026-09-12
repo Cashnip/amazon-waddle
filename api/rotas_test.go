@@ -5,11 +5,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
+
+// rotasSemDependencia serve as rotas que não tocam Postgres nem Redis. O pool
+// e o cliente nulos são a prova de que /api/v1/saude e as imagens continuam
+// respondendo sem infraestrutura nenhuma — que é o que o healthcheck do
+// compose e o arranque do cmd/azamon dependem.
+func rotasSemDependencia() http.Handler { return Rotas(plataforma.Config{}, nil, nil) }
 
 func TestSaudeResponde200(t *testing.T) {
 	resp := httptest.NewRecorder()
-	Rotas().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/saude", nil))
+	rotasSemDependencia().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/saude", nil))
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, quero 200", resp.Code)
@@ -25,7 +33,7 @@ func TestSaudeResponde200(t *testing.T) {
 // Rota inexistente sai no envelope do AD-14, e não no texto puro do ServeMux.
 func TestRotaInexistenteSaiNoEnvelope(t *testing.T) {
 	resp := httptest.NewRecorder()
-	Rotas().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/nao-existe", nil))
+	rotasSemDependencia().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/nao-existe", nil))
 
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, quero 404", resp.Code)

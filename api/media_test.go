@@ -22,7 +22,7 @@ func TestMediaServeOArquivoEmbutido(t *testing.T) {
 	nome := nomes[0].Name()
 
 	resp := httptest.NewRecorder()
-	Rotas().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/media/"+nome, nil))
+	rotasSemDependencia().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/media/"+nome, nil))
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, quero 200", resp.Code)
@@ -42,7 +42,7 @@ func TestMediaServeOArquivoEmbutido(t *testing.T) {
 func TestMediaInexistenteSaiNoEnvelope(t *testing.T) {
 	for _, caminho := range []string{"nao-existe.svg", "..%2F..%2Fetc%2Fpasswd"} {
 		resp := httptest.NewRecorder()
-		Rotas().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/media/"+caminho, nil))
+		rotasSemDependencia().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/media/"+caminho, nil))
 
 		if resp.Code != http.StatusNotFound {
 			t.Fatalf("%s: status = %d, quero 404", caminho, resp.Code)
