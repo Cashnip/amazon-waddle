@@ -2,7 +2,7 @@
 title: 'Estória 1.9 — Clone limpo, rede desconectada, README de 15 minutos'
 type: 'chore'
 created: '2026-09-13'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '5cc7ae1e1bab12575f10bf7bab2a166b95e03986'
