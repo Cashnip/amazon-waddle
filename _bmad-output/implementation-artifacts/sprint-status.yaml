@@ -29,13 +29,13 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-12-2026
+last_updated: 09-13-2026
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-andaime-do-serviço-os-quatro-contêineres-em-um-comando: done
   1-2-casca-do-navegador-rewrites-shadcn-e-a-base-visual-da-marca: done
   1-3-primeira-migração-e-o-catálogo-semeado-determinístico: done
@@ -44,7 +44,7 @@ development_status:
   1-6-um-pedido-nasce-em-aguardando_pagamento: done
   1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: done
   1-8-a-varredura-leva-o-pedido-até-entregue: done
-  1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: backlog
+  1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: done
   epic-1-retrospective: optional
 
   epic-2: backlog

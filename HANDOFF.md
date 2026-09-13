@@ -1,13 +1,15 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-12 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 a 1.8 estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. **O ciclo da épica está fechado.** A 1.9 é o próximo passo.
+**Atualizado:** 2026-09-13 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). O próximo passo é a Épica 2.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
 ## Setup
 
-Está em [`README.md`](README.md), com os comandos exatos e como verificar cada um: o
-repositório versiona **o trabalho**, não a ferramenta — depois de clonar faltam o BMad
+Está em [`README.md`](README.md), com os comandos exatos e como verificar cada um. Ele é
+lido em duas partes: as seções 1 a 4 vão do `git clone` ao sistema rodando e ao passeio do
+esqueleto, e só pedem **Docker**; da 5 em diante é ferramenta de quem vai desenvolver — o
+repositório versiona **o trabalho**, não a ferramenta, então depois de clonar faltam o BMad
 6.11.0 e as skills, ambos reproduzíveis em dois comandos.
 
 ## Onde está o quê
@@ -53,22 +55,27 @@ Da arquitetura, as quatro que mais mudam a construção: **um schema do Postgres
 
 O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições toca o esqueleto vertical.
 
-**Cinco verificações antes de alargar qualquer camada.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos". Faça-as no passo 0. **As quatro fecharam, todas positivas:** na 1.2, o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada, e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares; na 1.3, o sqlc v1.31.1 analisa `DEFAULT uuidv7()` sem erro, então a chave primária continua sendo gerada pelo banco; na 1.4, a busca com termo, Categoria e faixa de preço sobre 5.050 Produtos mede **p95 de 0,34 ms** contra um teto de 500 ms, e "índice antes de serviço" está confirmado. Os desfechos estão no `addendum.md` §10. Nenhuma verificação do passo 0 continua aberta.
+**As cinco verificações do passo 0 estão fechadas, cada uma com desfecho nomeado no `addendum.md` §10 — a quinta inclusive, como externa ao time.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos" — mais a quinta, que é o bloqueio 2 desta página e não depende de ninguém daqui. **As quatro do time fecharam, todas positivas:** na 1.2, o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada, e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares; na 1.3, o sqlc v1.31.1 analisa `DEFAULT uuidv7()` sem erro, então a chave primária continua sendo gerada pelo banco; na 1.4, a busca com termo, Categoria e faixa de preço sobre 5.050 Produtos mede **p95 de 0,34 ms** contra um teto de 500 ms, e "índice antes de serviço" está confirmado. Os desfechos estão no `addendum.md` §10. Nenhuma verificação do passo 0 continua aberta.
 
 ## Próximo passo
 
-`bmad-build` na **Estória 1.9** — clone limpo, rede desconectada, README de 15 minutos. É a estória que
-fecha a épica e não acrescenta comportamento: prova que o que as oito anteriores construíram sobe de um
-clone do zero, sem internet, por alguém que nunca viu o projeto. Mede a NFR-1, a NFR-15 e a SM-3, e é a
-única que falha por algo que não é código.
-A 1.8 deixou o ciclo fechado: `PAGO` → `EM_SEPARACAO` → `ENVIADO` → `ENTREGUE` deriva do histórico de
-transições, a Reserva consolida em `ENVIADO` e é a única passagem que baixa o Estoque total, e a tela
-acompanha até o fim. `expirar` **não** entrou — é da 5.11 inteira, e o lugar dela está marcado no tique.
+`bmad-build` na **Estória 2.1** — cadastro de Comprador, primeira da **Épica 2** (conta, identidade e
+Endereços). É o passo 1 do addendum §8: tudo depois daqui depende de saber quem está do outro lado, e hoje
+os dois Compradores que existem vêm da semente.
+A 1.9 fechou a Épica 1 sem acrescentar uma linha de código: o clone limpo a frio chega ao primeiro Produto
+em **3 min 26 s**, o esqueleto inteiro anda dentro de uma rede sem saída, o portão do AD-12 foi exercitado
+derrubando um `npm run build` de verdade, e as cinco verificações do passo 0 estão fechadas com desfecho
+nomeado. O `docker-compose.offline.yml` foi escrito e **descartado** — com `internal: true` o Docker
+descarta a publicação de 3000 e 8080 em silêncio —, e o ensaio de apresentação continua sendo desligar a
+rede à mão; o motivo está no `addendum.md` §10 para ninguém reescrever o mesmo arquivo.
 Continua aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da
-estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`, junto com dois
-buracos de verificação que a 1.8 registrou: a releitura travada de `Desde` e a ausência de bancada de teste
-para a tela. As sete épicas e as 52 estórias estão em `_bmad-output/planning-artifacts/epics.md`, e o
-rastreamento de sprint em `_bmad-output/implementation-artifacts/sprint-status.yaml`.
+estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`, junto com os dois
+buracos de verificação que a 1.8 registrou (a releitura travada de `Desde` e a ausência de bancada de teste
+para a tela) e com o achado da 1.9: o único link de Produto da casca leva a um Produto da faixa que o
+Provedor Simulado recusa, então o caminho óbvio do README para parado em `AGUARDANDO_PAGAMENTO` — a Épica 3
+o remove ao entregar a busca. As sete épicas e as 52 estórias estão em
+`_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
+`_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
 ## Quanto custa uma estória, e o que fazer com isso
 
@@ -122,7 +129,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Próximo passo: Estória 1.9 — clone limpo, rede desconectada, README de 15 minutos.
+Épica 1 fechada e provada de clone limpo. Próximo passo: Estória 2.1 — cadastro de Comprador.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
