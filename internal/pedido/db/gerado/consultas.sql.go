@@ -139,6 +139,51 @@ func (q *Queries) CriarPedido(ctx context.Context, arg CriarPedidoParams) (Criar
 	return i, err
 }
 
+const pedidosParaAvancar = `-- name: PedidosParaAvancar :many
+SELECT p.id
+FROM pedido.pedido p
+WHERE p.status = ANY($1::text[])
+  AND (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id) <= $2
+ORDER BY p.id
+`
+
+type PedidosParaAvancarParams struct {
+	Status []string
+	Ate    pgtype.Timestamptz
+}
+
+// Os candidatos da simulação de entrega, lidos FORA da transação: quem decide
+// é a releitura travada de TravarPedido, e selecionar já travando faria uma
+// transação por tique em vez de uma por Pedido. O avanço deriva do histórico —
+// "está neste estado desde quando" —, nunca de estado em memória, e é por isso
+// que reiniciar o contêiner retoma cada Pedido de onde parou.
+//
+// ponytail: varredura sequencial de pedido.pedido a cada tique, com um
+// max(ocorrido_em) correlacionado por linha — a tabela só tem
+// pedido_comprador_id_idx, e esta épica proíbe migração nova. Na demonstração
+// são dezenas de Pedidos e não se mede. Quando o volume justificar, os índices
+// que a levantam são `pedido (status, id)` e
+// `transicao_status (pedido_id, ocorrido_em DESC)`, sem tocar na consulta.
+func (q *Queries) PedidosParaAvancar(ctx context.Context, arg PedidosParaAvancarParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, pedidosParaAvancar, arg.Status, arg.Ate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const proximoNumeroDoAno = `-- name: ProximoNumeroDoAno :one
 
 INSERT INTO pedido.contador_numero (ano, ultimo) VALUES ($1, 1)
@@ -182,15 +227,27 @@ func (q *Queries) RegistrarTransicao(ctx context.Context, arg RegistrarTransicao
 }
 
 const travarPedido = `-- name: TravarPedido :one
-SELECT status FROM pedido.pedido WHERE id = $1 FOR UPDATE SKIP LOCKED
+SELECT p.status,
+       (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS desde
+FROM pedido.pedido p
+WHERE p.id = $1
+FOR UPDATE SKIP LOCKED
 `
+
+type TravarPedidoRow struct {
+	Status string
+	Desde  pgtype.Timestamptz
+}
 
 // A leitura travada da varredura. SKIP LOCKED porque o tique que encontra o
 // Pedido já travado não tem o que esperar: o outro caminho está aplicando, e
 // insistir só serializaria a varredura inteira num Pedido.
-func (q *Queries) TravarPedido(ctx context.Context, pedidoID pgtype.UUID) (string, error) {
+// O instante da última transição sai junto, e na mesma trava: a decisão de
+// avançar precisa do Status e de "desde quando" travados um com o outro. Duas
+// consultas travadas quase idênticas seriam duas oportunidades de divergirem.
+func (q *Queries) TravarPedido(ctx context.Context, pedidoID pgtype.UUID) (TravarPedidoRow, error) {
 	row := q.db.QueryRow(ctx, travarPedido, pedidoID)
-	var status string
-	err := row.Scan(&status)
-	return status, err
+	var i TravarPedidoRow
+	err := row.Scan(&i.Status, &i.Desde)
+	return i, err
 }

@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const baixarEstoqueTotal = `-- name: BaixarEstoqueTotal :exec
+UPDATE catalogo.produto
+SET estoque_total = estoque_total - $1
+WHERE id = $2
+`
+
+type BaixarEstoqueTotalParams struct {
+	Quantidade int32
+	ProdutoID  pgtype.UUID
+}
+
+// A baixa é uma por Produto, e quem as ordena por identificador é o Go: o
+// UPDATE … RETURNING não aceita ORDER BY, e a ordem é a mesma disciplina do
+// `ORDER BY id FOR UPDATE` do Reservar — dois Pedidos com os mesmos Produtos
+// em ordem inversa travariam um no outro. O CHECK (estoque_total >= 0) da
+// migração é quem barra a baixa a mais.
+func (q *Queries) BaixarEstoqueTotal(ctx context.Context, arg BaixarEstoqueTotalParams) error {
+	_, err := q.db.Exec(ctx, baixarEstoqueTotal, arg.Quantidade, arg.ProdutoID)
+	return err
+}
+
 const buscarProdutoComVendedor = `-- name: BuscarProdutoComVendedor :one
 SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url, v.nome AS vendedor_nome
 FROM catalogo.produto p
@@ -43,6 +64,42 @@ func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) 
 		&i.VendedorNome,
 	)
 	return i, err
+}
+
+const consolidarReservasDoPedido = `-- name: ConsolidarReservasDoPedido :many
+UPDATE catalogo.reserva_estoque
+SET estado = 'CONSOLIDADA'
+WHERE pedido_id = $1 AND estado = 'ATIVA'
+RETURNING produto_id, quantidade
+`
+
+type ConsolidarReservasDoPedidoRow struct {
+	ProdutoID  pgtype.UUID
+	Quantidade int32
+}
+
+// As duas consultas da consolidação (Estória 1.8), a única passagem em que o
+// Estoque total muda. O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
+// do Status: zero linhas devolvidas é Reserva já consolidada, que é no-op e
+// nunca erro.
+func (q *Queries) ConsolidarReservasDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]ConsolidarReservasDoPedidoRow, error) {
+	rows, err := q.db.Query(ctx, consolidarReservasDoPedido, pedidoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ConsolidarReservasDoPedidoRow
+	for rows.Next() {
+		var i ConsolidarReservasDoPedidoRow
+		if err := rows.Scan(&i.ProdutoID, &i.Quantidade); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const criarReservaAtiva = `-- name: CriarReservaAtiva :exec

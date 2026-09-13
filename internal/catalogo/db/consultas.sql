@@ -31,3 +31,23 @@ WHERE produto_id = $1 AND estado = 'ATIVA';
 -- name: CriarReservaAtiva :exec
 INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
 VALUES ($1, $2, $3, 'ATIVA');
+
+-- As duas consultas da consolidação (Estória 1.8), a única passagem em que o
+-- Estoque total muda. O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
+-- do Status: zero linhas devolvidas é Reserva já consolidada, que é no-op e
+-- nunca erro.
+-- name: ConsolidarReservasDoPedido :many
+UPDATE catalogo.reserva_estoque
+SET estado = 'CONSOLIDADA'
+WHERE pedido_id = @pedido_id AND estado = 'ATIVA'
+RETURNING produto_id, quantidade;
+
+-- A baixa é uma por Produto, e quem as ordena por identificador é o Go: o
+-- UPDATE … RETURNING não aceita ORDER BY, e a ordem é a mesma disciplina do
+-- `ORDER BY id FOR UPDATE` do Reservar — dois Pedidos com os mesmos Produtos
+-- em ordem inversa travariam um no outro. O CHECK (estoque_total >= 0) da
+-- migração é quem barra a baixa a mais.
+-- name: BaixarEstoqueTotal :exec
+UPDATE catalogo.produto
+SET estoque_total = estoque_total - @quantidade
+WHERE id = @produto_id;

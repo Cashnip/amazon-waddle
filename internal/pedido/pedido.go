@@ -2,8 +2,10 @@
 //
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
 // importa (AD-1). O que mora aqui na Épica 1 é o nascimento do Pedido em
-// AGUARDANDO_PAGAMENTO e o compare-and-swap que é o único ponto de mutação do
-// Status. As nove transições nomeadas e as recusas são da Épica 5.
+// AGUARDANDO_PAGAMENTO, o compare-and-swap que é o único ponto de mutação do
+// Status e os dois passos da varredura — aplicar a confirmação e simular a
+// entrega até ENTREGUE. As nove transições nomeadas, as recusas e a expiração
+// da Tentativa são da Épica 5.
 package pedido
 
 import (
@@ -11,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,14 +35,51 @@ var ErrEstadoJaAvancado = errors.New("O Pedido já avançou de estado.")
 // mas o CHECK da migração já os conhece.
 const StatusInicial = "AGUARDANDO_PAGAMENTO"
 
-// StatusPago é o único avanço que a Épica 1 conhece. Dele para EM_SEPARACAO é
-// a 1.8; a Reserva de Estoque continua ATIVA aqui — consolidar é da 1.8.
+// StatusPago é onde a confirmação do Provedor deixa o Pedido, e de onde a
+// simulação de entrega parte. A Reserva de Estoque continua ATIVA aqui: quem a
+// consolida é a passagem EM_SEPARACAO → ENVIADO.
 const StatusPago = "PAGO"
 
-// autorDaVarredura é o que vai para a coluna `autor` do histórico quando quem
-// avança não é uma pessoa. O Comprador é autor do nascimento; o Provedor, da
-// confirmação.
-const autorDaVarredura = "provedor-pagamento"
+// Os três Status que a simulação de entrega percorre, mais o CANCELADO que ela
+// nunca alcança e que EstadoTerminal precisa nomear. Os sete do CHECK da
+// migração estão declarados desde a 1.6 — usá-los não pede migração nova.
+const (
+	StatusEmSeparacao = "EM_SEPARACAO"
+	StatusEnviado     = "ENVIADO"
+	StatusEntregue    = "ENTREGUE"
+	StatusCancelado   = "CANCELADO"
+)
+
+// Os dois autores não-humanos do histórico. O Comprador é autor do nascimento;
+// o Provedor, da confirmação; a simulação, dos três avanços da entrega.
+const (
+	autorDoProvedor  = "provedor-pagamento"
+	autorDaSimulacao = "simulacao-entrega"
+)
+
+// simulacao é a lista inteira de avanços que a entrega simulada conhece, e é
+// uma só: dela saem tanto o próximo Status quanto os candidatos que a consulta
+// procura. Duas listas seriam duas oportunidades de divergirem.
+var simulacao = map[string]string{
+	StatusPago:        StatusEmSeparacao,
+	StatusEmSeparacao: StatusEnviado,
+	StatusEnviado:     StatusEntregue,
+}
+
+// proximoDaSimulacao devolve para onde a simulação leva este Status, e false
+// para todo Status que ela não move — AGUARDANDO_PAGAMENTO, PAGAMENTO_RECUSADO,
+// CANCELADO e o próprio ENTREGUE, independentemente do tempo decorrido.
+func proximoDaSimulacao(status string) (string, bool) {
+	proximo, ok := simulacao[status]
+	return proximo, ok
+}
+
+// EstadoTerminal é a única declaração de "acabou" do sistema (AD-18): terminal
+// é ENTREGUE ou CANCELADO, e mais nada. A resposta do Pedido carrega o
+// resultado dela para que a tela não redeclare a regra em JavaScript.
+func EstadoTerminal(status string) bool {
+	return status == StatusEntregue || status == StatusCancelado
+}
 
 // unidade: a estória compra uma unidade por Pedido. Escolha de quantidade e
 // Carrinho são das Épicas 4 e 5 — o campo no banco já é `quantidade`, então
@@ -201,7 +242,7 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	// vivo, e o encerramento do processo cancela o da varredura.
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	status, err := gerado.New(tx).TravarPedido(ctx, chave)
+	travado, err := gerado.New(tx).TravarPedido(ctx, chave)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Travado por outro tique — ou por outro processo. Não é falha: a
 		// confirmação continua PENDENTE e o próximo tique a encontra.
@@ -215,8 +256,8 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	// aprovada e cujo Pedido ainda aguarda pagamento. Todo o resto é sinalizado
 	// e sai da fila — recusa e expiração são da Épica 5.
 	estado := pagamento.NaoAplicavelSinalizada
-	if c.Corrente && c.Resultado == pagamento.Aprovado && status == StatusInicial {
-		err := Transicionar(ctx, tx, c.PedidoID, StatusInicial, StatusPago, autorDaVarredura)
+	if c.Corrente && c.Resultado == pagamento.Aprovado && travado.Status == StatusInicial {
+		err := Transicionar(ctx, tx, c.PedidoID, StatusInicial, StatusPago, autorDoProvedor)
 		switch {
 		case err == nil:
 			estado = pagamento.Aplicada
@@ -231,6 +272,90 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	}
 	if err := pagamento.Marcar(ctx, tx, c.ID, estado); err != nil {
 		return err
+	}
+	return tx.Commit(context.WithoutCancel(ctx))
+}
+
+// SimularEntrega é o passo "simular" do tique: leva o Pedido PAGO até ENTREGUE,
+// uma etapa por intervalo vencido. Não tem relógio próprio — quem a chama é
+// `cmd/azamon`, e o interruptor que a desliga é dele (AD-6).
+//
+// O que decide não é estado em memória: é o histórico de pedido.transicao_status
+// dizendo desde quando o Pedido está neste Status. Por isso o contêiner
+// derrubado no meio retoma cada Pedido de onde parou, sem intervenção.
+//
+// Os candidatos são lidos fora da transação e reconferidos dentro dela, no
+// molde do Varrer: uma transação por Pedido, e não uma por tique.
+func SimularEntrega(ctx context.Context, pool *pgxpool.Pool, intervalo time.Duration) error {
+	var ate pgtype.Timestamptz
+	if err := ate.Scan(time.Now().Add(-intervalo)); err != nil {
+		return fmt.Errorf("calcular o corte do intervalo de entrega: %w", err)
+	}
+	candidatos, err := gerado.New(pool).PedidosParaAvancar(ctx, gerado.PedidosParaAvancarParams{
+		Status: slices.Collect(maps.Keys(simulacao)),
+		Ate:    ate,
+	})
+	if err != nil {
+		return fmt.Errorf("listar os Pedidos para avançar: %w", err)
+	}
+	var falhas []error
+	for _, id := range candidatos {
+		if err := avancarEntrega(ctx, pool, id, ate); err != nil {
+			falhas = append(falhas, fmt.Errorf("avançar o Pedido %s: %w", id.String(), err))
+		}
+	}
+	return errors.Join(falhas...)
+}
+
+// avancarEntrega é a transação de um Pedido só. A releitura travada é o que
+// torna inofensiva a corrida entre dois tiques sobrepostos: quem chega depois
+// ou não trava a linha, ou reencontra um Status que já não é candidato.
+func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate pgtype.Timestamptz) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+
+	travado, err := gerado.New(tx).TravarPedido(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Travado por outro tique. Não é falha: o próximo o encontra.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("travar o Pedido: %w", err)
+	}
+	proximo, ok := proximoDaSimulacao(travado.Status)
+	// A decisão é reconferida com a trava na mão, e não só na seleção: entre a
+	// leitura dos candidatos e esta linha, outro caminho pode ter avançado o
+	// Pedido — e aí o intervalo recomeça a contar do Status novo.
+	//
+	// `Desde` é anulável, e um NULL lê como instante zero, que nunca é posterior
+	// ao corte: sem o teste de validade, Pedido sem histórico nenhum passaria
+	// por "vencido há muito" e avançaria. A consulta de candidatos já o exclui,
+	// e é aqui que as duas deixam de concordar por acaso.
+	if !ok || !travado.Desde.Valid || travado.Desde.Time.After(ate.Time) {
+		return nil
+	}
+
+	switch err := Transicionar(ctx, tx, id.String(), travado.Status, proximo, autorDaSimulacao); {
+	case errors.Is(err, ErrEstadoJaAvancado):
+		// Desfecho esperado, e não erro: alguém chegou primeiro.
+		slog.InfoContext(ctx, "a simulação chegou depois do avanço",
+			"pedido", id.String(), "de", travado.Status)
+		return nil
+	case err != nil:
+		return err
+	}
+
+	// A transição vem antes do efeito sobre o Estoque, na mesma transação
+	// (AD-6). EM_SEPARACAO → ENVIADO é a única passagem que altera o Estoque
+	// total: é nela que o cancelamento deixa de ser possível e a Reserva não
+	// tem mais o que segurar.
+	if proximo == StatusEnviado {
+		if err := catalogo.Consolidar(ctx, tx, id.String()); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(context.WithoutCancel(ctx))
 }

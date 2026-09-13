@@ -42,8 +42,8 @@ development_status:
   1-4-a-medição-do-nfr-4-com-5-000-produtos: done
   1-5-um-comprador-entra-e-vê-um-produto: done
   1-6-um-pedido-nasce-em-aguardando_pagamento: done
-  1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: review
-  1-8-a-varredura-leva-o-pedido-até-entregue: backlog
+  1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: done
+  1-8-a-varredura-leva-o-pedido-até-entregue: done
   1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: backlog
   epic-1-retrospective: optional
 

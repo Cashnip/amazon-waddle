@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
 )
 
@@ -401,4 +402,148 @@ func textoDe(t *testing.T, bd consultavel, sql string, args ...any) []string {
 		t.Fatalf("percorrer resultado: %v", err)
 	}
 	return valores
+}
+
+// simulacaoDeEntrega cobre as linhas da matriz da 1.8 que só um Pedido de
+// verdade produz: a Reserva nasce pelo caminho real da compra, e é ela que a
+// consolidação encerra. O relógio entra como parâmetro e não como tique, e é
+// isso que permite provar o "cedo demais" sem esperar por ele.
+//
+// Roda por último: é o único subteste que baixa o `estoque_total` de
+// produtoSemeado, e os que compram esse mesmo Produto contam com o total
+// intacto para o disponível bater.
+func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
+	ctx := context.Background()
+
+	resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("criar o Pedido: status = %d (%s)", resp.Code, resp.Body.String())
+	}
+	pedidoID := fmt.Sprint(decodificar(t, resp)["id"])
+
+	estoque := func() int32 {
+		var n int32
+		if err := pool.QueryRow(ctx,
+			`SELECT estoque_total FROM catalogo.produto WHERE id = $1::uuid`, produtoSemeado).Scan(&n); err != nil {
+			t.Fatalf("ler o Estoque: %v", err)
+		}
+		return n
+	}
+	statusDo := func() string {
+		v := textoDe(t, pool, `SELECT status FROM pedido.pedido WHERE id = $1::uuid`, pedidoID)
+		if len(v) != 1 {
+			t.Fatalf("ler o Status: %v", v)
+		}
+		return v[0]
+	}
+	// Envelhecer o histórico é o que substitui a espera: o avanço deriva de
+	// "está neste estado desde quando", então recuar o instante é a mesma coisa
+	// que deixar o intervalo vencer — e prova que a decisão vem da tabela, e
+	// não de um relógio em memória que um reinício zeraria.
+	envelhecer := func() {
+		if _, err := pool.Exec(ctx, `
+			UPDATE pedido.transicao_status SET ocorrido_em = ocorrido_em - interval '1 hour'
+			WHERE pedido_id = $1::uuid`, pedidoID); err != nil {
+			t.Fatalf("envelhecer o histórico: %v", err)
+		}
+	}
+	antes := estoque()
+
+	reserva := func() string {
+		v := textoDe(t, pool,
+			`SELECT estado FROM catalogo.reserva_estoque WHERE pedido_id = $1::uuid`, pedidoID)
+		if len(v) != 1 {
+			t.Fatalf("ler a Reserva: %v", v)
+		}
+		return v[0]
+	}
+
+	// O Pedido entra em PAGO pelo caminho da 1.7 — o que se prova neste
+	// subteste é o passo seguinte. A transição vai por `pedido.Transicionar`, e
+	// não por um UPDATE à mão: o `AD-6` diz que esse UPDATE não existe, e
+	// escrevê-lo aqui deixaria o histórico do teste divergir do de produção.
+	paraPago, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação: %v", err)
+	}
+	defer paraPago.Rollback(ctx)
+	if err := pedido.Transicionar(ctx, paraPago, pedidoID, "AGUARDANDO_PAGAMENTO", "PAGO", "teste"); err != nil {
+		t.Fatalf("pôr o Pedido em PAGO: %v", err)
+	}
+	if err := paraPago.Commit(ctx); err != nil {
+		t.Fatalf("commit do avanço para PAGO: %v", err)
+	}
+	if corpo := decodificar(t, pegarPedido(t, rotas, pedidoID, cookie)); corpo["terminal"] != false {
+		t.Errorf("terminal = %v em PAGO; quero false", corpo["terminal"])
+	}
+
+	// Cedo demais: a última transição é de agora e o intervalo, de uma hora.
+	if err := pedido.SimularEntrega(ctx, pool, time.Hour); err != nil {
+		t.Fatalf("simular antes do intervalo: %v", err)
+	}
+	if s := statusDo(); s != "PAGO" {
+		t.Errorf("status = %s com o intervalo por vencer; quero PAGO", s)
+	}
+
+	// Uma etapa por intervalo vencido, e nenhuma pulada. Cada chamada é um
+	// tique: o Status novo reinicia a contagem, então só a próxima o move.
+	//
+	// O intervalo é largo de propósito. `SimularEntrega` avança TODO Pedido
+	// elegível do banco, e `envelhecer` só recua o histórico deste: um intervalo
+	// curto deixaria um Pedido de outro subteste entrar na varredura assim que a
+	// suíte passasse dele, baixando o Estoque do mesmo Produto e quebrando a
+	// conta. Meia hora é mais que qualquer execução plausível, e `envelhecer`
+	// recua uma hora — todo passo daqui segue vencendo.
+	const intervaloLargo = 30 * time.Minute
+
+	// conferirEstoque prende a baixa a UMA transição: enquanto o Pedido não
+	// chega a ENVIADO a Reserva está ATIVA e o total intacto; de lá em diante,
+	// CONSOLIDADA e um a menos. Sem esta conferência passo a passo, mover
+	// `Consolidar` para qualquer outro avanço deixaria o teste verde — ela é
+	// idempotente, e o total no fim seria o mesmo.
+	conferirEstoque := func(momento string, consolidado bool) {
+		t.Helper()
+		queroReserva, queroEstoque := "ATIVA", antes
+		if consolidado {
+			queroReserva, queroEstoque = "CONSOLIDADA", antes-1
+		}
+		if r, e := reserva(), estoque(); r != queroReserva || e != queroEstoque {
+			t.Fatalf("%s: Reserva = %s e estoque_total = %d; quero %s e %d",
+				momento, r, e, queroReserva, queroEstoque)
+		}
+	}
+
+	for _, quero := range []string{"EM_SEPARACAO", "ENVIADO", "ENTREGUE"} {
+		conferirEstoque("antes de "+quero, quero == "ENTREGUE")
+		envelhecer()
+		if err := pedido.SimularEntrega(ctx, pool, intervaloLargo); err != nil {
+			t.Fatalf("simular até %s: %v", quero, err)
+		}
+		if s := statusDo(); s != quero {
+			t.Fatalf("status = %s, quero %s", s, quero)
+		}
+		conferirEstoque("em "+quero, quero != "EM_SEPARACAO")
+	}
+
+	if corpo := decodificar(t, pegarPedido(t, rotas, pedidoID, cookie)); corpo["terminal"] != true {
+		t.Errorf("terminal = %v em ENTREGUE; quero true — é ele que manda a tela parar de consultar", corpo["terminal"])
+	}
+
+	// Consolidar de novo é no-op: zero linhas ATIVAS, nil, e o Estoque não
+	// baixa duas vezes. Tratado como erro, um tique repetido derrubaria a
+	// transação inteira do Pedido já consolidado.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := catalogo.Consolidar(ctx, tx, pedidoID); err != nil {
+		t.Errorf("consolidar sobre Reserva já consolidada = %v; quero nil", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit da segunda consolidação: %v", err)
+	}
+	if depois := estoque(); depois != antes-1 {
+		t.Errorf("estoque_total = %d depois da segunda consolidação, quero %d", depois, antes-1)
+	}
 }

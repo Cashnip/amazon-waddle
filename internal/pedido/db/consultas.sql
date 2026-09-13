@@ -49,5 +49,31 @@ WHERE p.id = @pedido_id AND p.comprador_id = @comprador_id;
 -- A leitura travada da varredura. SKIP LOCKED porque o tique que encontra o
 -- Pedido já travado não tem o que esperar: o outro caminho está aplicando, e
 -- insistir só serializaria a varredura inteira num Pedido.
+-- O instante da última transição sai junto, e na mesma trava: a decisão de
+-- avançar precisa do Status e de "desde quando" travados um com o outro. Duas
+-- consultas travadas quase idênticas seriam duas oportunidades de divergirem.
 -- name: TravarPedido :one
-SELECT status FROM pedido.pedido WHERE id = @pedido_id FOR UPDATE SKIP LOCKED;
+SELECT p.status,
+       (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS desde
+FROM pedido.pedido p
+WHERE p.id = @pedido_id
+FOR UPDATE SKIP LOCKED;
+
+-- Os candidatos da simulação de entrega, lidos FORA da transação: quem decide
+-- é a releitura travada de TravarPedido, e selecionar já travando faria uma
+-- transação por tique em vez de uma por Pedido. O avanço deriva do histórico —
+-- "está neste estado desde quando" —, nunca de estado em memória, e é por isso
+-- que reiniciar o contêiner retoma cada Pedido de onde parou.
+--
+-- ponytail: varredura sequencial de pedido.pedido a cada tique, com um
+-- max(ocorrido_em) correlacionado por linha — a tabela só tem
+-- pedido_comprador_id_idx, e esta épica proíbe migração nova. Na demonstração
+-- são dezenas de Pedidos e não se mede. Quando o volume justificar, os índices
+-- que a levantam são `pedido (status, id)` e
+-- `transicao_status (pedido_id, ocorrido_em DESC)`, sem tocar na consulta.
+-- name: PedidosParaAvancar :many
+SELECT p.id
+FROM pedido.pedido p
+WHERE p.status = ANY(@status::text[])
+  AND (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id) <= @ate
+ORDER BY p.id;

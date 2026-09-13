@@ -30,12 +30,15 @@ type saidaPedido struct {
 	TotalCentavos int64  `json:"total_centavos"`
 }
 
-// saidaPedidoDetalhe é o que a tela do Pedido em processamento consulta a cada
-// 3 s. O instante é absoluto e em RFC 3339, vindo do servidor: o navegador
-// exibe, e nunca conta.
+// saidaPedidoDetalhe é o que a tela do Pedido em processamento consulta em
+// intervalo. O instante é absoluto e em RFC 3339, vindo do servidor: o
+// navegador exibe, e nunca conta. `terminal` vem de pedido.EstadoTerminal, a
+// única declaração de "acabou" do sistema (AD-18): é ele que manda a tela
+// parar de consultar, e a regra não é redeclarada em JavaScript.
 type saidaPedidoDetalhe struct {
 	saidaPedido
 	AtualizadoEm string `json:"atualizado_em"`
+	Terminal     bool   `json:"terminal"`
 }
 
 // criarPedido é o primeiro pgx.Tx do repositório: uma transação por caso de
@@ -135,5 +138,6 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		// segundo, e a tela que compara instantes não teria como distingui-las.
 		// RFC3339Nano continua sendo RFC 3339.
 		AtualizadoEm: p.AtualizadoEm.Format(time.RFC3339Nano),
+		Terminal:     pedido.EstadoTerminal(p.Status),
 	})
 }

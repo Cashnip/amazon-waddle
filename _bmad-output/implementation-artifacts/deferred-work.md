@@ -74,3 +74,11 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-7-provedor-simulado-confirma-por-webhook.md`
   summary: A tela de acompanhamento e a navegação pós-compra não têm verificação nenhuma; a parada do polling e o destino do `router.push` podem regredir com toda a suíte verde.
   evidence: `web/package.json` roda `node --test` sobre `scripts/*.mjs`, e o único arquivo lá testa o `next.config.ts` e a guarda offline — nenhuma bancada renderiza componente. Apagar o `clearInterval` da parada, ou trocar `corpo.id` por `corpo.numero` no `router.push`, não deixa nada vermelho. Fechar isto é decidir por uma pilha de teste de DOM, ou extrair as duas decisões para ajudantes puros testáveis sob `node:test` — escolha maior que esta estória.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-a-varredura-leva-o-pedido-ate-entregue.md`
+  summary: A releitura travada de `Desde` em `avancarEntrega` não tem teste que a alcance.
+  evidence: Só dois processos sobre o mesmo Postgres entram no ramo; `internal/pedido` não mantém contêiner de propósito e a demonstração roda um contêiner só. Settlement: um teste que dispare dois `SimularEntrega` concorrentes, ou dois binários, contra o mesmo banco.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-a-varredura-leva-o-pedido-ate-entregue.md`
+  summary: O critério de parada e os dois ritmos da tela de acompanhamento não têm verificação automatizada.
+  evidence: `web/` verifica só com `node --test` sobre `scripts/`, sem jsdom, vitest ou playwright — inverter a guarda do `reprogramar` ou apagar o `clearInterval` do terminal mantém tudo verde. Settlement: extrair a decisão de "próximo ritmo ou parar" para um módulo puro coberto por `node --test`.

@@ -143,10 +143,13 @@ func executar(ctx context.Context, saida io.Writer) error {
 }
 
 // varrer é o único relógio do sistema (AD-6). Ele não decide nada: só chama,
-// nesta ordem, o passo que aplica o que chegou e o que emite o que venceu.
+// nesta ordem, `aplicar` → `simular` → `emitir` — o passo que aplica o que
+// chegou, o que avança a entrega e o que emite o que venceu.
 // Módulo nenhum tem `time.Timer` — a decisão de quando mora aqui, e só aqui.
 //
-// Os passos `expirar` e `simular` entram na 1.8 e na Épica 5, na mesma lista.
+// O passo `expirar` entra entre `aplicar` e `simular` na Estória 5.11, que é
+// dona da Tentativa vencida: ela a transita para PAGAMENTO_RECUSADO com
+// TEMPO_ESGOTADO e libera a Reserva.
 func varrer(ctx context.Context, logger *slog.Logger, cfg plataforma.Config, pool *pgxpool.Pool) {
 	tique := time.NewTicker(cfg.VarreduraIntervalo)
 	defer tique.Stop()
@@ -167,6 +170,12 @@ func varrer(ctx context.Context, logger *slog.Logger, cfg plataforma.Config, poo
 		case <-tique.C:
 			if err := pedido.Varrer(ctx, pool); err != nil {
 				logger.ErrorContext(ctx, "aplicar as confirmações", "erro", err.Error())
+			}
+			// `expirar` entra aqui, na 5.11.
+			if cfg.EntregaSimulacaoAtiva {
+				if err := pedido.SimularEntrega(ctx, pool, cfg.EntregaIntervalo); err != nil {
+					logger.ErrorContext(ctx, "simular a entrega", "erro", err.Error())
+				}
 			}
 			if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simulado, cfg.ConfirmacaoAtraso, enviar); err != nil {
 				logger.ErrorContext(ctx, "emitir as confirmações devidas", "erro", err.Error())

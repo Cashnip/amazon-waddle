@@ -305,6 +305,12 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a tela do Pedido lê pelo dono", func(t *testing.T) {
 		leituraDoPedido(t, rotas, pool, cookieValido, pedidoCriado)
 	})
+	// Depois de todos: é o único subteste que baixa o `estoque_total` de
+	// produtoSemeado, e os que compram esse mesmo Produto contam com o total
+	// intacto para o disponível bater.
+	t.Run("a simulação leva o Pedido de PAGO a ENTREGUE", func(t *testing.T) {
+		simulacaoDeEntrega(t, rotas, pool, cookieValido)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

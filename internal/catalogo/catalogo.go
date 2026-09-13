@@ -1,15 +1,18 @@
 // Package catalogo é dono de Vendedor, Categoria, Produto, Estoque e Reserva de Estoque.
 //
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). O predicado de visibilidade do AD-19, a liberação e a
-// consolidação da Reserva são da Épica 3; o que mora aqui é o detalhe de
-// Produto da Estória 1.5 e a Reserva que a 1.6 faz nascer.
+// importa (AD-1). O predicado de visibilidade do AD-19 e a liberação da Reserva
+// são da Épica 3; o que mora aqui é o detalhe de Produto da Estória 1.5, a
+// Reserva que a 1.6 faz nascer e a consolidação que a 1.8 trouxe para cá — é
+// ela que baixa o Estoque total, e nenhuma outra passagem o altera.
 package catalogo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -111,6 +114,45 @@ func Reservar(ctx context.Context, tx pgx.Tx, produtoID, pedidoID string, quanti
 		Quantidade: quantidade,
 	}); err != nil {
 		return fmt.Errorf("criar a Reserva de Estoque: %w", err)
+	}
+	return nil
+}
+
+// Consolidar encerra a Reserva do Pedido e baixa o Estoque total na mesma
+// quantidade. É o efeito da transição EM_SEPARACAO → ENVIADO, e a única
+// passagem do sistema em que `estoque_total` muda — daí em diante o
+// cancelamento não é mais possível, e a Reserva não tem mais o que segurar.
+//
+// Pedido sem Reserva ATIVA é no-op que devolve nil, nunca erro: consolidar duas
+// vezes tem de ser inofensivo, ou um tique repetido baixaria o Estoque duas
+// vezes e um Pedido já consolidado derrubaria a transação inteira.
+//
+// tx é a mesma transação em que o Status avançou (AD-4): a transição vem
+// antes, e reverter uma reverte as duas.
+func Consolidar(ctx context.Context, tx pgx.Tx, pedidoID string) error {
+	var pedido pgtype.UUID
+	if err := pedido.Scan(pedidoID); err != nil {
+		return fmt.Errorf("identificador de Pedido inválido: %w", err)
+	}
+	q := gerado.New(tx)
+	reservas, err := q.ConsolidarReservasDoPedido(ctx, pedido)
+	if err != nil {
+		return fmt.Errorf("consolidar a Reserva de Estoque: %w", err)
+	}
+	// Em ordem de identificador, pela mesma disciplina do `ORDER BY id FOR
+	// UPDATE` do Reservar: na Épica 1 o Pedido tem um Produto só e a ordem não
+	// muda nada, e ela existe para que o Carrinho da Épica 4 não descubra o
+	// impasse já pronto.
+	slices.SortFunc(reservas, func(a, b gerado.ConsolidarReservasDoPedidoRow) int {
+		return bytes.Compare(a.ProdutoID.Bytes[:], b.ProdutoID.Bytes[:])
+	})
+	for _, r := range reservas {
+		if err := q.BaixarEstoqueTotal(ctx, gerado.BaixarEstoqueTotalParams{
+			ProdutoID:  r.ProdutoID,
+			Quantidade: r.Quantidade,
+		}); err != nil {
+			return fmt.Errorf("baixar o Estoque total: %w", err)
+		}
 	}
 	return nil
 }

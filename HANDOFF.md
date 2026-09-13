@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-12 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 a 1.6 estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os dois schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, e o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque. A 1.7 é o próximo passo.
+**Atualizado:** 2026-09-12 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. As Estórias 1.1 a 1.8 estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. **O ciclo da épica está fechado.** A 1.9 é o próximo passo.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -57,18 +57,20 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 1.7** — o Provedor Simulado confirma por webhook e o Pedido vai a `PAGO`. É a
-primeira vez que o resultado chega fora da requisição do Comprador: a porta de pagamento com duas operações e
-nada mais, a confirmação gravada em `pagamento.confirmacao_recebida` com restrição única sobre a chave de
-idempotência, e a varredura lendo o *inbox* e aplicando — `pagamento` nunca conhece `pedido`.
-A 1.6 deixou o objeto sobre o qual a 1.7 age: o schema `pedido`, a Reserva de Estoque `ATIVA`, o total em
-centavos inteiros e `Transicionar` em compare-and-swap, que é o único ponto de mutação do Status. Continua
-aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da estória de
-autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`. As sete épicas e as
-52 estórias estão em `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
-`_bmad-output/implementation-artifacts/sprint-status.yaml`.
+`bmad-build` na **Estória 1.9** — clone limpo, rede desconectada, README de 15 minutos. É a estória que
+fecha a épica e não acrescenta comportamento: prova que o que as oito anteriores construíram sobe de um
+clone do zero, sem internet, por alguém que nunca viu o projeto. Mede a NFR-1, a NFR-15 e a SM-3, e é a
+única que falha por algo que não é código.
+A 1.8 deixou o ciclo fechado: `PAGO` → `EM_SEPARACAO` → `ENVIADO` → `ENTREGUE` deriva do histórico de
+transições, a Reserva consolida em `ENVIADO` e é a única passagem que baixa o Estoque total, e a tela
+acompanha até o fim. `expirar` **não** entrou — é da 5.11 inteira, e o lugar dela está marcado no tique.
+Continua aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da
+estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`, junto com dois
+buracos de verificação que a 1.8 registrou: a releitura travada de `Desde` e a ausência de bancada de teste
+para a tela. As sete épicas e as 52 estórias estão em `_bmad-output/planning-artifacts/epics.md`, e o
+rastreamento de sprint em `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
-### Quanto custa uma estória, e o que fazer com isso
+## Quanto custa uma estória, e o que fazer com isso
 
 A 1.1 consumiu ~795.000 tokens de subagente. **As três lentes de revisão adversarial do `bmad-build`, mais a
 rodada de patches que elas geram, foram 56% disso** — e escalam com o tamanho do diff, não com a dificuldade da
@@ -120,7 +122,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Próximo passo: [épicas / implementar X].
+Próximo passo: Estória 1.9 — clone limpo, rede desconectada, README de 15 minutos.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*

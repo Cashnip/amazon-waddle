@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
-// A consulta é de 3 s enquanto o Pedido aguarda pagamento, e para assim que o
-// Status avança — sem WebSocket (AD-10). Todo instante exibido é absoluto,
-// RFC 3339 e vindo do servidor: o navegador nunca conta duração.
-const intervalo = 3000;
+// A consulta é de 3 s enquanto o Pedido aguarda pagamento — a janela em que a
+// confirmação chega — e afrouxa para 10 s no resto do caminho, que anda por
+// etapas mais longas. Sem WebSocket (AD-10). Quem diz quando parar é o
+// `terminal` do servidor, e não uma lista de Status repetida aqui.
+const intervaloAguardando = 3000;
+const intervaloAvancando = 10000;
 
 type Pedido = {
   id: string;
@@ -14,14 +16,22 @@ type Pedido = {
   status: string;
   total_centavos: number;
   atualizado_em: string;
+  terminal: boolean;
 };
 
 const aguardando = "AGUARDANDO_PAGAMENTO";
 
-// Os rótulos são os termos do glossário, escritos como se lê em tela.
+// Os rótulos são os termos do glossário, escritos como se lê em tela. Os sete
+// do CHECK estão aqui inteiros, embora recusado e cancelado só passem a ser
+// alcançáveis nas Épicas 5 e 6: é a lista do banco, e não a do que já acontece.
 const rotulo: Record<string, string> = {
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
+  PAGAMENTO_RECUSADO: "Pagamento recusado",
   PAGO: "Pago",
+  EM_SEPARACAO: "Em separação",
+  ENVIADO: "Enviado",
+  ENTREGUE: "Entregue",
+  CANCELADO: "Cancelado",
 };
 
 // O instante vem absoluto e em RFC 3339 do servidor; o `dateTime` guarda essa
@@ -53,6 +63,17 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
   useEffect(() => {
     let vivo = true;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let atual = 0;
+
+    // Trocar de ritmo é recriar o intervalo: setInterval não muda de período
+    // depois de armado. O `atual` evita reprogramar a cada consulta, o que
+    // adiaria a próxima para sempre.
+    function reprogramar(ms: number) {
+      if (atual === ms) return;
+      atual = ms;
+      clearInterval(timer);
+      timer = setInterval(consultar, ms);
+    }
 
     async function consultar() {
       try {
@@ -74,16 +95,20 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
         }
         setErro(null);
         setPedido(corpo);
-        // Parar de consultar assim que o Pedido sai de AGUARDANDO_PAGAMENTO é
-        // metade do ponto: a tela existe para esperar esse avanço.
-        if (corpo?.status !== aguardando) clearInterval(timer);
+        // Parar só no estado terminal: a tela existe para acompanhar o Pedido
+        // até ENTREGUE, e quem declara o que é terminal é o servidor (AD-18).
+        if (corpo?.terminal) {
+          clearInterval(timer);
+          return;
+        }
+        reprogramar(corpo?.status === aguardando ? intervaloAguardando : intervaloAvancando);
       } catch {
         if (vivo) setErro("Não foi possível ler o Pedido.");
       }
     }
 
     consultar();
-    timer = setInterval(consultar, intervalo);
+    reprogramar(intervaloAguardando);
     return () => {
       vivo = false;
       clearInterval(timer);
