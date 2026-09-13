@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-13-2026
+last_updated: 09-13-2026 17:17
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -45,7 +45,7 @@ development_status:
   1-7-o-provedor-simulado-confirma-por-webhook-e-o-pedido-vai-a-pa: done
   1-8-a-varredura-leva-o-pedido-até-entregue: done
   1-9-clone-limpo-rede-desconectada-readme-de-15-minutos: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-cadastro-de-comprador: backlog
@@ -107,3 +107,91 @@ development_status:
   7-3-o-addendum-percorrido-contra-o-código: backlog
   7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: backlog
   epic-7-retrospective: optional
+action_items:
+  - id: "epic-1-retro-item-1-reconciliar-o-status-para-em_separacao-e"
+    epic: 1
+    action: "Reconciliar o Status para EM_SEPARACAO em addendum.md:48,49,52, ARCHITECTURE-SPINE.md:94,95,97,
+      prd.md:123 e EXPERIENCE.md:78 — o CHECK da migracao e o codigo sao a realidade"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-2-trocar-o-uuid-de-web-app-page-tsx-102-po"
+    epic: 1
+    action: "Trocar o uuid de web/app/page.tsx:102 por um Produto de centavos ,00
+      para que o unico caminho clicavel feche o ciclo ate ENTREGUE"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-3-fechar-o-furo-do-ad-1-acrescentar-media"
+    epic: 1
+    action: "Fechar o furo do AD-1: acrescentar media->catalogo a tabela de internal/fronteira_test.go
+      e fazer o teste enxergar arquivos com build tag"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-4-acrescentar-agent-kiro-gemini-opencode-b"
+    epic: 1
+    action: "Acrescentar .agent/ .kiro/ .gemini/ .opencode/ .bmad/ .local/ ao .gitignore
+      — o .agents/ atual nao casa com nenhum diretorio real"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-5-por-um-portao-automatizado-sobre-go-test"
+    epic: 1
+    action: "Por um portao automatizado sobre go test ./... , no mesmo espirito do
+      prebuild do web/"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-6-extrair-preco-para-web-components-preco"
+    epic: 1
+    action: "Extrair Preco para web/components/preco.tsx com Intl.NumberFormat(pt-BR)
+      como o AD-9 manda"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-7-limitar-o-dominio-de-azamon_provedor_-_a"
+    epic: 1
+    action: "Limitar o dominio de AZAMON_PROVEDOR_*_ATE_CENTAVOS a 0..99 em internal/plataforma/config.go"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-8-decidir-motivo-e-correlacao-em-pedido-tr"
+    epic: 1
+    action: "Decidir motivo e correlacao em pedido.transicao_status: acrescentar agora
+      com a tabela vazia, ou registrar o adiamento no addendum 10 nomeando a estoria
+      que paga a migracao"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-9-marcar-resolvido-na-primeira-entrada-de"
+    epic: 1
+    action: "Marcar RESOLVIDO na primeira entrada de deferred-work.md — o grep do
+      AD-12 existe e derruba o build desde a 1.2"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-10-levar-ao-deferred-work-md-os-achados-ain"
+    epic: 1
+    action: "Levar ao deferred-work.md os achados ainda nao ledgerizados: vendedor.ativo
+      fora do AD-19, Decidir sem numero da Tentativa, CHECK da soma do AD-9, webhook
+      aceita recusa nao honrada, varredura nao esperada no encerramento, VersaoSemente
+      a mao, DTO do AD-18 recortado, contador fora da ordem do AD-4, e o estado UX-DR12
+      Pedido em processamento sem relogio"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-11-passar-a-nomear-a-estoria-no-assunto-do"
+    epic: 1
+    action: "Passar a nomear a estoria no assunto do commit (feat(1.7): ...) para
+      que a atribuicao nao dependa de git log -S"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-1-retro-item-12-reconciliar-o-grafo-do-ad-1-na-espinha-c"
+    epic: 1
+    action: "Reconciliar o grafo do AD-1 na espinha com a tabela real do teste, ou
+      parar de chama-lo de exaustivo — a Estoria 7.2 desenha o diagrama a partir dele"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
