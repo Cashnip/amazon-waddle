@@ -9,9 +9,10 @@ quem vai **desenvolver**. O que o projeto *é*, e o que fazer depois, está em
 
 ## 1. Subir o Azamon
 
-Pré-requisito **único**: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-com Compose. Go, Node.js, PostgreSQL e Redis **não** se instalam na máquina — rodam nos
-contêineres, nas versões exatas da tabela Stack da espinha de arquitetura.
+Pré-requisitos: **Git** e **[Docker Desktop](https://www.docker.com/products/docker-desktop/)
+com Compose** — e mais nada. Go, Node.js, PostgreSQL e Redis **não** se instalam na
+máquina: rodam nos contêineres, nas versões exatas da tabela Stack da espinha de
+arquitetura.
 
 ```bash
 git clone https://github.com/Cashnip/amazon-waddle azamon && cd azamon
@@ -20,21 +21,27 @@ docker compose up
 
 **Quanto demora — medido, nunca estimado.** Em 2026-09-13, na estória 1.9, com o cache de
 construção e as imagens base **apagados** antes do cronômetro (Docker 29.4.3, Windows 11):
-**3 min 26 s** do `git clone` ao primeiro Produto na tela. Três segundos são o clone; o
-resto é o `docker compose up` baixando as quatro imagens base e construindo as duas do
-projeto. O teto do NFR-1 é 15 minutos. Da segunda vez em diante, com as imagens já
+**3 min 26 s** do `git clone` ao primeiro Produto na tela. Três segundos são o clone; os
+outros 203 s são o `docker compose up` **baixando** as quatro imagens base, os módulos Go
+e os pacotes npm e construindo as duas imagens do projeto — ou seja, o número é dominado
+pela banda da máquina, e num link mais lento ele sobe sem que nada tenha regredido. O teto
+do NFR-1 é 15 minutos, com folga para isso. Da segunda vez em diante, com as imagens já
 construídas, a subida inteira leva **16 s**.
 
-Nada mais precisa ser baixado à mão: o `.env`, os 50 SVG dos Produtos, a fonte da
-marca e o SQL da semente são versionados — é o que faz o clone limpo subir sem buscar
-nada além das imagens base.
+**A primeira construção usa a rede; o sistema em pé, não.** O `Dockerfile` roda
+`go mod download` e o `web/Dockerfile` roda `npm ci`, os dois contra registradores
+externos — o NFR-15 é sobre a demonstração rodando (seção 3), não sobre a primeira
+construção. O que não precisa ser baixado à mão é o resto: o `.env`, os 50 SVG dos
+Produtos, a fonte da marca e o SQL da semente são versionados.
 
-**Deu certo se**, em outro terminal:
+**Deu certo se**, em outro terminal, depois que `docker compose ps` mostrar o serviço
+`azamon` como `healthy` (o `web` não tem healthcheck, e até ele subir a porta 3000 recusa
+conexão):
 
 ```bash
-curl http://localhost:8080/api/v1/saude     # {"status":"ok"} pela porta do Go
-curl -s http://localhost:3000 | head -1     # a casca do Next respondendo
-docker compose ps                           # os quatro no ar; azamon, postgres e redis `healthy`
+docker compose ps                          # os quatro no ar; azamon, postgres e redis `healthy`
+curl http://localhost:8080/api/v1/saude    # {"status":"ok"} pela porta do Go
+curl http://localhost:3000                 # a casca do Next respondendo
 ```
 
 O arranque aplica as migrações e, uma vez só, o **Catálogo Semeado** — 50 Produtos em 5
@@ -55,11 +62,13 @@ não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
    temporários no rodapé do último cartão: `/entrar` e um Produto semeado.
 2. **Entre** por `/entrar`, com as credenciais do Comprador acima.
 3. **Escolha o Produto com cuidado.** O Provedor Simulado decide pelos centavos do total
-   (§7.1 do PRD): até `,89` ele aprova, e de `,90` a `,94` recusa — mas *recusar* é da
-   Épica 5, então hoje um Pedido dessa faixa fica parado em `AGUARDANDO_PAGAMENTO`, para
-   sempre e sem erro na tela. O Produto ligado na página de conferência é o **Fone de
-   Ouvido Bluetooth Aurora, R$ 249,90** — ele cai justamente na faixa parada. Para ver o
-   ciclo inteiro, troque o identificador na URL pelo de um Produto de centavos `,00`:
+   (§7.1 do PRD): até `,89` ele aprova, de `,90` a `,94` recusa, e de `,95` a `,99` não
+   manda confirmação nenhuma. Só a aprovação é emitida hoje — recusa e expiração são da
+   Épica 5 —, então **qualquer** total acima de `,89` deixa o Pedido parado em
+   `AGUARDANDO_PAGAMENTO`, para sempre e sem erro na tela. O Produto ligado na página de
+   conferência é o **Fone de Ouvido Bluetooth Aurora, R$ 249,90** — ele cai justamente na
+   faixa parada. Para ver o ciclo inteiro, troque o identificador na URL pelo de um
+   Produto de centavos `,00`:
 
    <http://localhost:3000/produtos/a0ae8ff1-da13-5591-9291-4a4f1ce15383> — Caixa de Som
    Portátil Maré, R$ 189,00.
@@ -78,8 +87,11 @@ ensaio:
 
 - **Automática, em todo build:** `web/scripts/verificar-offline.mjs` roda como `prebuild`
   e derruba `npm run build` — e junto a construção da imagem `web` — se aparecer
-  `fonts.googleapis`, `@import url(http`, `//cdn.` ou `next/font/google` em qualquer
-  arquivo de `web/`, nomeando arquivo, linha e padrão. É o portão do AD-12; não há CI.
+  `fonts.googleapis`, `@import url(http`, `//cdn.` ou `next/font/google` — ou um
+  `middleware.ts`/`middleware.js`, que o Next 16 ignora calado — em qualquer arquivo de
+  `web/`, nomeando arquivo, linha e padrão. É o portão do AD-12; não há CI. Ele varre o
+  **código deste repositório**: `node_modules`, `.next` e `package-lock.json` ficam de
+  fora, então o portão não diz nada sobre o que uma dependência de terceiro busca.
 - **Ensaio completo:** com a pilha no ar, percorra a seção 2 de ponta a ponta com o Wi-Fi
   da máquina desligado. Tudo que o navegador carrega — a casca, a fonte, os SVG dos
   Produtos — sai dos contêineres.
@@ -93,12 +105,26 @@ mediu por dentro dessa rede, com um contêiner de `curl`, e o esqueleto inteiro 
 respondendo 200 e `https://example.com` sem nem resolver o nome. O relato está no
 `addendum.md` §10, na entrada da 1.9.
 
-## 4. Reiniciar, semear, armadilhas
+## 4. Reiniciar a demonstração
 
 `docker compose down -v` devolve o ambiente ao estado inicial: os mesmos 50 Produtos, com
 os mesmos identificadores, e nenhum Pedido. Os identificadores da semente são derivados do
 nome, então não mudam entre subidas — é o que permite ligar um Produto pela URL como a
 seção 2 faz.
+
+É também o que devolve o Estoque: cada Produto nasce com `estoque_total` 10, e a Reserva
+consolida em `ENVIADO`, então o décimo primeiro passeio sobre o mesmo Produto sai em 409
+`ESTOQUE_INSUFICIENTE`. `down -v` e suba de novo.
+
+---
+
+*Daqui para baixo é ferramenta de desenvolvimento. Quem só queria ver o sistema rodando já
+pode parar.*
+
+## 5. Testar e mexer na semente
+
+As duas suítes rodam **na máquina**, e por isso pedem o que a seção 1 não pedia: Go 1.27
+(`go.mod`) e Node.js ≥ 24 (`web/package.json`).
 
 ```bash
 go test ./...            # suíte do Go; precisa do Docker no ar (testcontainers)
@@ -116,21 +142,16 @@ cd web && npm test       # a guarda offline e o teste da casca
   que continua com 50 — a medição do NFR-4 vive em `go test ./db -run TestMedicaoNFR4` e
   não precisa da variável.
 
----
-
-*Daqui para baixo é ferramenta de desenvolvimento. Quem só queria ver o sistema rodando já
-pode parar.*
-
 > O repositório versiona **o trabalho, não a ferramenta**. Depois de clonar você tem os
 > documentos, mas não tem o BMad nem as skills: `_bmad/`, `.claude/` e `.agents/` estão
 > no `.gitignore` porque somam mais de 2 MB de código de terceiros, reproduzível pelos
 > comandos abaixo.
 
-## 5. BMad Method 6.11.0
+## 6. BMad Method 6.11.0
 
 Pré-requisitos desta seção, que o caminho da seção 1 não pede:
 [`uv`](https://docs.astral.sh/uv/) (`brew install uv`), que roda todo script do BMad, e
-Node.js ≥ 20 com `npx` (`brew install node`), que roda os dois instaladores.
+Node.js ≥ 24 com `npx` (`brew install node`), que roda os dois instaladores.
 
 ```bash
 npx bmad-method@6.11.0 install
@@ -160,7 +181,7 @@ uv run _bmad/scripts/memlog.py --help   # imprime o uso, sai 0
 ls .claude/skills | grep -c '^bmad-'    # 49
 ```
 
-## 6. Skills de frontend (opcional)
+## 7. Skills de frontend (opcional)
 
 As 13 skills de `Leonxlnx/taste-skill` estão travadas com hash em
 [`skills-lock.json`](skills-lock.json). Restaure todas de uma vez:
@@ -173,7 +194,7 @@ npx skills list                   # deu certo se aparecem design-taste-frontend 
 **Elas não são usadas no Azamon** — estão no lock só para reprodutibilidade, e o motivo
 da exclusão está no memlog da UX. Pular esta seção não quebra nada.
 
-## 7. Plugins do Claude Code (opcional, pessoal)
+## 8. Plugins do Claude Code (opcional, pessoal)
 
 Plugins são **de usuário**, não do repositório: instalar não muda nada aqui dentro e
 nenhum é exigido pelo projeto. Dentro do Claude Code:
@@ -184,7 +205,7 @@ nenhum é exigido pelo projeto. Dentro do Claude Code:
 /plugin install <plugin>@<marketplace>
 ```
 
-## 8. Convenções que pegam quem chega
+## 9. Convenções que pegam quem chega
 
 - Todo script do BMad roda por `uv run`, **a partir da raiz**. Sem o prefixo, roda fora
   do ambiente e falha; de outro diretório, os caminhos relativos não resolvem.
@@ -194,7 +215,7 @@ nenhum é exigido pelo projeto. Dentro do Claude Code:
   sobrescrita em silêncio no próximo `bmad-spec`.
 - O resto das armadilhas está em `AGENTS.md` (carregado por agentes) e em `HANDOFF.md`.
 
-## 9. Leia nesta ordem
+## 10. Leia nesta ordem
 
 1. [`HANDOFF.md`](HANDOFF.md) — estado, decisões travadas, bloqueios, próximo passo.
 2. `_bmad-output/specs/spec-azamon/SPEC.md` — o contrato canônico; o `companions:` do

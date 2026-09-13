@@ -83,6 +83,6 @@ Append-only: não edite nem remova entradas existentes.
   summary: O critério de parada e os dois ritmos da tela de acompanhamento não têm verificação automatizada.
   evidence: `web/` verifica só com `node --test` sobre `scripts/`, sem jsdom, vitest ou playwright — inverter a guarda do `reprogramar` ou apagar o `clearInterval` do terminal mantém tudo verde. Settlement: extrair a decisão de "próximo ritmo ou parar" para um módulo puro coberto por `node --test`.
 
-- source_spec: `spec-1-9-clone-limpo-rede-desconectada-readme-de-15-minutos.md`
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-clone-limpo-rede-desconectada-readme-de-15-minutos.md`
   summary: O único link de Produto da casca leva ao Fone de R$ 249,90, cujos centavos caem na faixa que o Provedor Simulado recusa — e recusar ainda não existe, então quem segue o caminho óbvio vê o Pedido parado em `AGUARDANDO_PAGAMENTO` para sempre, sem nada na tela que explique.
   evidence: Reproduzido na pilha em execução durante o ensaio da 1.9: 45 s depois da compra o Pedido do Fone segue em `AGUARDANDO_PAGAMENTO`, enquanto um Produto de centavos `,00` chega a `ENTREGUE` em 1 min 41 s. A 1.9 fechou por documentação — o README manda trocar o identificador na URL —, porque acrescentar comportamento era proibido nela. Fecha de verdade quando a 5.11 trouxer a expiração da Tentativa (o Pedido passaria a `PAGAMENTO_RECUSADO` com `TEMPO_ESGOTADO` em vez de ficar parado) ou quando a Épica 3 entregar a busca e remover os dois links temporários da casca. Quem chegar primeiro resolve.

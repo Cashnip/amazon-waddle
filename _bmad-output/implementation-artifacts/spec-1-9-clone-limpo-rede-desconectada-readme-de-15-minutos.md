@@ -2,7 +2,7 @@
 title: 'Estória 1.9 — Clone limpo, rede desconectada, README de 15 minutos'
 type: 'chore'
 created: '2026-09-13'
-status: 'done'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '5cc7ae1e1bab12575f10bf7bab2a166b95e03986'
@@ -78,6 +78,30 @@ A segunda foi o caminho que o README descrevia. O único link de Produto da pág
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Veredito | Achado | Evidência | Rota |
+|---|---|---|---|
+| medium | "Pré-requisito **único**: Docker Desktop" e o comando seguinte é `git clone` | Verificado em `README.md:12-17`: Git não está em lugar nenhum da §1, e a tabela que o listava foi apagada na inversão. Quem tem só o Docker não passa da primeira linha do caminho de 15 min | patch |
+| medium | "o clone limpo sobe sem buscar nada além das imagens base" é falso | Verificado nos dois Dockerfiles: `Dockerfile` roda `go mod download` e `web/Dockerfile` roda `npm ci` — proxy.golang.org e registry.npmjs.org. Numa rede que os bloqueie a primeira construção falha, e a frase fica colada à seção do NFR-15, o que faz ler "offline" como valendo para a primeira subida | patch |
+| medium | `go test ./...` e `npm test` no §4, acima do divisor "só Docker" | Verificado: `go.mod` pede Go 1.27 e `web/package.json` pede Node ≥ 24, nenhum dos dois no host pelo contrato da §1. As três lentes acharam o mesmo, e a própria seção Verification desta spec roda o Go dentro de `golang:1.27.1` justamente por isso | patch |
+| medium | "Node.js ≥ 20" no §5 | Verificado contra `web/package.json` (`"engines": {"node": ">=24"}`) e `web/Dockerfile` (`node:24.20.0-alpine`). A linha foi reescrita nesta estória e carregou o número velho | patch |
+| medium | A faixa `,95`–`,99` não está no README | Verificado em `internal/pagamento/pagamento.go:65` e `pagamento_test.go:20-21`: acima de `RecusadoAteCentavos` o desfecho é `SemConfirmacao`, que também deixa o Pedido parado em `AGUARDANDO_PAGAMENTO`. O README explica duas faixas de três, então quem escolher um Produto de `,99` cai na mesma armadilha que a estória documentou | patch |
+| medium | O `HANDOFF.md` se contradiz sobre a quinta verificação dentro do mesmo parágrafo | Verificado no diff: abre com "As cinco verificações do passo 0 estão fechadas" e fecha com "Nenhuma verificação do passo 0 continua aberta", enquanto o `addendum.md` escrito no mesmo commit diz que a quinta "continua aberta por não depender de ninguém daqui" | patch |
+| medium | A condição de aceite pede "alguém que não escreveu o código" e o ensaio foi feito por quem escreveu | Verificado: a medição correu nesta máquina, pelo agente da estória. A substituição é decisão registrada de 2026-09-13 (medição a frio em vez de segunda pessoa), mas nada no addendum diz que a metade "seguidor independente" da SM-3 segue por provar | patch |
+| low | O número 3 min 26 s é dominado por banda e o README não diz | Verificado: 203 s dos 206 s são download de imagem base mais construção. Qualificado só por "Docker 29.4.3, Windows 11" — numa conexão lenta o teto de 15 min é exposição real | patch |
+| low | `curl -s http://localhost:3000 \| head -1` não roda no PowerShell | Verificado: `head` não existe no PowerShell e `curl` é alias de `Invoke-WebRequest`. A medição desta estória foi em Windows 11, que é a máquina do time | patch |
+| low | `web` não tem healthcheck, então `curl :3000` pode recusar com a pilha saudável | Verificado em `docker-compose.yml`: só `azamon`, `postgres` e `redis` têm healthcheck. O "Deu certo se" não diz para esperar | patch |
+| low | O Produto do passeio nasce com estoque 10 | Verificado em `db/migracoes/20260912120100_catalogo_reserva_estoque.sql:12` (`DEFAULT 10`): a 11ª volta devolve 409. É o mesmo Produto que `api/pedido_test.go:25` chama de `produtoParaEsgotar`. O `down -v` já está no §4, só falta a frase que liga uma coisa à outra | patch |
+| low | A descrição do portão no §3 é incompleta | Verificado em `verificar-offline.mjs`: ele também derruba o build por `middleware.ts`/`middleware.js`, e ignora `node_modules`, `.next` e `package-lock.json` — a segunda metade é o que impede ler o portão como garantia sobre dependência de terceiro | patch |
+| low | Frase sem verbo no `HANDOFF.md` | Verificado: "então o caminho óbvio do README para parado em `AGUARDANDO_PAGAMENTO`" | patch |
+| low | `source_spec` da entrada nova em `deferred-work.md` é nome nu | Verificado: todas as outras entradas usam o caminho a partir da raiz do repositório | patch |
+| maybe-false | O `uuid` do Produto do passeio não é fixado por nenhum teste | Pré-verificado pela lente de lacuna: o Aurora é fixado em quatro lugares, o Maré só como `produtoParaEsgotar`, sem asserção de nome ou preço. Um renome em `media/gerar.go` muda o `uuid` derivado e o link do README dá 404 com a suíte verde. A própria lente diz que cabe esperar a Épica 3 remover os dois links temporários | defer |
+| false | Falta `npm ci` antes dos comandos de `web/` no §4 | Refutado: o §4 mostra só `npm test`, e `web/scripts/casca.test.mjs` importa apenas builtins (`node:test`, `node:assert/strict`, `node:child_process`, `node:fs`, `node:path`, `node:os`, `node:url`). Roda sem `node_modules`. `npm run build` não aparece no §4 | rejeitado |
+| low | `epic-1-retrospective` segue `optional` com a épica em `done` | `optional` é estado terminal legítimo no próprio cabeçalho do `sprint-status.yaml`, e a retrospectiva tem skill própria. Nenhum dano nomeado | rejeitado |
+| low | Entradas da 1.1 em `deferred-work.md` deviam ser marcadas `RESOLVIDO` | O cabeçalho do arquivo diz "Append-only: não edite nem remova entradas existentes". A correção proposta contraria a regra do próprio arquivo | rejeitado |
+| low | O Code Map desta spec diz 52 SVG; são 50 | Real (`git ls-files media` devolve 50 `.svg` e 2 `.go`), mas a correção seria editar a spec desta construção, o que a triagem não permite | rejeitado |
+| low | A seção Verification desta spec espera as portas publicadas sob o override, que o ensaio desmentiu | Mesma regra: a correção edita a spec desta construção. O desfecho real está no addendum e no README | rejeitado |
+| low | O Approach desta spec promete "um comando reproduzível" para o ensaio offline | Mesma regra, e agravada: o Approach está dentro de `<frozen-after-approval>`, que só o humano altera | rejeitado |
 
 ## Design Notes
 

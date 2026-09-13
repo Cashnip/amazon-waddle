@@ -55,7 +55,7 @@ Da arquitetura, as quatro que mais mudam a construção: **um schema do Postgres
 
 O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições toca o esqueleto vertical.
 
-**As cinco verificações do passo 0 estão fechadas, cada uma com desfecho nomeado no `addendum.md` §10 — a quinta inclusive, como externa ao time.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos" — mais a quinta, que é o bloqueio 2 desta página e não depende de ninguém daqui. **As quatro do time fecharam, todas positivas:** na 1.2, o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada, e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares; na 1.3, o sqlc v1.31.1 analisa `DEFAULT uuidv7()` sem erro, então a chave primária continua sendo gerada pelo banco; na 1.4, a busca com termo, Categoria e faixa de preço sobre 5.050 Produtos mede **p95 de 0,34 ms** contra um teto de 500 ms, e "índice antes de serviço" está confirmado. Os desfechos estão no `addendum.md` §10. Nenhuma verificação do passo 0 continua aberta.
+**As cinco verificações do passo 0 têm desfecho nomeado no `addendum.md` §10: as quatro do time fecharam positivas, e a quinta continua aberta por ser externa ao time — é o bloqueio 2 acima, dono Sung.** A espinha tem uma seção de Questões em Aberto com quatro checagens de dez minutos — nenhuma é decisão, todas são "confirmar que funciona como assumimos" — mais essa quinta, que não depende de ninguém daqui e não toca o esqueleto vertical. **As quatro:** na 1.2, o `Set-Cookie` do Go atravessa o `rewrites()` do Next íntegro, então a saída de *proxy* explícito não precisa ser acionada, e o `npx shadcn init` roda limpo em Next 16 + React 19, sem flag de dependências de pares; na 1.3, o sqlc v1.31.1 analisa `DEFAULT uuidv7()` sem erro, então a chave primária continua sendo gerada pelo banco; na 1.4, a busca com termo, Categoria e faixa de preço sobre 5.050 Produtos mede **p95 de 0,34 ms** contra um teto de 500 ms, e "índice antes de serviço" está confirmado. Os desfechos estão no `addendum.md` §10, com a entrada da 1.9 consolidando os cinco.
 
 ## Próximo passo
 
@@ -72,7 +72,7 @@ Continua aberta, esperando quem a pegue, a sobreposição de e-mail entre Compra
 estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`, junto com os dois
 buracos de verificação que a 1.8 registrou (a releitura travada de `Desde` e a ausência de bancada de teste
 para a tela) e com o achado da 1.9: o único link de Produto da casca leva a um Produto da faixa que o
-Provedor Simulado recusa, então o caminho óbvio do README para parado em `AGUARDANDO_PAGAMENTO` — a Épica 3
+Provedor Simulado recusa, então o caminho óbvio do README termina parado em `AGUARDANDO_PAGAMENTO` — a Épica 3
 o remove ao entregar a busca. As sete épicas e as 52 estórias estão em
 `_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
 `_bmad-output/implementation-artifacts/sprint-status.yaml`.
