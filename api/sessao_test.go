@@ -49,6 +49,20 @@ const expiracaoDeTeste = 7 * 24 * time.Hour
 // autentica o webhook do Provedor, e sem ele a rota responde 401.
 const segredoDeTeste = "segredo-de-teste"
 
+// Os dois limiares do bloqueio por tentativas, nos mesmos valores dos padrões
+// de internal/plataforma/config.go. Precisam estar na Config do teste: com o
+// zero-value, AuthTentativasMax=0 bloquearia a primeira tentativa da suíte
+// inteira — nenhum login passaria.
+const (
+	tentativasDeTeste = 5
+	bloqueioDeTeste   = 15 * time.Minute
+)
+
+// origemDeTeste é o RemoteAddr que o httptest põe em toda requisição. Fica
+// escrito porque o contador de tentativas chaveia pelo par (e-mail, origem), e
+// há um subteste que precisa chegar de outra origem.
+const origemDeTeste = "192.0.2.1:1234"
+
 // Os limites de campo do cadastro, nos mesmos valores dos padrões de
 // internal/plataforma/config.go. Ficam escritos aqui porque o que os subtestes
 // conferem é que o limiar configurado chega inteiro à mensagem de erro — um
@@ -118,7 +132,10 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	// ficou no banco — histórico da transição, Item congelado e Reserva ATIVA
 	// não aparecem em resposta nenhuma.
 	cfg := plataforma.Config{
-		SessaoExpiracao:  expiracaoDeTeste,
+		SessaoExpiracao:     expiracaoDeTeste,
+		AuthTentativasMax:   tentativasDeTeste,
+		AuthBloqueioDuracao: bloqueioDeTeste,
+
 		WebhookSegredo:   segredoDeTeste,
 		CompradorNomeMax: nomeMaxDeTeste,
 		EmailMax:         emailMaxDeTeste,
@@ -341,14 +358,303 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a simulação leva o Pedido de PAGO a ENTREGUE", func(t *testing.T) {
 		simulacaoDeEntrega(t, rotas, pool, cookieValido)
 	})
+
+	// A 2.2 fica no fim, e nesta ordem: o bloqueio suja o par (e-mail, origem)
+	// pelos 15 minutos do prazo, e não há como desfazê-lo sem apagar chave do
+	// Redis por fora da API. Encerrar Sessão vem antes pelo mesmo motivo — mas
+	// abre a sua própria, para não matar o cookieValido de quem veio acima.
+	t.Run("ler a Sessão renova o prazo", func(t *testing.T) {
+		sessaoLidaRenovaOPrazo(t, rotas, rdb, cookieValido)
+	})
+	t.Run("encerrar apaga a chave no Redis e expira o cookie", func(t *testing.T) {
+		encerrarApagaChaveECookie(t, rotas, rdb)
+	})
+	t.Run("encerrar sem Sessão responde o mesmo 204", func(t *testing.T) {
+		encerrarSemSessaoDa204(t, rotas)
+	})
+	t.Run("o login válido esquece as falhas do par", func(t *testing.T) {
+		loginValidoEsqueceAsFalhas(t, rotas, rdb)
+	})
+	t.Run("o par bloqueia no limiar, exista ou não a conta", func(t *testing.T) {
+		bloqueioDepoisDoLimiar(t, rotas)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
 	t.Helper()
+	return postarDe(t, rotas, corpo, origemDeTeste)
+}
+
+// postarDe é o postar com a origem escolhida: o contador de tentativas chaveia
+// pelo par (e-mail, origem), e sem mexer no RemoteAddr não há como provar que
+// a segunda origem não herda o bloqueio da primeira.
+func postarDe(t *testing.T, rotas http.Handler, corpo, origem string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessoes", strings.NewReader(corpo))
+	req.RemoteAddr = origem
 	resp := httptest.NewRecorder()
 	rotas.ServeHTTP(resp, req)
 	return resp
+}
+
+// chavesCom devolve as chaves do Redis que casam com o trecho. As buscas são
+// por trecho, e nunca pelo prefixo literal, para o teste não repetir o espaço
+// de nomes que mora em identidade.
+func chavesCom(t *testing.T, rdb *redis.Client, trecho string) []string {
+	t.Helper()
+	chaves, err := rdb.Keys(context.Background(), "*"+trecho+"*").Result()
+	if err != nil {
+		t.Fatalf("procurar %q no Redis: %v", trecho, err)
+	}
+	return chaves
+}
+
+// sessaoLidaRenovaOPrazo é a expiração por inatividade do §7.1: toda leitura da
+// Sessão devolve o prazo cheio. O prazo é encurtado à mão antes da leitura —
+// sem isso o TTL já está cheio, e uma leitura que não renovasse passaria
+// batida.
+func sessaoLidaRenovaOPrazo(t *testing.T, rotas http.Handler, rdb *redis.Client, cookie *http.Cookie) {
+	if cookie == nil {
+		t.Skip("sem cookie: o login falhou antes")
+	}
+	ctx := context.Background()
+	chaves := chavesCom(t, rdb, cookie.Value)
+	if len(chaves) != 1 {
+		t.Fatalf("chaves para o cookie = %v; quero exatamente uma", chaves)
+	}
+	if err := rdb.Expire(ctx, chaves[0], time.Minute).Err(); err != nil {
+		t.Fatalf("encurtar o prazo: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sessao", nil)
+	req.AddCookie(cookie)
+	resp := httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d (%s), quero 200", resp.Code, resp.Body.String())
+	}
+
+	ttl, err := rdb.TTL(ctx, chaves[0]).Result()
+	if err != nil || ttl > expiracaoDeTeste || ttl < expiracaoDeTeste-time.Minute {
+		t.Errorf("TTL depois da leitura = %v, %v; quero de volta perto de %v", ttl, err, expiracaoDeTeste)
+	}
+
+	// E o outro lado: Sessão inexistente continua em 401 sem criar chave — o
+	// GetEx de uma chave ausente não pode virar um SET disfarçado, ou qualquer
+	// valor de 64 hexadecimais povoaria o espaço de nomes.
+	desconhecido := strings.Repeat("a", 64)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/sessao", nil)
+	req.AddCookie(&http.Cookie{Name: "azamon_sessao", Value: desconhecido})
+	resp = httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("Sessão desconhecida = %d, quero 401", resp.Code)
+	}
+	if chaves := chavesCom(t, rdb, desconhecido); len(chaves) != 0 {
+		t.Errorf("a leitura criou %v; ler Sessão inexistente não grava nada", chaves)
+	}
+}
+
+// encerrarApagaChaveECookie é a condição de aceite da estória: a chave some do
+// Redis, e não só o cookie — o mesmo cookie não volta a valer em rota nenhuma.
+// A Sessão é aberta aqui mesmo para o cookieValido dos outros subtestes
+// continuar vivo.
+func encerrarApagaChaveECookie(t *testing.T, rotas http.Handler, rdb *redis.Client) {
+	login := postar(t, rotas, `{"email":"`+emailSemente+`","senha":"`+senhaSemente+`"}`)
+	if login.Code != http.StatusOK {
+		t.Fatalf("login = %d (%s), quero 200", login.Code, login.Body.String())
+	}
+	cookies := login.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("quero exatamente um cookie, vieram %d", len(cookies))
+	}
+	cookie := cookies[0]
+	if chaves := chavesCom(t, rdb, cookie.Value); len(chaves) != 1 {
+		t.Fatalf("chaves para o cookie = %v; quero exatamente uma antes de encerrar", chaves)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sessao", nil)
+	req.AddCookie(cookie)
+	resp := httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("status = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+	if resp.Body.Len() != 0 {
+		t.Errorf("204 com corpo: %q", resp.Body.String())
+	}
+
+	// O cookie volta expirado, e com Nome e Path iguais aos da emissão — o
+	// navegador só apaga o cookie quando os dois batem.
+	saida := resp.Result().Cookies()
+	if len(saida) != 1 {
+		t.Fatalf("quero exatamente um cookie na saída, vieram %d", len(saida))
+	}
+	if saida[0].Name != "azamon_sessao" || saida[0].Path != "/" || saida[0].Value != "" || saida[0].MaxAge >= 0 {
+		t.Errorf("cookie de saída = %+v; quero o mesmo nome e caminho, vazio e expirado", saida[0])
+	}
+
+	if chaves := chavesCom(t, rdb, cookie.Value); len(chaves) != 0 {
+		t.Errorf("a chave %v sobreviveu ao DELETE; o cookie sozinho não invalida nada", chaves)
+	}
+
+	// E o cookie encerrado não volta: a rota autenticada recusa.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/sessao", nil)
+	req.AddCookie(cookie)
+	resp = httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("GET com o cookie encerrado = %d, quero 401", resp.Code)
+	}
+	if codigo := decodificar(t, resp)["codigo"]; codigo != "SESSAO_INVALIDA" {
+		t.Errorf("codigo = %v, quero SESSAO_INVALIDA", codigo)
+	}
+}
+
+// encerrarSemSessaoDa204: sair é idempotente. Um 401 aqui diria ao chamador
+// que aquele cookie valia alguma coisa.
+func encerrarSemSessaoDa204(t *testing.T, rotas http.Handler) {
+	for _, cookie := range []*http.Cookie{
+		nil,
+		{Name: "azamon_sessao", Value: strings.Repeat("0", 64)},
+		{Name: "azamon_sessao", Value: "curto-demais"},
+	} {
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/sessao", nil)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		resp := httptest.NewRecorder()
+		rotas.ServeHTTP(resp, req)
+
+		if resp.Code != http.StatusNoContent {
+			t.Errorf("cookie %v: status = %d (%s), quero 204", cookie, resp.Code, resp.Body.String())
+		}
+		if resp.Body.Len() != 0 {
+			t.Errorf("cookie %v: 204 com corpo %q", cookie, resp.Body.String())
+		}
+	}
+}
+
+// loginValidoEsqueceAsFalhas: quem erra quatro vezes e acerta na quinta não
+// pode ficar com quatro falhas penduradas. A conta é criada aqui para o
+// contador partir limpo — emailSemente já acumulou falha nos subtestes acima.
+func loginValidoEsqueceAsFalhas(t *testing.T, rotas http.Handler, rdb *redis.Client) {
+	const (
+		email = "carlos@exemplo.br"
+		senha = "senha-do-carlos-1"
+	)
+	if resp := postarCadastro(t, rotas, `{"nome":"Carlos Dias","email":"`+email+`","senha":"`+senha+`"}`); resp.Code != http.StatusCreated {
+		t.Fatalf("cadastro = %d (%s), quero 201", resp.Code, resp.Body.String())
+	}
+
+	errada := `{"email":"` + email + `","senha":"nao-e-a-senha"}`
+	if resp := postar(t, rotas, errada); resp.Code != http.StatusUnauthorized {
+		t.Fatalf("primeira falha = %d (%s), quero 401", resp.Code, resp.Body.String())
+	}
+	chaves := chavesCom(t, rdb, email)
+	if len(chaves) != 1 {
+		t.Fatalf("contador do par = %v; quero exatamente um depois da falha", chaves)
+	}
+
+	// O contador tem de nascer com prazo: sem o EXPIRE ele fica para sempre, e
+	// o par nunca mais sai do bloqueio.
+	ctx := context.Background()
+	ttl, err := rdb.TTL(ctx, chaves[0]).Result()
+	if err != nil || ttl > bloqueioDeTeste || ttl < bloqueioDeTeste-time.Minute {
+		t.Fatalf("TTL do contador = %v, %v; quero perto de %v", ttl, err, bloqueioDeTeste)
+	}
+
+	// E a janela não desliza: o prazo conta da primeira falha, e não da última.
+	// Encurtá-lo à mão é o que torna isso observável — as falhas acontecem em
+	// milissegundos, e o TTL em segundos não distinguiria as duas leituras.
+	if err := rdb.Expire(ctx, chaves[0], time.Minute).Err(); err != nil {
+		t.Fatalf("encurtar o prazo do contador: %v", err)
+	}
+	for i := 2; i < tentativasDeTeste; i++ {
+		if resp := postar(t, rotas, errada); resp.Code != http.StatusUnauthorized {
+			t.Fatalf("falha %d = %d (%s), quero 401 abaixo do limiar", i, resp.Code, resp.Body.String())
+		}
+	}
+	if ttl, err := rdb.TTL(ctx, chaves[0]).Result(); err != nil || ttl > time.Minute {
+		t.Errorf("TTL depois das outras falhas = %v, %v; a janela voltou ao cheio e passou a deslizar", ttl, err)
+	}
+
+	resp := postar(t, rotas, `{"email":"`+email+`","senha":"`+senha+`"}`)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("login válido = %d (%s), quero 200", resp.Code, resp.Body.String())
+	}
+	if len(resp.Result().Cookies()) != 1 {
+		t.Errorf("o login válido não emitiu cookie")
+	}
+	if chaves := chavesCom(t, rdb, email); len(chaves) != 0 {
+		t.Errorf("o contador %v sobreviveu ao login válido", chaves)
+	}
+}
+
+// bloqueioDepoisDoLimiar cobre as três linhas do bloqueio: a resposta depois do
+// limiar, a igualdade entre conta existente e inexistente, e a origem que não
+// herda. A conta de carlos vem do subteste anterior, e sai daqui bloqueada —
+// por isso este é o último.
+func bloqueioDepoisDoLimiar(t *testing.T, rotas http.Handler) {
+	const existente = "carlos@exemplo.br"
+	const inexistente = "ninguem-bloqueado@azamon.test"
+
+	// A tentativa que ultrapassa o limiar chega com outra caixa e com bordas: a
+	// chave do contador é pelo e-mail NORMALIZADO, e sem isso bastaria mudar
+	// uma maiúscula para ganhar mais cinco tentativas.
+	var corpos []string
+	for _, caso := range []struct{ email, comOutraCaixa string }{
+		{existente, "  CARLOS@Exemplo.BR  "},
+		{inexistente, " Ninguem-Bloqueado@Azamon.TEST "},
+	} {
+		email := caso.email
+		entrada := `{"email":"` + email + `","senha":"nao-e-a-senha"}`
+		for i := 1; i <= tentativasDeTeste; i++ {
+			if resp := postar(t, rotas, entrada); resp.Code != http.StatusUnauthorized {
+				t.Fatalf("%s: tentativa %d = %d, quero 401 até o limiar", email, i, resp.Code)
+			}
+		}
+
+		resp := postar(t, rotas, `{"email":"`+caso.comOutraCaixa+`","senha":"nao-e-a-senha"}`)
+		if resp.Code != http.StatusTooManyRequests {
+			t.Fatalf("%s: depois de %d falhas o status = %d (%s), quero 429",
+				email, tentativasDeTeste, resp.Code, resp.Body.String())
+		}
+		if len(resp.Result().Cookies()) != 0 {
+			t.Errorf("%s: o 429 veio com cookie", email)
+		}
+		envelope := decodificar(t, resp)
+		if envelope["codigo"] != "MUITAS_TENTATIVAS" {
+			t.Errorf("%s: codigo = %v", email, envelope["codigo"])
+		}
+		// O limiar vem da Config e tem de ser nomeado na mensagem: um texto
+		// sem os minutos deixaria o Comprador sem saber quando tentar de novo.
+		if mensagem := fmt.Sprint(envelope["mensagem"]); !strings.Contains(mensagem, "15") {
+			t.Errorf("%s: mensagem = %q; os minutos configurados têm de aparecer", email, mensagem)
+		}
+		delete(envelope, "correlacao")
+		corpos = append(corpos, fmt.Sprint(envelope))
+	}
+	// Se o bloqueio só valesse para conta existente, a própria resposta
+	// confirmaria o e-mail — a correlação é a única coisa que pode diferir.
+	if corpos[0] != corpos[1] {
+		t.Errorf("o bloqueio distingue conta existente de inexistente:\n%s\n%s", corpos[0], corpos[1])
+	}
+
+	// A senha certa também leva 429: é o que prova que a consulta vem antes do
+	// Autenticar, e que o bloqueio é também o limite de custo da rota.
+	if resp := postar(t, rotas, `{"email":"`+existente+`","senha":"senha-do-carlos-1"}`); resp.Code != http.StatusTooManyRequests {
+		t.Errorf("senha certa sob bloqueio = %d, quero 429 sem gastar Argon2id", resp.Code)
+	}
+
+	// Outra origem não herda o bloqueio: o contador é do par.
+	resp := postarDe(t, rotas, `{"email":"`+existente+`","senha":"nao-e-a-senha"}`, "198.51.100.7:4321")
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("outra origem = %d (%s), quero 401 — o bloqueio é do par", resp.Code, resp.Body.String())
+	}
+	if codigo := decodificar(t, resp)["codigo"]; codigo != "CREDENCIAL_INVALIDA" {
+		t.Errorf("outra origem: codigo = %v, quero CREDENCIAL_INVALIDA", codigo)
+	}
 }
 
 // decodificar devolve o corpo do sucesso ou o miolo do envelope de erro —

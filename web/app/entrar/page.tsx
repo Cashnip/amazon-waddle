@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { destinoSeguro } from "@/lib/destino";
 
 // Tela crua da estória 1.5: o que ela prova é que o cookie de Sessão sai do Go
 // e atravessa o rewrites() do Next íntegro. A composição de marca do login
@@ -14,11 +16,15 @@ import { Label } from "@/components/ui/label";
 // O caminho é relativo (`/api/...`) de propósito: chamado do navegador, é a
 // mesma origem, e só assim o Set-Cookie volta como cookie de primeira parte.
 // Apontar para http://azamon:8080 daqui perderia o cookie em silêncio.
+//
+// O `destino` é para onde a tela que levou 401 quer voltar depois do login. A
+// recusa do destino absoluto mora em `lib/destino.ts`, que é módulo à parte
+// para o `node --test` poder importá-la.
 
 export default function Entrar() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [nome, setNome] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -26,7 +32,6 @@ export default function Entrar() {
     evento.preventDefault();
     setEnviando(true);
     setErro(null);
-    setNome(null);
     try {
       const resposta = await fetch("/api/v1/sessoes", {
         method: "POST",
@@ -34,14 +39,22 @@ export default function Entrar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, senha }),
       });
-      const corpo = await resposta.json();
+      const corpo = await resposta.json().catch(() => null);
       // A mensagem exibida é a do envelope do servidor (AD-14), nunca uma
-      // inventada aqui — é ela que fala a Voice and Tone da UX.
-      if (!resposta.ok) setErro(corpo?.erro?.mensagem ?? "Não foi possível entrar.");
-      else setNome(corpo.nome);
+      // inventada aqui — é ela que fala a Voice and Tone da UX, e é ela que
+      // nomeia os minutos do bloqueio por tentativas.
+      if (!resposta.ok) {
+        setErro(corpo?.erro?.mensagem ?? "Não foi possível entrar.");
+        setEnviando(false);
+        return;
+      }
+      // A Sessão está aberta: o Comprador volta ao ponto em que parou. A busca
+      // é lida só agora — `useSearchParams` obrigaria a envolver a página num
+      // <Suspense> por causa da renderização estática do Next.
+      // O botão continua desabilitado durante a navegação, como no cadastro.
+      router.push(destinoSeguro(window.location.search));
     } catch {
       setErro("Não foi possível falar com o servidor.");
-    } finally {
       setEnviando(false);
     }
   }
@@ -95,17 +108,6 @@ export default function Entrar() {
                   <AlertDescription>{erro}</AlertDescription>
                 </Alert>
               )}
-              {nome && (
-                <Alert>
-                  <AlertDescription>
-                    Sessão aberta. Olá, {nome}.{" "}
-                    <a className="text-link underline" href="/">
-                      Voltar à conferência
-                    </a>
-                  </AlertDescription>
-                </Alert>
-              )}
-
               <Button type="submit" disabled={enviando}>
                 {enviando ? "Entrando…" : "Entrar"}
               </Button>

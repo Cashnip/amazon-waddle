@@ -39,19 +39,29 @@ func CriarSessao(ctx context.Context, rdb *redis.Client, c Comprador, ttl time.D
 	return token, nil
 }
 
+// tokenPlausivel confere a forma do valor do cookie. O token vem do navegador
+// e vira chave de Redis: conferir a forma aqui é o que impede um valor
+// arbitrário de passear pelo espaço de nomes.
+func tokenPlausivel(token string) bool {
+	if len(token) != tamanhoToken*2 {
+		return false
+	}
+	_, err := hex.DecodeString(token)
+	return err == nil
+}
+
 // LerSessao resolve o valor do cookie no Comprador. Cookie ausente, com forma
 // errada ou sem chave no Redis são todos ErrSessaoInvalida — nada disso é 500.
-func LerSessao(ctx context.Context, rdb *redis.Client, token string) (Comprador, error) {
-	// O token vem do navegador e vira chave de Redis: conferir a forma aqui é
-	// o que impede um valor arbitrário de passear pelo espaço de nomes.
-	if len(token) != tamanhoToken*2 {
-		return Comprador{}, ErrSessaoInvalida
-	}
-	if _, err := hex.DecodeString(token); err != nil {
+//
+// Ler renova o prazo: é isso que o §7.1 chama de expiração por inatividade.
+// O GetEx faz as duas coisas num comando só — ler e depois expirar seriam duas
+// idas ao Redis, com uma janela entre elas em que a chave pode sumir.
+func LerSessao(ctx context.Context, rdb *redis.Client, token string, ttl time.Duration) (Comprador, error) {
+	if !tokenPlausivel(token) {
 		return Comprador{}, ErrSessaoInvalida
 	}
 
-	dados, err := rdb.Get(ctx, prefixoSessao+token).Bytes()
+	dados, err := rdb.GetEx(ctx, prefixoSessao+token, ttl).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return Comprador{}, ErrSessaoInvalida
 	}
@@ -63,4 +73,18 @@ func LerSessao(ctx context.Context, rdb *redis.Client, token string) (Comprador,
 		return Comprador{}, fmt.Errorf("Sessão ilegível: %w", err)
 	}
 	return c, nil
+}
+
+// EncerrarSessao apaga a chave no Redis — expirar o cookie sozinho não
+// invalida nada, porque quem sabe da Sessão é o Redis. Token de forma errada ou
+// desconhecido não é erro: sair é idempotente, e quem sai não precisa saber se
+// estava dentro.
+func EncerrarSessao(ctx context.Context, rdb *redis.Client, token string) error {
+	if !tokenPlausivel(token) {
+		return nil
+	}
+	if err := rdb.Del(ctx, prefixoSessao+token).Err(); err != nil {
+		return fmt.Errorf("encerrar a Sessão: %w", err)
+	}
+	return nil
 }

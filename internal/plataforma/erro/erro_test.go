@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
@@ -108,6 +109,37 @@ func TestRotaInexistenteTem404(t *testing.T) {
 	}
 	if corpo := decodificar(t, resp); corpo["codigo"] != "NAO_ENCONTRADO" {
 		t.Errorf("codigo = %v", corpo["codigo"])
+	}
+}
+
+// O 429 do bloqueio por tentativas não passa pelo registro: a mensagem nomeia
+// o limiar da Config, e por isso é aqui que os minutos são contados. O caso de
+// 30 s prende o arredondamento para cima — truncado, ele mandaria o Comprador
+// tentar de novo "em 0 minutos".
+func TestBloqueioNomeiaOsMinutos(t *testing.T) {
+	casos := []struct {
+		prazo    time.Duration
+		mensagem string
+	}{
+		{15 * time.Minute, "Muitas tentativas. Tente novamente em 15 minutos."},
+		{time.Minute, "Muitas tentativas. Tente novamente em 1 minuto."},
+		{30 * time.Second, "Muitas tentativas. Tente novamente em 1 minuto."},
+		{90 * time.Second, "Muitas tentativas. Tente novamente em 2 minutos."},
+	}
+	for _, caso := range casos {
+		resp := httptest.NewRecorder()
+		EscreverBloqueio(plataforma.ComCorrelacao(context.Background(), "abc"), resp, caso.prazo)
+
+		if resp.Code != http.StatusTooManyRequests {
+			t.Errorf("%v: status = %d, quero 429", caso.prazo, resp.Code)
+		}
+		corpo := decodificar(t, resp)
+		if corpo["codigo"] != "MUITAS_TENTATIVAS" {
+			t.Errorf("%v: codigo = %v", caso.prazo, corpo["codigo"])
+		}
+		if corpo["mensagem"] != caso.mensagem {
+			t.Errorf("%v: mensagem = %v, quero %q", caso.prazo, corpo["mensagem"], caso.mensagem)
+		}
 	}
 }
 

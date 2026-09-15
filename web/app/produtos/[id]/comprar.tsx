@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { paraLogin } from "@/lib/destino";
 
 // No molde da Saudacao: quem fala com o Go por caminho relativo é o filho
 // `"use client"`, e é essa ida e volta que faz o cookie de Sessão atravessar o
@@ -26,6 +27,13 @@ export function Comprar({ produtoId }: { produtoId: string }) {
         body: JSON.stringify({ produto_id: produtoId }),
       });
       const corpo = await resposta.json().catch(() => null);
+      // Sessão expirada não é erro para ler em linha: o Comprador é levado ao
+      // Login com o caminho atual no `destino`, e volta a esta mesma tela
+      // depois de entrar. O botão continua desabilitado durante a navegação.
+      if (resposta.status === 401) {
+        router.push(paraLogin());
+        return;
+      }
       // Sem `id` não há para onde levar, mesmo com 201: cair calado aqui
       // deixaria a tela sem confirmação e sem erro, e o Comprador compraria
       // de novo. A mensagem exibida é sempre a do envelope — é ela que fala a

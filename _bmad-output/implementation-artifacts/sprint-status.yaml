@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-14-2026 10:40
+last_updated: 09-14-2026 23:05
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -48,8 +48,8 @@ development_status:
   epic-1-retrospective: done
 
   epic-2: in-progress
-  2-1-cadastro-de-comprador: review
-  2-2-autenticação-encerramento-de-sessão-e-bloqueio-por-tentativa: backlog
+  2-1-cadastro-de-comprador: done
+  2-2-autenticação-encerramento-de-sessão-e-bloqueio-por-tentativa: review
   2-3-recuperação-de-senha: backlog
   2-4-autorização-por-dono-do-recurso-e-separação-de-papéis: backlog
   2-5-endereços-do-comprador: backlog

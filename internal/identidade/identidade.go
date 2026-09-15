@@ -51,7 +51,7 @@ type Comprador struct {
 // pool sem importar o pacote gerado de dentro deste módulo, que é o que o
 // AD-1 proíbe — a única porta de identidade é este arquivo.
 func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Comprador, error) {
-	linha, err := gerado.New(bd).BuscarCompradorPorEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
+	linha, err := gerado.New(bd).BuscarCompradorPorEmail(ctx, normalizarEmail(email))
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = Verificar(hashDeDescarte, senha)
 		return Comprador{}, ErrCredencialInvalida
@@ -80,7 +80,7 @@ func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (
 	}
 	linha, err := gerado.New(bd).CriarComprador(ctx, gerado.CriarCompradorParams{
 		Nome:      nome,
-		Email:     strings.ToLower(strings.TrimSpace(email)),
+		Email:     normalizarEmail(email),
 		SenhaHash: hash,
 	})
 	var pgErr *pgconn.PgError
@@ -91,6 +91,14 @@ func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (
 		return Comprador{}, err
 	}
 	return Comprador{ID: uuidTexto(linha.ID), Nome: linha.Nome}, nil
+}
+
+// normalizarEmail é a forma canônica do e-mail dentro do módulo: a coluna tem
+// `CHECK (email = lower(email))` e o UNIQUE só vale sobre ela. Fica numa função
+// porque o contador de tentativas do bloqueio chaveia pela MESMA forma — duas
+// cópias da expressão divergiriam e o bloqueio passaria a contar por caixa.
+func normalizarEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 // uuidTexto escreve o uuid do pgtype na forma canônica. O pgx guarda os 16

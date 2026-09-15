@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { paraLogin } from "@/lib/destino";
 
 // A consulta é de 3 s enquanto o Pedido aguarda pagamento — a janela em que a
 // confirmação chega — e afrouxa para 10 s no resto do caminho, que anda por
@@ -57,6 +59,7 @@ function Preco({ centavos }: { centavos: number }) {
 }
 
 export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
+  const router = useRouter();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -83,14 +86,22 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
         const corpo = await resposta.json().catch(() => null);
         if (!vivo) return;
         if (!resposta.ok) {
+          // Sessão expirada leva ao Login com o caminho atual no `destino`: a
+          // tela não tem o que mostrar sem Sessão, e o Comprador volta a este
+          // mesmo Pedido depois de entrar. A consulta para junto.
+          if (resposta.status === 401) {
+            clearInterval(timer);
+            router.push(paraLogin());
+            return;
+          }
           // A mensagem exibida é a do envelope: é ela que fala a Voice and
           // Tone, e o front não reescreve erro do servidor.
           setErro(corpo?.erro?.mensagem ?? "Não foi possível ler o Pedido.");
-          // Parar só no que é definitivo: sem Sessão ou sem Pedido, consultar
-          // de novo dá a mesma resposta. Um 500 ou 502 no caminho é
-          // transitório, e desistir dele congelaria a tela justamente na
-          // janela em que ela existe para esperar.
-          if (resposta.status === 401 || resposta.status === 404) clearInterval(timer);
+          // Parar só no que é definitivo: sem Pedido, consultar de novo dá a
+          // mesma resposta. Um 500 ou 502 no caminho é transitório, e desistir
+          // dele congelaria a tela justamente na janela em que ela existe para
+          // esperar.
+          if (resposta.status === 404) clearInterval(timer);
           return;
         }
         setErro(null);
@@ -113,7 +124,7 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
       vivo = false;
       clearInterval(timer);
     };
-  }, [pedidoId]);
+  }, [pedidoId, router]);
 
   // Enquanto não há Pedido lido, o erro é tudo o que a tela tem a mostrar.
   // Com Pedido em mão, ele entra ao lado — a consulta continua, e sumir com o

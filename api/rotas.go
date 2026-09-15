@@ -33,6 +33,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// a Sessão corrente — é o que o menu da conta da Épica 2 reaproveita.
 	mux.HandleFunc("POST /api/v1/sessoes", s.criarSessao)
 	mux.HandleFunc("GET /api/v1/sessao", s.lerSessao)
+	// Encerrar é apagar o recurso: o singular já é a Sessão corrente, e o
+	// DELETE apaga a chave no Redis — o cookie sozinho não invalida nada.
+	mux.HandleFunc("DELETE /api/v1/sessao", s.encerrarSessao)
 	// O Comprador é o recurso criado, e por isso o plural — o mesmo padrão de
 	// `sessoes`. Cadastrar já abre a Sessão: o visitante sai autenticado.
 	mux.HandleFunc("POST /api/v1/compradores", s.criarComprador)

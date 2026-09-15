@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 	"github.com/Cashnip/amazon-waddle/internal/identidade"
@@ -104,6 +106,25 @@ func Escrever(ctx context.Context, w http.ResponseWriter, err error, dados any) 
 // o limiar — e limiar vem da Config, nunca de um sentinela fixo daqui.
 func EscreverCampo(ctx context.Context, w http.ResponseWriter, campo, mensagem string) {
 	envelopar(ctx, w, http.StatusBadRequest, "CAMPO_INVALIDO", mensagem, map[string]string{"campo": campo})
+}
+
+// EscreverBloqueio é o 429 do login bloqueado por tentativas. Não passa pelo
+// registro pelo mesmo motivo do EscreverCampo: a mensagem nomeia o limiar, e
+// limiar vem da Config (AD-13/NFR-16), nunca de um sentinela fixo daqui.
+//
+// O corpo não diz se a conta existe — é o mesmo para e-mail cadastrado e para
+// e-mail que nunca existiu, senão a própria resposta enumeraria contas.
+// O prazo entra como duração, e não em minutos já contados: arredondar para
+// cima é responsabilidade de quem escreve a mensagem, e truncar faria um
+// AZAMON_AUTH_BLOQUEIO_DURACAO=30s — que a Config aceita — mandar tentar de
+// novo "em 0 minutos".
+func EscreverBloqueio(ctx context.Context, w http.ResponseWriter, prazo time.Duration) {
+	minutos := int((prazo + time.Minute - 1) / time.Minute)
+	mensagem := fmt.Sprintf("Muitas tentativas. Tente novamente em %d minutos.", minutos)
+	if minutos == 1 {
+		mensagem = "Muitas tentativas. Tente novamente em 1 minuto."
+	}
+	envelopar(ctx, w, http.StatusTooManyRequests, "MUITAS_TENTATIVAS", mensagem, nil)
 }
 
 // envelopar é o único ponto que serializa o envelope do AD-14.

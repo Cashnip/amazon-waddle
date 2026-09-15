@@ -111,3 +111,18 @@ Append-only: não edite nem remova entradas existentes.
   summary: A varredura de teclado de 360 a 1440 px na tela `/cadastrar` não foi percorrida em navegador.
   evidence: A extensão do Chrome não estava conectada na sessão que implementou a estória. A metade estrutural do AC está conferida na fonte (rótulo associado, `aria-describedby`, foco no campo recusado) e o contêiner é o mesmo de `/entrar`, que passou na 1.5; falta a metade visual — foco visível a 3:1 e ausência de rolagem horizontal. Settlement: uma passagem manual, ou a mesma superfície de teste que fecharia a primeira entrada desta estória.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-autenticacao-encerramento-de-sessao-e-bloqueio.md`
+  summary: A navegação para `/entrar?destino=…` no 401 de `comprar.tsx` e `acompanhamento.tsx` não tem teste automatizado.
+  evidence: O guarda do destino saiu para `web/lib/destino.ts` e ganhou teste em `node --test`, mas o ramo que dispara a navegação vive dentro de componente React, e `web/` não tem jsdom nem biblioteca de render. Verificado por leitura e pela verificação manual da estória. Settlement: a mesma superfície de teste de componente que fecharia o contrato de `dados.campo` da 2.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-autenticacao-encerramento-de-sessao-e-bloqueio.md`
+  summary: A varredura de teclado de 360 a 1440 px em `/entrar` e no "Sair" da casca não foi percorrida em navegador.
+  evidence: A extensão do Chrome não está conectada nesta máquina. A metade estrutural está conferida na fonte (o "Sair" é `<button>` alcançável por `Tab`, `buttonVariants` traz `focus-visible:ring-3`, e `/entrar` não mudou de contêiner); falta a metade visual — foco visível a 3:1 e ausência de rolagem horizontal. Settlement: uma passagem manual.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-autenticacao-encerramento-de-sessao-e-bloqueio.md`
+  summary: Com a origem sendo o `RemoteAddr`, em compose o par (e-mail, origem) degenera em só-e-mail e qualquer um bloqueia a conta de outro por 15 minutos.
+  evidence: Decisão consciente da estória (o `X-Forwarded-For` chega do navegador e quem quisesse escapar do bloqueio só teria de variá-lo). Settlement: uma lista de proxies confiáveis, ou o bloqueio passando a esperar antes de recusar em vez de recusar de vez.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-autenticacao-encerramento-de-sessao-e-bloqueio.md`
+  summary: A tela `/cadastrar` descarta o `destino`, e o link "Criar conta" de `/entrar` perde a busca — quem cai no 401 e escolhe criar conta não volta ao ponto em que parou.
+  evidence: `web/app/cadastrar/page.tsx` empurra `router.push("/")` fixo, e o link para `/cadastrar` em `web/app/entrar/page.tsx` é `href` sem query. A condição de aceite da 2.2 fala do Login preservando o destino, e a porta do cadastro nunca teve destino nenhum — por isso ficou de fora. Settlement: passar o `destino` adiante no link e consumi-lo no sucesso do cadastro, com o mesmo `destinoSeguro` de `web/lib/destino.ts`.
