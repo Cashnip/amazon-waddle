@@ -41,14 +41,14 @@ func TestSchemaESemente(t *testing.T) {
 	}
 	conexao := conectar(t, ctx, dsn)
 
-	t.Run("existem só as doze tabelas do esqueleto", func(t *testing.T) {
+	t.Run("existem só as treze tabelas do esqueleto", func(t *testing.T) {
 		tem := textos(t, ctx, conexao, `
 			SELECT table_schema || '.' || table_name
 			FROM information_schema.tables
 			WHERE table_schema = ANY($1) ORDER BY 1`, schemasDeModulo)
 		quer := []string{
 			"catalogo.categoria", "catalogo.produto", "catalogo.reserva_estoque", "catalogo.vendedor",
-			"identidade.administrador", "identidade.comprador",
+			"identidade.administrador", "identidade.comprador", "identidade.endereco",
 			"pagamento.confirmacao_recebida", "pagamento.tentativa_pagamento",
 			"pedido.contador_numero", "pedido.item_pedido", "pedido.pedido", "pedido.transicao_status",
 		}
@@ -147,8 +147,8 @@ func TestSchemaESemente(t *testing.T) {
 			  ON c.table_schema = k.table_schema AND c.table_name = k.table_name AND c.column_name = k.column_name
 			WHERE r.constraint_type = 'PRIMARY KEY' AND r.table_schema = ANY($1)
 			ORDER BY 1`, schemasDeModulo)
-		if len(tem) != 12 {
-			t.Fatalf("%d chaves primárias, quero 12: %v", len(tem), tem)
+		if len(tem) != 13 {
+			t.Fatalf("%d chaves primárias, quero 13: %v", len(tem), tem)
 		}
 		for _, pk := range tem {
 			// O contador do número por ano é a exceção declarada: não é

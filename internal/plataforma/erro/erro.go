@@ -112,6 +112,18 @@ func EscreverCampo(ctx context.Context, w http.ResponseWriter, campo, mensagem s
 	envelopar(ctx, w, http.StatusBadRequest, "CAMPO_INVALIDO", mensagem, map[string]string{"campo": campo})
 }
 
+// EscreverLimiteDeEnderecos é o 409 do teto por Comprador da 2.5. Não é
+// sentinela nova, e não passa pelo registro, pelo mesmo motivo de EscreverCampo
+// e EscreverBloqueio: a mensagem nomeia o limiar, e limiar vem da Config
+// (AD-13/NFR-16) — um sentinela fixo aqui teria de repetir o número.
+//
+// 409 e não 400: o corpo veio correto, o que não comporta é o estado da conta.
+// A saída é remover um Endereço, e a mensagem diz isso.
+func EscreverLimiteDeEnderecos(ctx context.Context, w http.ResponseWriter, maximo int) {
+	envelopar(ctx, w, http.StatusConflict, "LIMITE_DE_ENDERECOS",
+		fmt.Sprintf("Você já tem %d Endereços cadastrados. Remova um para cadastrar outro.", maximo), nil)
+}
+
 // EscreverBloqueio é o 429 do login bloqueado por tentativas. Não passa pelo
 // registro pelo mesmo motivo do EscreverCampo: a mensagem nomeia o limiar, e
 // limiar vem da Config (AD-13/NFR-16), nunca de um sentinela fixo daqui.

@@ -27,6 +27,9 @@ type Config struct {
 	SenhaMin         int
 	SenhaMax         int
 
+	EnderecoTextoMax        int
+	EnderecoPorCompradorMax int
+
 	BuscaTermoMax    int
 	PaginaTamanho    int
 	PaginaTamanhoMax int
@@ -84,6 +87,14 @@ func carregar(l *leitor) Config {
 		EmailMax:         l.inteiro("AZAMON_EMAIL_MAX", 254),
 		SenhaMin:         l.inteiro("AZAMON_SENHA_MIN", 8),
 		SenhaMax:         l.inteiro("AZAMON_SENHA_MAX", 128),
+
+		// Um teto só para todo campo de texto do Endereço: são oito campos da
+		// mesma natureza (etiqueta de entrega), e oito chaves de ambiente para
+		// isso seriam configuração que ninguém ajusta separadamente. O teto por
+		// Comprador existe para a lista do checkout (5.2) não virar rolagem
+		// infinita — e para o INSERT ter um limite que não seja o disco.
+		EnderecoTextoMax:        l.inteiro("AZAMON_ENDERECO_TEXTO_MAX", 120),
+		EnderecoPorCompradorMax: l.inteiro("AZAMON_ENDERECO_POR_COMPRADOR_MAX", 20),
 
 		BuscaTermoMax:    l.inteiro("AZAMON_BUSCA_TERMO_MAX", 100),
 		PaginaTamanho:    l.inteiro("AZAMON_PAGINA_TAMANHO", 20),

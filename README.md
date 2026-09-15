@@ -80,6 +80,35 @@ não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
 Os intervalos são do `.env` (`AZAMON_CONFIRMACAO_ATRASO`, `AZAMON_ENTREGA_INTERVALO`) e
 existem para caber numa apresentação.
 
+### Meus endereços
+
+Autenticado, o Comprador cadastra para onde a entrega vai em
+<http://localhost:3000/enderecos> — lista, cadastro, edição e remoção, com o vazio
+"Nenhum Endereço cadastrado." Ainda **não há link** para a tela na casca: o Menu da conta
+é da 2.6, e a URL se digita.
+
+| Rota | O que faz |
+|---|---|
+| `GET /api/v1/enderecos` | A lista do dono, em ordem de criação. É o "escolher" da FR-5 — não há Endereço padrão, e quem escolhe sobre a lista é o checkout da Épica 5. |
+| `POST /api/v1/enderecos` | Cadastra. **201** com o Endereço criado. |
+| `PUT /api/v1/enderecos/{id}` | Reescreve a etiqueta inteira. **200**. |
+| `DELETE /api/v1/enderecos/{id}` | Apaga de verdade. **204**, e nenhum Pedido muda — o Pedido congela o Endereço na criação (AD-3). |
+
+Três respostas que um cliente precisa tratar:
+
+- **400 `CAMPO_INVALIDO`**, com `dados.campo`, para campo em falta, CEP fora dos oito
+  dígitos, UF que não é uma das 27 siglas, ou campo acima de `AZAMON_ENDERECO_TEXTO_MAX`
+  (120 caracteres). Um campo por resposta — a tela põe o foco nele.
+- **409 `LIMITE_DE_ENDERECOS`** quando a conta já tem `AZAMON_ENDERECO_POR_COMPRADOR_MAX`
+  (**20**) Endereços. Não é um campo que está errado, é a conta que está cheia: a saída é
+  remover um, e a mensagem diz isso com o número configurado.
+- **404 `NAO_ENCONTRADO`** para Endereço de outro Comprador, e é o **mesmo** envelope, byte
+  a byte, de um `uuid` que nunca existiu — a posse entra na consulta, não numa checagem
+  depois (AD-11). Responder diferente contaria que aquele Endereço existe.
+
+O CEP é guardado em oito dígitos, sem hífen; a máscara é da tela, e a API aceita as duas
+formas na entrada.
+
 ### Entrar como Administrador
 
 Os dois papéis do FR-4 são **tabelas separadas**, e cada login consulta só a sua: a conta
@@ -102,7 +131,8 @@ UX-DR9). A exceção é a porta acima: `POST /api/v1/admin/sessoes` fica **fora*
 senão ninguém entraria, e por isso ela responde **401** a quem erra a credencial.
 
 Do outro lado, a Sessão de Administrador leva **401** nas rotas da loja que pedem Sessão
-de Comprador — `GET /api/v1/sessao`, `POST` e `GET /api/v1/pedidos`. As rotas que não
+de Comprador — `GET /api/v1/sessao`, `POST` e `GET /api/v1/pedidos`, e as quatro de
+`/api/v1/enderecos`. As rotas que não
 pedem Sessão nenhuma continuam servindo normalmente (`/api/v1/saude`,
 `/api/v1/produtos/{id}`, `/api/v1/media/{arquivo}`), e `DELETE /api/v1/sessao` encerra a
 Sessão de qualquer papel com o mesmo **204** — sair é idempotente, e não é lugar de

@@ -158,3 +158,15 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-4-autorizacao-por-dono-e-separacao-de-papeis.md`
   summary: RESOLVIDO — o POST cross-site que fixava Sessão não decodifica mais: toda rota que lê corpo JSON exige `Content-Type: application/json`.
   evidence: `api.decodificarCorpo` é o único ponto que decodifica corpo, e recusa com `ErrEntradaInvalida` o que não vem como `application/json` — um `<form>` só consegue emitir `text/plain`, `x-www-form-urlencoded` ou `multipart/form-data`, e `application/json` exigiria `fetch`, com o preflight do CORS na frente. Nenhum chamador legítimo mudou: o `web/` e o Provedor Simulado já mandavam o cabeçalho. `Secure` no cookie continua aberto, numa entrada própria.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-enderecos-do-comprador.md`
+  summary: A casca de cabecalho (header `bg-chrome` + wordmark + `Saudacao`) esta duplicada literalmente em seis paginas do `web/app`.
+  evidence: `cadastrar`, `entrar`, `esqueci-a-senha`, `pedidos/[id]`, `produtos/[id]` e agora `enderecos`. O padrao e anterior a esta estoria, que so acrescenta a sexta copia; o import `@/app/produtos/[id]/saudacao`, alcancando a pasta de outra rota, e o mesmo cheiro. Settlement: a 2.6 (Menu da conta) edita as seis de qualquer forma — extrair um componente de casca la custa menos que agora.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-enderecos-do-comprador.md`
+  summary: Nao ha estado de carregamento entre a montagem da tela e a primeira resposta do servidor.
+  evidence: Em `web/app/enderecos/meus-enderecos.tsx`, enquanto `enderecos` e `null` a tela mostra so o `h1` — sem lista, sem vazio, sem esqueleto. O comentario explica corretamente por que "Nenhum Endereco cadastrado." nao pode aparecer ainda, mas nao diz o que aparece. `acompanhamento.tsx` tem o mesmo buraco, entao e padrao do repo: consertar so aqui deixaria as duas telas diferentes. O `Skeleton` do shadcn ja esta em `web/components/ui`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-enderecos-do-comprador.md`
+  summary: O CEP e guardado em oito digitos sem faixa conhecida, e a Faixa de Frete da 5.3 vai compara-lo por intervalo de texto.
+  evidence: A coluna tem `CHECK (cep ~ '^[0-9]{8}$')` e nada mais: nao existe tabela de faixas nem validacao de CEP existente (NFR-15 proibe consulta a servico pela rede). Um CEP sintaticamente valido mas inexistente entra hoje e cai na regiao padrao da FR-21 quando a 5.3 chegar, que e o comportamento declarado — registrado para que a 5.3 confirme, e nao redescubra, que a validacao e so de forma.

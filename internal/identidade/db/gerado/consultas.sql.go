@@ -11,6 +11,73 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const atualizarEndereco = `-- name: AtualizarEndereco :one
+UPDATE identidade.endereco
+SET destinatario = $1,
+    cep = $2,
+    logradouro = $3,
+    numero = $4,
+    complemento = $5,
+    bairro = $6,
+    cidade = $7,
+    uf = $8
+WHERE id = $9 AND comprador_id = $10
+RETURNING id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
+`
+
+type AtualizarEnderecoParams struct {
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+	ID           pgtype.UUID
+	CompradorID  pgtype.UUID
+}
+
+type AtualizarEnderecoRow struct {
+	ID           pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+}
+
+func (q *Queries) AtualizarEndereco(ctx context.Context, arg AtualizarEnderecoParams) (AtualizarEnderecoRow, error) {
+	row := q.db.QueryRow(ctx, atualizarEndereco,
+		arg.Destinatario,
+		arg.Cep,
+		arg.Logradouro,
+		arg.Numero,
+		arg.Complemento,
+		arg.Bairro,
+		arg.Cidade,
+		arg.Uf,
+		arg.ID,
+		arg.CompradorID,
+	)
+	var i AtualizarEnderecoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Destinatario,
+		&i.Cep,
+		&i.Logradouro,
+		&i.Numero,
+		&i.Complemento,
+		&i.Bairro,
+		&i.Cidade,
+		&i.Uf,
+	)
+	return i, err
+}
+
 const atualizarSenhaDoComprador = `-- name: AtualizarSenhaDoComprador :one
 UPDATE identidade.comprador
 SET senha_hash = $2
@@ -106,4 +173,149 @@ func (q *Queries) CriarComprador(ctx context.Context, arg CriarCompradorParams) 
 	var i CriarCompradorRow
 	err := row.Scan(&i.ID, &i.Nome)
 	return i, err
+}
+
+const criarEndereco = `-- name: CriarEndereco :one
+INSERT INTO identidade.endereco
+    (comprador_id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf)
+SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
+WHERE (SELECT count(*) FROM identidade.endereco WHERE comprador_id = $1) < $10::bigint
+RETURNING id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
+`
+
+type CriarEnderecoParams struct {
+	CompradorID  pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+	Maximo       int64
+}
+
+type CriarEnderecoRow struct {
+	ID           pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+}
+
+// O teto por Comprador entra no PRÓPRIO INSERT, e não num SELECT count antes:
+// assim é uma ida ao banco só, e zero linhas devolvidas significa "o teto foi
+// alcançado" — o mesmo idioma do compare-and-swap do Pedido.
+// O CEP chega com os oito dígitos e a UF em maiúsculas: quem normaliza é
+// identidade.CriarEndereco, e as colunas têm os CHECKs.
+func (q *Queries) CriarEndereco(ctx context.Context, arg CriarEnderecoParams) (CriarEnderecoRow, error) {
+	row := q.db.QueryRow(ctx, criarEndereco,
+		arg.CompradorID,
+		arg.Destinatario,
+		arg.Cep,
+		arg.Logradouro,
+		arg.Numero,
+		arg.Complemento,
+		arg.Bairro,
+		arg.Cidade,
+		arg.Uf,
+		arg.Maximo,
+	)
+	var i CriarEnderecoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Destinatario,
+		&i.Cep,
+		&i.Logradouro,
+		&i.Numero,
+		&i.Complemento,
+		&i.Bairro,
+		&i.Cidade,
+		&i.Uf,
+	)
+	return i, err
+}
+
+const listarEnderecos = `-- name: ListarEnderecos :many
+SELECT id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
+FROM identidade.endereco
+WHERE comprador_id = $1
+ORDER BY id
+`
+
+type ListarEnderecosRow struct {
+	ID           pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+}
+
+// As quatro do Endereço (2.5). As três que tocam uma linha específica trazem
+// `AND comprador_id = @comprador_id` DENTRO da cláusula, e não numa checagem
+// depois (AD-11): Endereço de outro dono e Endereço inexistente saem os dois
+// como "nenhuma linha", que é o mesmo 404 — não vaza existência.
+//
+// A ordem é por `id`, e o id é uuidv7: monotônico no tempo, então ordenar por
+// ele é ordenar por criação sem carregar uma coluna de instante que nenhuma
+// tela exibe.
+func (q *Queries) ListarEnderecos(ctx context.Context, compradorID pgtype.UUID) ([]ListarEnderecosRow, error) {
+	rows, err := q.db.Query(ctx, listarEnderecos, compradorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarEnderecosRow
+	for rows.Next() {
+		var i ListarEnderecosRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Destinatario,
+			&i.Cep,
+			&i.Logradouro,
+			&i.Numero,
+			&i.Complemento,
+			&i.Bairro,
+			&i.Cidade,
+			&i.Uf,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removerEndereco = `-- name: RemoverEndereco :execrows
+DELETE FROM identidade.endereco
+WHERE id = $1 AND comprador_id = $2
+`
+
+type RemoverEnderecoParams struct {
+	ID          pgtype.UUID
+	CompradorID pgtype.UUID
+}
+
+// :execrows, e não :exec: zero linhas é a resposta de "não é seu ou não
+// existe", e o :exec a engoliria em silêncio devolvendo 204 para o DELETE de
+// Endereço alheio.
+// Nenhum Pedido é tocado — o Pedido congela o Endereço na criação (AD-3).
+func (q *Queries) RemoverEndereco(ctx context.Context, arg RemoverEnderecoParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removerEndereco, arg.ID, arg.CompradorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

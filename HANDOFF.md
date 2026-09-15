@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-13 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). O próximo passo é a Épica 2.
+**Atualizado:** 2026-09-15 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **Da Épica 2 falta só a 2.6:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis e Endereços do Comprador estão em `main`.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,9 +59,15 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 2.1** — cadastro de Comprador, primeira da **Épica 2** (conta, identidade e
-Endereços). É o passo 1 do addendum §8: tudo depois daqui depende de saber quem está do outro lado, e hoje
-os dois Compradores que existem vêm da semente.
+`bmad-build` na **Estória 2.6** — Menu da conta e o retorno ao ponto de partida, última da **Épica 2**.
+É ela que dá porta às três superfícies de conta: hoje `/enderecos` só se alcança digitando a URL, e a
+2.5 deixou isso escrito de propósito, porque o menu é dela.
+
+Da Épica 2 estão em `main` a 2.1 (cadastro que já abre a Sessão), a 2.2 (bloqueio por tentativas,
+encerramento no servidor e o retorno ao destino), a 2.3 (redefinição por token de uso único), a 2.4
+(papel na Sessão, guarda no prefixo `/api/v1/admin/` e a negação por dono provada por igualdade) e a
+2.5 (`identidade.endereco`, as quatro rotas de `/api/v1/enderecos` e a tela "Meus endereços").
+
 A 1.9 fechou a Épica 1 sem acrescentar uma linha de código: o clone limpo a frio chega ao primeiro Produto
 em **3 min 26 s**, o esqueleto inteiro anda dentro de uma rede sem saída, o portão do AD-12 foi exercitado
 derrubando um `npm run build` de verdade, e as cinco verificações do passo 0 estão fechadas com desfecho
@@ -129,7 +135,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épica 1 fechada e provada de clone limpo. Próximo passo: Estória 2.1 — cadastro de Comprador.
+Épica 1 fechada; da Épica 2 faltam só o Menu da conta e o retorno ao ponto de partida. Próximo passo: Estória 2.6.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*

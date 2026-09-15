@@ -20,13 +20,21 @@ import (
 // estende `negacaoPorDono` para Endereço, e as Épicas 4 e 6 para Carrinho e
 // Pedido, em vez de reescrever a igualdade.
 
-// negacaoPorDono é o AD-11 provado por IGUALDADE, e não por status: o Pedido de
+// uuidNuncaUsado é um uuid v7 bem-formado que não nomeia linha nenhuma: é o
+// lado "inexistente" de toda igualdade desta prova.
+const uuidNuncaUsado = "00000000-0000-7000-8000-000000000000"
+
+// negacaoPorDono é o AD-11 provado por IGUALDADE, e não por status: o recurso de
 // outro dono e o uuid que nunca existiu produzem a mesma resposta, byte a byte,
 // menos a correlação. Conferir só o 404 deixaria passar um envelope com
-// mensagem própria — e uma mensagem própria já conta que aquele Pedido existe.
+// mensagem própria — e uma mensagem própria já conta que aquele recurso existe.
 //
 // O segundo Comprador sai do cadastro, e não da semente: a semente tem uma
 // conta só, e o que se prova aqui é a Sessão do outro dono batendo na rota.
+//
+// A 2.5 estende a prova para o segundo recurso com dono — o Endereço, por PUT e
+// por DELETE — sem reescrever a forma: o que mudou foi a tabela de recursos, e
+// a Épica 4 acrescenta Carrinho na mesma linha.
 func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, pedidoID string) {
 	if cookieDono == nil || pedidoID == "" {
 		t.Fatal("sem Pedido ou sem Sessão: a pré-condição sai dos subtestes acima, e pular esconderia a prova da 2.4 do relatório")
@@ -37,26 +45,52 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 	if resp := pegarPedido(t, rotas, pedidoID, cookieDono); resp.Code != http.StatusOK {
 		t.Fatalf("o dono = %d (%s), quero 200", resp.Code, resp.Body.String())
 	}
+	// E o Endereço do dono, criado aqui: sem uma linha de A não há "alheio"
+	// para B tentar, e o subteste passaria provando só o inexistente.
+	enderecoDoDono := idDe(t, postarEndereco(t, rotas, corpoEnderecoValido, cookieDono), http.StatusCreated)
 
 	outro := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Helena Prado","email":"helena@exemplo.br","senha":"senha-da-helena-1"}`), http.StatusCreated)
 
-	alheio := pegarPedido(t, rotas, pedidoID, outro)
-	inexistente := pegarPedido(t, rotas, "00000000-0000-7000-8000-000000000000", outro)
+	for _, recurso := range []struct {
+		nome string
+		id   string
+		bate func(*testing.T, http.Handler, string, *http.Cookie) *httptest.ResponseRecorder
+	}{
+		{"Pedido por GET", pedidoID, pegarPedido},
+		{"Endereço por PUT", enderecoDoDono, putEnderecoValido},
+		// O DELETE por último: se ele apagasse, o PUT acima já teria rodado.
+		{"Endereço por DELETE", enderecoDoDono, deletarEndereco},
+	} {
+		alheio := recurso.bate(t, rotas, recurso.id, outro)
+		inexistente := recurso.bate(t, rotas, uuidNuncaUsado, outro)
 
-	if alheio.Code != http.StatusNotFound {
-		t.Fatalf("Pedido alheio = %d (%s), quero 404", alheio.Code, alheio.Body.String())
+		if alheio.Code != http.StatusNotFound {
+			t.Fatalf("%s alheio = %d (%s), quero 404", recurso.nome, alheio.Code, alheio.Body.String())
+		}
+		if codigo := decodificar(t, alheio)["codigo"]; codigo != "NAO_ENCONTRADO" {
+			t.Errorf("%s alheio: codigo = %v, quero NAO_ENCONTRADO", recurso.nome, codigo)
+		}
+		if corpoSemCorrelacao(alheio) != corpoSemCorrelacao(inexistente) {
+			t.Errorf("o %s alheio se distingue do inexistente:\n%s\n%s",
+				recurso.nome, corpoSemCorrelacao(alheio), corpoSemCorrelacao(inexistente))
+		}
+		if cabecalhosComparaveis(alheio) != cabecalhosComparaveis(inexistente) {
+			t.Errorf("%s: os cabeçalhos distinguem os dois:\n%s\n%s",
+				recurso.nome, cabecalhosComparaveis(alheio), cabecalhosComparaveis(inexistente))
+		}
 	}
-	if codigo := decodificar(t, alheio)["codigo"]; codigo != "NAO_ENCONTRADO" {
-		t.Errorf("Pedido alheio: codigo = %v, quero NAO_ENCONTRADO", codigo)
+
+	// O 404 não pode ser só a resposta: o Endereço de A continua lá, inteiro,
+	// depois do PUT e do DELETE de B. Um handler que negasse a resposta e
+	// escrevesse assim mesmo passaria por toda a igualdade acima.
+	lista := pegarEnderecos(t, rotas, cookieDono)
+	if lista.Code != http.StatusOK {
+		t.Fatalf("listar os Endereços do dono = %d (%s), quero 200", lista.Code, lista.Body.String())
 	}
-	if corpoSemCorrelacao(alheio) != corpoSemCorrelacao(inexistente) {
-		t.Errorf("o Pedido alheio se distingue do inexistente:\n%s\n%s",
-			corpoSemCorrelacao(alheio), corpoSemCorrelacao(inexistente))
-	}
-	if cabecalhosComparaveis(alheio) != cabecalhosComparaveis(inexistente) {
-		t.Errorf("os cabeçalhos distinguem os dois:\n%s\n%s",
-			cabecalhosComparaveis(alheio), cabecalhosComparaveis(inexistente))
+	if !strings.Contains(lista.Body.String(), enderecoDoDono) {
+		t.Errorf("o Endereço %s do dono não sobreviveu ao PUT e ao DELETE de outro Comprador: %s",
+			enderecoDoDono, lista.Body.String())
 	}
 }
 

@@ -51,6 +51,13 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// é a tela do Pedido em processamento, consultada a cada 3 s.
 	mux.HandleFunc("POST /api/v1/pedidos", s.criarPedido)
 	mux.HandleFunc("GET /api/v1/pedidos/{id}", s.lerPedido)
+	// Os Endereços do Comprador (FR-5), no mux raiz: são da loja, e o dono é
+	// quem a Sessão diz. "Escolher" é a listagem — não há Endereço padrão, e a
+	// seleção do checkout é da 5.2.
+	mux.HandleFunc("GET /api/v1/enderecos", s.listarEnderecos)
+	mux.HandleFunc("POST /api/v1/enderecos", s.criarEndereco)
+	mux.HandleFunc("PUT /api/v1/enderecos/{id}", s.atualizarEndereco)
+	mux.HandleFunc("DELETE /api/v1/enderecos/{id}", s.removerEndereco)
 	// O webhook não é autenticado por Sessão: quem chama é o Provedor, e o que
 	// o autentica é o segredo compartilhado no cabeçalho. A chave de
 	// idempotência não autentica ninguém — ela é derivada do identificador do

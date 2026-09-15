@@ -153,6 +153,9 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		EmailMax:         emailMaxDeTeste,
 		SenhaMin:         senhaMinDeTeste,
 		SenhaMax:         senhaMaxDeTeste,
+
+		EnderecoTextoMax:        enderecoTextoMaxDeTeste,
+		EnderecoPorCompradorMax: enderecoPorCompradorMaxDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -423,6 +426,17 @@ func TestSessaoEProduto(t *testing.T) {
 	})
 	t.Run("corpo sem Content-Type de JSON sai em 400", func(t *testing.T) {
 		corpoSemContentTypeDa400(t, rotas)
+	})
+
+	// A 2.5 no fim, com contas próprias: o teto por Comprador sai da conta
+	// cheia, e nenhum subteste acima conta com a lista de Endereços de ninguém.
+	// O Pedido que a remoção não pode tocar nasce aqui — depois da simulação de
+	// entrega, que é quem conta com o `estoque_total` intacto.
+	t.Run("os Endereços do Comprador: lista, cadastro, edição e remoção", func(t *testing.T) {
+		enderecosDoComprador(t, rotas, pool)
+	})
+	t.Run("as rotas de Endereço exigem Sessão de Comprador", func(t *testing.T) {
+		enderecoExigeSessaoDeComprador(t, rotas)
 	})
 }
 

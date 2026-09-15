@@ -21,3 +21,16 @@ type IdentidadeComprador struct {
 	Email     string
 	SenhaHash string
 }
+
+type IdentidadeEndereco struct {
+	ID           pgtype.UUID
+	CompradorID  pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+}
