@@ -49,6 +49,17 @@ const expiracaoDeTeste = 7 * 24 * time.Hour
 // autentica o webhook do Provedor, e sem ele a rota responde 401.
 const segredoDeTeste = "segredo-de-teste"
 
+// Os limites de campo do cadastro, nos mesmos valores dos padrões de
+// internal/plataforma/config.go. Ficam escritos aqui porque o que os subtestes
+// conferem é que o limiar configurado chega inteiro à mensagem de erro — um
+// Config zerado deixaria toda senha acima do teto.
+const (
+	nomeMaxDeTeste  = 120
+	emailMaxDeTeste = 254
+	senhaMinDeTeste = 8
+	senhaMaxDeTeste = 128
+)
+
 func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
@@ -106,7 +117,14 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 	// O pool sai junto porque as linhas da matriz do Pedido são sobre o que
 	// ficou no banco — histórico da transição, Item congelado e Reserva ATIVA
 	// não aparecem em resposta nenhuma.
-	cfg := plataforma.Config{SessaoExpiracao: expiracaoDeTeste, WebhookSegredo: segredoDeTeste}
+	cfg := plataforma.Config{
+		SessaoExpiracao:  expiracaoDeTeste,
+		WebhookSegredo:   segredoDeTeste,
+		CompradorNomeMax: nomeMaxDeTeste,
+		EmailMax:         emailMaxDeTeste,
+		SenhaMin:         senhaMinDeTeste,
+		SenhaMax:         senhaMaxDeTeste,
+	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
 
@@ -261,6 +279,18 @@ func TestSessaoEProduto(t *testing.T) {
 				t.Errorf("cookie %v: codigo = %v", cookie, codigo)
 			}
 		}
+	})
+
+	// A 2.1. A ordem importa entre os dois primeiros: a duplicidade por
+	// normalização precisa da conta que o caminho feliz acabou de criar.
+	t.Run("o cadastro grava o Comprador e já abre a Sessão", func(t *testing.T) {
+		cadastroValidoAbreSessao(t, rotas, pool)
+	})
+	t.Run("e-mail já cadastrado sai em 409 nomeando o campo", func(t *testing.T) {
+		cadastroDuplicadoDa409(t, rotas, pool)
+	})
+	t.Run("campo fora dos limites da Config sai em 400 nomeando o campo", func(t *testing.T) {
+		cadastroComCampoInvalido(t, rotas, pool)
 	})
 
 	t.Run("detalhe do Produto semeado", func(t *testing.T) { produtoSemeadoSai(t, rotas) })

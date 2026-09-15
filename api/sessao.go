@@ -24,9 +24,7 @@ type saidaSessao struct {
 	Nome string `json:"nome"`
 }
 
-// criarSessao autentica e emite o cookie opaco. O cookie é `HttpOnly` para
-// que script nenhum o leia, e `SameSite=Lax` porque a casca do Next e o Go
-// vivem na mesma origem — quem atravessa é o rewrites(), não o navegador.
+// criarSessao autentica e emite o cookie opaco.
 func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
@@ -41,12 +39,26 @@ func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
+	if !s.abrirSessao(w, r, comprador) {
+		return
+	}
+	escreverJSON(w, http.StatusOK, saidaSessao{Nome: comprador.Nome})
+}
+
+// abrirSessao grava a Sessão no Redis e emite o cookie opaco. O cookie é
+// `HttpOnly` para que script nenhum o leia, e `SameSite=Lax` porque a casca do
+// Next e o Go vivem na mesma origem — quem atravessa é o rewrites(), não o
+// navegador. Login e cadastro passam os dois por aqui: duplicar o SetCookie
+// perderia um atributo num dos dois lados na primeira mudança.
+//
+// Devolve false depois de já ter escrito o envelope de erro — quem chama só
+// precisa voltar.
+func (s *servidor) abrirSessao(w http.ResponseWriter, r *http.Request, comprador identidade.Comprador) bool {
 	token, err := identidade.CriarSessao(r.Context(), s.rdb, comprador, s.cfg.SessaoExpiracao)
 	if err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
-		return
+		return false
 	}
-
 	http.SetCookie(w, &http.Cookie{
 		Name:     identidade.NomeCookieSessao,
 		Value:    token,
@@ -55,7 +67,7 @@ func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-	escreverJSON(w, http.StatusOK, saidaSessao{Nome: comprador.Nome})
+	return true
 }
 
 // semCache: as respostas por Comprador não podem ser guardadas. Sem a

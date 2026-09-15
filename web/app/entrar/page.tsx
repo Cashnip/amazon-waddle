@@ -110,6 +110,15 @@ export default function Entrar() {
                 {enviando ? "Entrando…" : "Entrar"}
               </Button>
             </form>
+
+            {/* Sem o menu da conta (2.6), este link é a única porta para a
+                tela de cadastro. */}
+            <p className="text-muted-foreground mt-4 text-sm">
+              Ainda não tem conta?{" "}
+              <a className="text-link underline" href="/cadastrar">
+                Criar conta
+              </a>
+            </p>
           </CardContent>
         </Card>
       </main>

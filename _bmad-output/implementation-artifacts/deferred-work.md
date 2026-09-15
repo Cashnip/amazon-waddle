@@ -86,3 +86,28 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-9-clone-limpo-rede-desconectada-readme-de-15-minutos.md`
   summary: O único link de Produto da casca leva ao Fone de R$ 249,90, cujos centavos caem na faixa que o Provedor Simulado recusa — e recusar ainda não existe, então quem segue o caminho óbvio vê o Pedido parado em `AGUARDANDO_PAGAMENTO` para sempre, sem nada na tela que explique.
   evidence: Reproduzido na pilha em execução durante o ensaio da 1.9: 45 s depois da compra o Pedido do Fone segue em `AGUARDANDO_PAGAMENTO`, enquanto um Produto de centavos `,00` chega a `ENTREGUE` em 1 min 41 s. A 1.9 fechou por documentação — o README manda trocar o identificador na URL —, porque acrescentar comportamento era proibido nela. Fecha de verdade quando a 5.11 trouxer a expiração da Tentativa (o Pedido passaria a `PAGAMENTO_RECUSADO` com `TEMPO_ESGOTADO` em vez de ficar parado) ou quando a Épica 3 entregar a busca e remover os dois links temporários da casca. Quem chegar primeiro resolve.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: O contrato `dados.campo`, de que depende todo erro em linha do Cadastro, não tem verificação nenhuma do lado do navegador.
+  evidence: `npm test` roda só `web/scripts/casca.test.mjs` (rewrite e guarda offline); renomear a chave em qualquer das duas pontas deixa `go test ./...` verde e apaga silenciosamente a mensagem por campo, o foco e o link para o Login. Fecha quando `web/` ganhar uma superfície de teste de componente — a mesma lacuna registrada na 1.8 para a tela de acompanhamento.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: `POST /api/v1/compradores` não tem limite por origem e roda 19 MiB de Argon2id por chamada não autenticada.
+  evidence: É a única rota pública que paga o custo do hash incondicionalmente; a 2.2 traz bloqueio para tentativa de login, não para criação de conta. Fecha quando o mecanismo de bloqueio da 2.2 existir e puder envolver esta rota também.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: Nenhuma guarda contra POST cross-site nas rotas que emitem Sessão — um cadastro forjado fixa a Sessão do atacante na vítima.
+  evidence: Um formulário cross-site com `enctype=text/plain` forja um corpo que a decodificação JSON aceita, e o `SameSite=Lax` não impede o navegador de guardar o cookie que volta. `POST /api/v1/sessoes` tem o mesmo furo desde a 1.5, então o padrão é anterior a esta estória. Settlement: conferir `Sec-Fetch-Site` ou exigir o `Content-Type` nas rotas que escrevem, junto com a autorização da 2.4.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: O e-mail é único por tabela, então um Comprador pode se cadastrar com o e-mail de um Administrador.
+  evidence: `identidade.comprador` e `identidade.administrador` têm `UNIQUE` independentes, por decisão de AD (duas tabelas, sem coluna de papel). Hoje o login só consulta `comprador`, mas a recuperação de senha da 2.3 fica ambígua. Fecha na 2.4, que é dona da separação de papéis.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: O cookie de Sessão não tem `Secure`, agora num único `http.SetCookie` compartilhado por login e cadastro.
+  evidence: Anterior a esta estória — a 1.5 emitiu o primeiro cookie sem o atributo. A demonstração roda em http e `Secure` a quebraria, então o conserto é um interruptor na Config, não a constante. A extração de `abrirSessao` deixou o lugar pronto para recebê-lo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-cadastro-de-comprador.md`
+  summary: A varredura de teclado de 360 a 1440 px na tela `/cadastrar` não foi percorrida em navegador.
+  evidence: A extensão do Chrome não estava conectada na sessão que implementou a estória. A metade estrutural do AC está conferida na fonte (rótulo associado, `aria-describedby`, foco no campo recusado) e o contêiner é o mesmo de `/entrar`, que passou na 1.5; falta a metade visual — foco visível a 3:1 e ausência de rolagem horizontal. Settlement: uma passagem manual, ou a mesma superfície de teste que fecharia a primeira entrada desta estória.
+

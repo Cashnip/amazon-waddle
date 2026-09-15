@@ -48,6 +48,55 @@ func TestVerificarRecusaPHCMalformado(t *testing.T) {
 	}
 }
 
+// O ciclo fechado: o hash que Gerar escreve tem de autenticar pelo mesmo
+// Verificar que lê a semente. Se os parâmetros divergirem, a conta recém-criada
+// não entra — e o cadastro fica verde do lado que grava e quebrado no login.
+func TestGerarProduzHashQueVerificarAceita(t *testing.T) {
+	const senha = "senha-de-cadastro-1"
+
+	phc, err := Gerar(senha)
+	if err != nil {
+		t.Fatalf("Gerar: %v", err)
+	}
+	// O prefixo é o do AD-9, o mesmo que media/gerar.go escreveu na semente.
+	if !strings.HasPrefix(phc, "$argon2id$v=19$m=19456,t=2,p=1$") {
+		t.Errorf("PHC = %q; quero os parâmetros do AD-9", phc)
+	}
+	if err := Verificar(phc, senha); err != nil {
+		t.Errorf("a senha recém-gerada não autentica: %v", err)
+	}
+	if err := Verificar(phc, senha+"x"); !errors.Is(err, ErrCredencialInvalida) {
+		t.Errorf("Verificar com senha errada = %v, quero ErrCredencialInvalida", err)
+	}
+
+	// Sal aleatório por chamada: dois hashes iguais para a mesma senha fariam
+	// o banco vazado denunciar quem repetiu a senha de quem.
+	outro, err := Gerar(senha)
+	if err != nil {
+		t.Fatalf("Gerar de novo: %v", err)
+	}
+	if outro == phc {
+		t.Error("dois Gerar da mesma senha coincidiram; o sal não é aleatório")
+	}
+
+	// Os tamanhos do AD-9. Um sal curto demais passaria por todos os testes
+	// acima — o ciclo fecha com qualquer tamanho — e só enfraqueceria o hash.
+	partes := strings.Split(phc, "$")
+	// Sem esta guarda, a regressão de formato que este teste existe para pegar
+	// vira pânico de índice nas duas linhas abaixo, em vez de falha nomeada.
+	if len(partes) != 6 {
+		t.Fatalf("PHC = %q; quero as seis partes do formato", phc)
+	}
+	sal, err := base64.RawStdEncoding.DecodeString(partes[4])
+	if err != nil || len(sal) != 16 {
+		t.Errorf("sal = %d bytes, %v; quero 16", len(sal), err)
+	}
+	hash, err := base64.RawStdEncoding.DecodeString(partes[5])
+	if err != nil || len(hash) != 32 {
+		t.Errorf("hash = %d bytes, %v; quero 32", len(hash), err)
+	}
+}
+
 // O hash de descarte existe para igualar o tempo do caminho "conta
 // inexistente" ao do caminho "senha errada". Se ele deixar de ser um PHC
 // válido, Autenticar volta a sair barato e o tempo denuncia quais contas

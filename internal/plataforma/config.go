@@ -22,6 +22,11 @@ type Config struct {
 	SessaoExpiracao     time.Duration
 	SenhaTokenValidade  time.Duration
 
+	CompradorNomeMax int
+	EmailMax         int
+	SenhaMin         int
+	SenhaMax         int
+
 	BuscaTermoMax    int
 	PaginaTamanho    int
 	PaginaTamanhoMax int
@@ -72,6 +77,14 @@ func carregar(l *leitor) Config {
 		SessaoExpiracao:     l.duracao("AZAMON_SESSAO_EXPIRACAO", 168*time.Hour),
 		SenhaTokenValidade:  l.duracao("AZAMON_SENHA_TOKEN_VALIDADE", 30*time.Minute),
 
+		// Limites de campo do cadastro (NFR-14/NFR-16). O 254 do e-mail é o
+		// comprimento máximo de um endereço na RFC 5321; os outros três são
+		// escolha do produto, e por isso moram aqui e não num literal em api/.
+		CompradorNomeMax: l.inteiro("AZAMON_COMPRADOR_NOME_MAX", 120),
+		EmailMax:         l.inteiro("AZAMON_EMAIL_MAX", 254),
+		SenhaMin:         l.inteiro("AZAMON_SENHA_MIN", 8),
+		SenhaMax:         l.inteiro("AZAMON_SENHA_MAX", 128),
+
 		BuscaTermoMax:    l.inteiro("AZAMON_BUSCA_TERMO_MAX", 100),
 		PaginaTamanho:    l.inteiro("AZAMON_PAGINA_TAMANHO", 20),
 		PaginaTamanhoMax: l.inteiro("AZAMON_PAGINA_TAMANHO_MAX", 60),
@@ -105,6 +118,9 @@ func carregar(l *leitor) Config {
 	// confiança como qualquer entrada.
 	if c.PaginaTamanho > c.PaginaTamanhoMax {
 		l.erros = append(l.erros, "AZAMON_PAGINA_TAMANHO não pode passar de AZAMON_PAGINA_TAMANHO_MAX")
+	}
+	if c.SenhaMin > c.SenhaMax {
+		l.erros = append(l.erros, "AZAMON_SENHA_MIN não pode passar de AZAMON_SENHA_MAX")
 	}
 	if c.ProvedorAprovadoAteCentavos >= c.ProvedorRecusadoAteCentavos {
 		l.erros = append(l.erros, "AZAMON_PROVEDOR_APROVADO_ATE_CENTAVOS tem de vir antes de AZAMON_PROVEDOR_RECUSADO_ATE_CENTAVOS")

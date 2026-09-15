@@ -33,6 +33,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// a Sessão corrente — é o que o menu da conta da Épica 2 reaproveita.
 	mux.HandleFunc("POST /api/v1/sessoes", s.criarSessao)
 	mux.HandleFunc("GET /api/v1/sessao", s.lerSessao)
+	// O Comprador é o recurso criado, e por isso o plural — o mesmo padrão de
+	// `sessoes`. Cadastrar já abre a Sessão: o visitante sai autenticado.
+	mux.HandleFunc("POST /api/v1/compradores", s.criarComprador)
 	// Só o detalhe: a listagem (GET /api/v1/produtos) é de `busca`, na Épica 3.
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
 	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura

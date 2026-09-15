@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Cashnip/amazon-waddle/internal/identidade/db/gerado"
@@ -25,6 +26,11 @@ var ErrCredencialInvalida = errors.New("E-mail ou senha inválidos.")
 // ErrSessaoInvalida cobre cookie ausente, adulterado ou fora do Redis — para
 // quem chama, expirada e inexistente são a mesma coisa.
 var ErrSessaoInvalida = errors.New("Sessão expirada. Entre de novo.")
+
+// ErrEmailJaCadastrado é o único caso em que o sistema confirma que uma conta
+// existe. É deliberado: sem isto o visitante não tem como saber por que o
+// cadastro não vai, e a tela oferece o Login em seguida.
+var ErrEmailJaCadastrado = errors.New("Já existe uma conta com este e-mail.")
 
 // hashDeDescarte existe para que o caminho "e-mail inexistente" gaste o mesmo
 // Argon2id do caminho "senha errada": sem isto o tempo de resposta denuncia
@@ -54,6 +60,34 @@ func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Compr
 		return Comprador{}, err
 	}
 	if err := Verificar(linha.SenhaHash, senha); err != nil {
+		return Comprador{}, err
+	}
+	return Comprador{ID: uuidTexto(linha.ID), Nome: linha.Nome}, nil
+}
+
+// Cadastrar cria o Comprador e devolve o mesmo Comprador de Autenticar — quem
+// chama abre a Sessão em seguida sem passar de novo pelo login.
+//
+// O e-mail é normalizado aqui, e não por disciplina de quem chama: a coluna
+// tem `CHECK (email = lower(email))` e o UNIQUE só vale sobre a forma
+// normalizada. A duplicidade é decidida pelo próprio UNIQUE (SQLSTATE 23505),
+// nunca por um SELECT antes do INSERT — dois cadastros simultâneos do mesmo
+// e-mail passariam pelo teste-e-depois-grava.
+func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (Comprador, error) {
+	hash, err := Gerar(senha)
+	if err != nil {
+		return Comprador{}, err
+	}
+	linha, err := gerado.New(bd).CriarComprador(ctx, gerado.CriarCompradorParams{
+		Nome:      nome,
+		Email:     strings.ToLower(strings.TrimSpace(email)),
+		SenhaHash: hash,
+	})
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return Comprador{}, ErrEmailJaCadastrado
+	}
+	if err != nil {
 		return Comprador{}, err
 	}
 	return Comprador{ID: uuidTexto(linha.ID), Nome: linha.Nome}, nil

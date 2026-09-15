@@ -6,3 +6,11 @@
 SELECT id, nome, email, senha_hash
 FROM identidade.comprador
 WHERE email = $1;
+
+-- O e-mail chega já normalizado: quem grava é identidade.Cadastrar, e a coluna
+-- tem CHECK (email = lower(email)). A duplicidade sai da violação do UNIQUE —
+-- um SELECT antes do INSERT deixaria dois cadastros simultâneos passarem.
+-- name: CriarComprador :one
+INSERT INTO identidade.comprador (nome, email, senha_hash)
+VALUES ($1, $2, $3)
+RETURNING id, nome;

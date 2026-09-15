@@ -7,6 +7,8 @@ package gerado
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const buscarCompradorPorEmail = `-- name: BuscarCompradorPorEmail :one
@@ -28,5 +30,32 @@ func (q *Queries) BuscarCompradorPorEmail(ctx context.Context, email string) (Id
 		&i.Email,
 		&i.SenhaHash,
 	)
+	return i, err
+}
+
+const criarComprador = `-- name: CriarComprador :one
+INSERT INTO identidade.comprador (nome, email, senha_hash)
+VALUES ($1, $2, $3)
+RETURNING id, nome
+`
+
+type CriarCompradorParams struct {
+	Nome      string
+	Email     string
+	SenhaHash string
+}
+
+type CriarCompradorRow struct {
+	ID   pgtype.UUID
+	Nome string
+}
+
+// O e-mail chega já normalizado: quem grava é identidade.Cadastrar, e a coluna
+// tem CHECK (email = lower(email)). A duplicidade sai da violação do UNIQUE —
+// um SELECT antes do INSERT deixaria dois cadastros simultâneos passarem.
+func (q *Queries) CriarComprador(ctx context.Context, arg CriarCompradorParams) (CriarCompradorRow, error) {
+	row := q.db.QueryRow(ctx, criarComprador, arg.Nome, arg.Email, arg.SenhaHash)
+	var i CriarCompradorRow
+	err := row.Scan(&i.ID, &i.Nome)
 	return i, err
 }

@@ -39,6 +39,21 @@ func TestConfigInvalidaFalha(t *testing.T) {
 	}
 }
 
+// Faixa cruzada: cada limiar passa sozinho pelo leitor.inteiro — os dois são
+// positivos —, e o que não fecha é a relação entre eles. Sem esta checagem o
+// par invertido sobe calado e o cadastro recusa toda senha, primeiro por curta
+// demais e depois por longa demais.
+func TestConfigComSenhaMinAcimaDaMaxFalha(t *testing.T) {
+	t.Setenv("AZAMON_POSTGRES_DSN", "postgres://azamon@postgres:5432/azamon")
+	t.Setenv("AZAMON_REDIS_URL", "redis://redis:6379/0")
+	t.Setenv("AZAMON_WEBHOOK_SEGREDO", "segredo-de-teste")
+	t.Setenv("AZAMON_SENHA_MIN", "200")
+
+	if _, err := CarregarConfig(); err == nil {
+		t.Fatal("AZAMON_SENHA_MIN acima de AZAMON_SENHA_MAX devia falhar")
+	}
+}
+
 // Sem DSN não há como migrar: credencial não tem padrão no código.
 func TestConfigSemDSNFalha(t *testing.T) {
 	t.Setenv("AZAMON_POSTGRES_DSN", "")

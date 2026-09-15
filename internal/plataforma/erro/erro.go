@@ -46,6 +46,9 @@ var registro = []traducao{
 	{ErrNaoAutorizado, http.StatusUnauthorized, "NAO_AUTORIZADO"},
 	{identidade.ErrCredencialInvalida, http.StatusUnauthorized, "CREDENCIAL_INVALIDA"},
 	{identidade.ErrSessaoInvalida, http.StatusUnauthorized, "SESSAO_INVALIDA"},
+	// 409 e não 400: o corpo veio correto, o que não comporta é o estado do
+	// mundo. O campo em falta viaja em `dados`, como em todo erro em linha.
+	{identidade.ErrEmailJaCadastrado, http.StatusConflict, "EMAIL_JA_CADASTRADO"},
 	// 409 nos dois: a requisição está correta, o estado do mundo é que não
 	// comporta. O disponível viaja em `dados`, e não na mensagem.
 	{catalogo.ErrEstoqueInsuficiente, http.StatusConflict, "ESTOQUE_INSUFICIENTE"},
@@ -92,7 +95,19 @@ func Escrever(ctx context.Context, w http.ResponseWriter, err error, dados any) 
 		slog.ErrorContext(ctx, "erro não registrado", "erro", detalhe)
 		dados = nil
 	}
+	envelopar(ctx, w, status, codigo, mensagem, dados)
+}
 
+// EscreverCampo é o erro em linha: 400 CAMPO_INVALIDO com o nome do campo em
+// `dados`, que é o contrato que a tela usa para ligar a mensagem ao campo e
+// pôr o foco nele (UX-DR16). Não passa pelo registro porque a mensagem nomeia
+// o limiar — e limiar vem da Config, nunca de um sentinela fixo daqui.
+func EscreverCampo(ctx context.Context, w http.ResponseWriter, campo, mensagem string) {
+	envelopar(ctx, w, http.StatusBadRequest, "CAMPO_INVALIDO", mensagem, map[string]string{"campo": campo})
+}
+
+// envelopar é o único ponto que serializa o envelope do AD-14.
+func envelopar(ctx context.Context, w http.ResponseWriter, status int, codigo, mensagem string, dados any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(envelope{corpo{

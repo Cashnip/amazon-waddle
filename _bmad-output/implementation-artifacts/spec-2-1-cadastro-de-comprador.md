@@ -2,8 +2,9 @@
 title: 'Cadastro de Comprador'
 type: 'feature'
 created: '2026-09-13'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
+baseline_commit: '9198f25c4455a1874a9161b2584da18516e37365'
 review_loop_iteration: 0
 context: []
 ---
@@ -64,17 +65,17 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `internal/plataforma/config.go` + `.env` -- acrescentar `CompradorNomeMax` (`AZAMON_COMPRADOR_NOME_MAX`, 120), `EmailMax` (`AZAMON_EMAIL_MAX`, 254), `SenhaMin` (`AZAMON_SENHA_MIN`, 8) e `SenhaMax` (`AZAMON_SENHA_MAX`, 128), com checagem de faixa `SenhaMin ≤ SenhaMax` -- NFR-16 exige limiar declarado; o par `.env`/config é verificado por teste.
-- [ ] `internal/identidade/senha.go` -- `Gerar(senha string) (string, error)` devolvendo o PHC com os parâmetros do AD-9 -- hoje só existe verificação; sem isto não há como gravar senha.
-- [ ] `internal/identidade/db/consultas.sql` -- `CriarComprador :one` (`INSERT … RETURNING id, nome`) e regenerar com `sqlc` -- o pacote gerado é a única porta para o banco.
-- [ ] `internal/identidade/identidade.go` -- `ErrEmailJaCadastrado` e `Cadastrar`, traduzindo `pgconn.PgError` `23505` na sentinela -- a unicidade é decidida pelo banco, nunca por leitura prévia.
-- [ ] `internal/plataforma/erro/erro.go` -- registrar `ErrEmailJaCadastrado` como 409 `EMAIL_JA_CADASTRADO` e acrescentar `EscreverCampo(ctx, w, campo, mensagem)` → 400 `CAMPO_INVALIDO` com `dados.campo` -- UX-DR16 manda nomear o motivo, e `ENTRADA_INVALIDA` é genérico demais para erro em linha.
-- [ ] `api/comprador.go` -- DTO, validação contra a config e o handler `criarComprador`, que cadastra, abre a Sessão e responde 201 -- é onde o NFR-14 é cobrado.
-- [ ] `api/sessao.go` -- extrair `abrirSessao(w, r, comprador)` de `criarSessao` -- login e cadastro emitem o mesmo cookie; duplicar perderia um atributo no futuro.
-- [ ] `api/rotas.go` -- `POST /api/v1/compradores` -- recurso plural em português, como `sessoes`.
-- [ ] `web/app/cadastrar/page.tsx` -- formulário Nome/E-mail/Senha com erro em linha por campo, `aria-describedby`, foco ao submeter, link para o Login no erro de duplicidade e ida a `/` no sucesso -- UX-DR14 e UX-DR20(c).
-- [ ] `web/app/entrar/page.tsx` -- link "Criar conta" para `/cadastrar` -- sem o menu da conta (2.6), é a única porta para a tela nova.
-- [ ] `api/comprador_test.go` + `internal/identidade/senha_test.go` -- cobrir a matriz de I/O como subteste de `TestSessaoEProduto` e o ciclo `Gerar`→`Verificar` -- o hash tem de autenticar com o mesmo código que lê a semente.
+- [x] `internal/plataforma/config.go` + `.env` -- acrescentar `CompradorNomeMax` (`AZAMON_COMPRADOR_NOME_MAX`, 120), `EmailMax` (`AZAMON_EMAIL_MAX`, 254), `SenhaMin` (`AZAMON_SENHA_MIN`, 8) e `SenhaMax` (`AZAMON_SENHA_MAX`, 128), com checagem de faixa `SenhaMin ≤ SenhaMax` -- NFR-16 exige limiar declarado; o par `.env`/config é verificado por teste.
+- [x] `internal/identidade/senha.go` -- `Gerar(senha string) (string, error)` devolvendo o PHC com os parâmetros do AD-9 -- hoje só existe verificação; sem isto não há como gravar senha.
+- [x] `internal/identidade/db/consultas.sql` -- `CriarComprador :one` (`INSERT … RETURNING id, nome`) e regenerar com `sqlc` -- o pacote gerado é a única porta para o banco.
+- [x] `internal/identidade/identidade.go` -- `ErrEmailJaCadastrado` e `Cadastrar`, traduzindo `pgconn.PgError` `23505` na sentinela -- a unicidade é decidida pelo banco, nunca por leitura prévia.
+- [x] `internal/plataforma/erro/erro.go` -- registrar `ErrEmailJaCadastrado` como 409 `EMAIL_JA_CADASTRADO` e acrescentar `EscreverCampo(ctx, w, campo, mensagem)` → 400 `CAMPO_INVALIDO` com `dados.campo` -- UX-DR16 manda nomear o motivo, e `ENTRADA_INVALIDA` é genérico demais para erro em linha.
+- [x] `api/comprador.go` -- DTO, validação contra a config e o handler `criarComprador`, que cadastra, abre a Sessão e responde 201 -- é onde o NFR-14 é cobrado.
+- [x] `api/sessao.go` -- extrair `abrirSessao(w, r, comprador)` de `criarSessao` -- login e cadastro emitem o mesmo cookie; duplicar perderia um atributo no futuro.
+- [x] `api/rotas.go` -- `POST /api/v1/compradores` -- recurso plural em português, como `sessoes`.
+- [x] `web/app/cadastrar/page.tsx` -- formulário Nome/E-mail/Senha com erro em linha por campo, `aria-describedby`, foco ao submeter, link para o Login no erro de duplicidade e ida a `/` no sucesso -- UX-DR14 e UX-DR20(c).
+- [x] `web/app/entrar/page.tsx` -- link "Criar conta" para `/cadastrar` -- sem o menu da conta (2.6), é a única porta para a tela nova.
+- [x] `api/comprador_test.go` + `internal/identidade/senha_test.go` -- cobrir a matriz de I/O como subteste de `TestSessaoEProduto` e o ciclo `Gerar`→`Verificar` -- o hash tem de autenticar com o mesmo código que lê a semente.
 
 **Acceptance Criteria:**
 - Dado um cadastro bem-sucedido, quando se consulta `GET /api/v1/sessao` com o cookie devolvido, então o nome volta sem nenhuma chamada a `POST /api/v1/sessoes`.
@@ -84,9 +85,66 @@ context: []
 
 ## Implementation Notes
 
+- A forma do e-mail é conferida pelo `net/mail` da biblioteca padrão, e não por
+  expressão regular: endereço é a RFC 5322, e toda regex curta para isso erra
+  dos dois lados. A igualdade com o texto original recusa a forma com nome de
+  exibição (`Ana <ana@exemplo.br>`), que o `ParseAddress` aceitaria.
+- Os limites de campo são contados em runas (`utf8.RuneCountInString`), não em
+  bytes: um teto medido em bytes recusaria nomes acentuados antes da hora.
+- `erro.Escrever` e `erro.EscreverCampo` passaram a compartilhar `envelopar`,
+  privado — é o único ponto que serializa o envelope do AD-14.
+- O `ambiente(t)` de `api/sessao_test.go` ganhou os quatro limites na `Config`:
+  com o zero-value, `SenhaMax = 0` recusaria toda senha.
+- A tela usa `noValidate` no `<form>`: a bolha nativa do navegador esconderia a
+  mensagem do Go, que é a que fala a Voice and Tone (AD-10/AD-14).
+- Corrigido na auditoria do diff: `envelopar(ctx, w,status, ...)` em
+  `internal/plataforma/erro/erro.go` faltava o espaço depois da vírgula, nos dois
+  chamadores. O `gofmt` reescreveria as duas linhas.
+- **AC da acessibilidade fechado pela metade.** A parte estrutural está
+  verificada na fonte: os três campos têm `Label htmlFor` casando com o `id` do
+  `Input`, o erro é ligado por `aria-describedby`, o foco vai para o campo
+  recusado ao submeter, e o contêiner (`max-w-md` dentro de `px-page-margin`) é o
+  mesmo de `/entrar`, que passou na 1.5. A parte visual — foco visível a 3:1 e
+  ausência de rolagem horizontal de 360 a 1440 px — não foi percorrida em
+  navegador: a extensão do Chrome não está conectada nesta máquina. Fica como
+  verificação manual antes de aceitar a estória.
+- Consertos da revisão (passagem 1): teste da faixa `SenhaMin ≤ SenhaMax`; ponto
+  exigido no domínio, para o validador dizer o mesmo que a sua mensagem; teto do
+  e-mail medido em octetos, que é a unidade da RFC 5321; campo desconhecido
+  filtrado contra `CAMPOS` na tela; guarda de tamanho antes de indexar o PHC no
+  teste; e o comentário que creditava `required`/`type=email` por uma validação
+  que o `noValidate` desliga.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Passagem 1 — três camadas (blind-hunter, edge-case-hunter, verification-gap), 26 achados.
+
+| # | Achado | Veredito | Evidência | Rota |
+|---|---|---|---|---|
+| 1 | Checagem `SenhaMin ≤ SenhaMax` sem teste | medium | Pré-verificado pela camada de lacunas: `config_test.go` só cobre duração malformada e DSN ausente; apagar a checagem mantém a suíte verde, e um par invertido sobe e recusa toda senha | patch |
+| 2 | `enderecoPlausivel` aceita `ana@exemplo`, `a@b`, `ana@localhost` | low | Confirmado em sonda: os três passam, enquanto a mensagem do próprio guarda promete "no formato nome@dominio.com" — validador e mensagem discordam | patch |
+| 3 | `EmailMax` contado em runa, justificado em octeto | low | Sonda: `"é"×200 + "@exemplo.br"` = 211 runas / 411 bytes e passa o teto de 254; o comentário do `config.go` invoca a RFC 5321, cuja unidade é o octeto | patch |
+| 4 | `dados.campo` fora de nome/email/senha some da tela | low | `recusar` só foca quando o campo casa, e o `<Alert>` genérico exige `!erro.campo` — um nome de campo desconhecido não cai em nenhum dos dois e a mensagem do servidor desaparece | patch |
+| 5 | `senha_test.go` indexa `partes[4]`/`[5]` sem checar tamanho | low | A regressão que o teste existe para pegar vira pânico de índice em vez de falha nomeada | patch |
+| 6 | Comentário credita `required`/`type=email` por erro antes do servidor | low | O `<form>` tem `noValidate`, que desliga exatamente a validação nativa que o comentário descreve | patch |
+| 7 | `sprint-status.yaml` em `in-progress` com o spec em `in-review` | low | Os dois foram escritos na mesma mudança e discordam; o vocabulário do próprio arquivo tem `review` para "implementação completa, pronta para revisão" | patch |
+| 8 | Contrato `dados.campo` sem verificação no lado do navegador | medium | Pré-verificado: `npm test` só roda `web/scripts/casca.test.mjs` (rewrite e guarda offline); renomear a chave em qualquer das pontas deixa `go test` verde e apaga todo erro em linha | defer |
+| 9 | Rota de cadastro sem limite por origem, 19 MiB de Argon2id por chamada | medium | Única rota não autenticada que roda Argon2id incondicionalmente; a 2.2 cobre tentativa de login, não criação de conta | defer |
+| 10 | POST cross-site cria conta e fixa a Sessão na vítima | medium | Corpo `text/plain` forjado atravessa a decodificação JSON; `POST /api/v1/sessoes` tem o mesmo furo desde a 1.5, então o padrão é anterior a esta estória | defer |
+| 11 | E-mail de `identidade.administrador` aceito como Comprador | low | São duas tabelas com `UNIQUE` independente; a separação de papéis é da 2.4 | defer |
+| 12 | Cookie de Sessão sem `Secure` | low | Anterior a esta estória (a 1.5 emitiu o primeiro); a demonstração roda em http e `Secure` a quebraria sem um interruptor na Config | defer |
+| 13 | Varredura de 360–1440 px registrada só dentro do spec | low | Real: a nota de implementação admite o furo e nada em `deferred-work.md` aponta para ele | defer |
+| 14 | Conta órfã quando o Redis cai depois do INSERT | low | Real, mas exige Redis fora — situação em que o login também está quebrado — e o menor conserto acrescenta um ramo e uma mensagem nova | rejeitado |
+| 15 | Qualquer `23505` vira "e-mail já cadastrado" | low | A tabela tem exatamente um `UNIQUE`; casar `ConstraintName` troca um acoplamento silencioso por outro — renomear a restrição passaria a devolver 500 | rejeitado |
+| 16 | `İ` faz `ToLower` do Go discordar do `lower()` do Postgres → 23514 | false | Sonda: `strings.ToLower("İana@exemplo.br")` = `"iana@exemplo.br"`, que é ponto fixo do `lower()`; o `CHECK` compara o valor gravado, não a entrada original, e passa | rejeitado |
+| 17 | NUL no nome sai em 500 em vez de 400 | low | Real (SQLSTATE 22021 não está no registro), mas byte NUL em campo de nome não é uso corrente e o conserto acrescenta um guarda | rejeitado |
+| 18 | TTL do Redis não conferido na linha do cadastro | low | O subteste do login confere o TTL no mesmo `abrirSessao`, e o do cadastro confere que o cookie é idêntico ao do login — a asserção seria cópia | rejeitado |
+| 19 | Subtestes novos só passam em ordem e uma vez | low | Metade refutada: `ambiente(t)` roda dentro de `TestSessaoEProduto`, então `-count=2` sobe contêineres novos e não colide. O acoplamento por `-run` isolado é real e é o padrão já documentado do arquivo | rejeitado |
+| 20 | O 201 pede o id ao banco e o joga fora | false | `Comprador.ID` entra no JSON da Sessão em `CriarSessao` e é o que `criarPedido` lê de volta — a coluna é necessária | rejeitado |
+| 21 | Dica "Pelo menos 8 caracteres." literal no JSX | low | Servir o número do servidor exigiria uma chave `NEXT_PUBLIC_`, que o `env_test.go` acusaria como órfã por nenhum Go a ler; o 400 do servidor continua nomeando o limite real | rejeitado |
+| 22 | Notas de implementação sem acento | low | Real, mas o conserto edita o spec desta construção | rejeitado |
 
 ## Design Notes
 
