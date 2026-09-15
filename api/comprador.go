@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,8 +27,8 @@ func (s *servidor) criarComprador(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
 	var entrada entradaComprador
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&entrada); err != nil {
-		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+	if err := decodificarCorpo(w, r, &entrada); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 	// As bordas caem antes de qualquer checagem: " ana@exemplo.br " é o mesmo
@@ -44,7 +43,7 @@ func (s *servidor) criarComprador(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	comprador, err := identidade.Cadastrar(r.Context(), s.pool, entrada.Nome, entrada.Email, entrada.Senha)
+	conta, err := identidade.Cadastrar(r.Context(), s.pool, entrada.Nome, entrada.Email, entrada.Senha)
 	if err != nil {
 		// O 409 também é erro em linha: a tela o liga ao campo do e-mail pelo
 		// mesmo `dados.campo` do 400, numa leitura só.
@@ -56,10 +55,10 @@ func (s *servidor) criarComprador(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.abrirSessao(w, r, comprador) {
+	if !s.abrirSessao(w, r, conta) {
 		return
 	}
-	escreverJSON(w, http.StatusCreated, saidaSessao{Nome: comprador.Nome})
+	escreverJSON(w, http.StatusCreated, saidaSessao{Nome: conta.Nome})
 }
 
 // validarComprador devolve o primeiro campo em falta e a mensagem que o

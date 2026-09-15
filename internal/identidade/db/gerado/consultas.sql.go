@@ -38,6 +38,27 @@ func (q *Queries) AtualizarSenhaDoComprador(ctx context.Context, arg AtualizarSe
 	return email, err
 }
 
+const buscarAdministradorPorEmail = `-- name: BuscarAdministradorPorEmail :one
+SELECT id, nome, email, senha_hash
+FROM identidade.administrador
+WHERE email = $1
+`
+
+// O molde é o de Comprador, e a tabela é outra de propósito: são duas consultas
+// porque são dois papéis, e o papel de quem entra é decidido pela rota que
+// chamou — nunca pela ordem em que as tabelas seriam tentadas.
+func (q *Queries) BuscarAdministradorPorEmail(ctx context.Context, email string) (IdentidadeAdministrador, error) {
+	row := q.db.QueryRow(ctx, buscarAdministradorPorEmail, email)
+	var i IdentidadeAdministrador
+	err := row.Scan(
+		&i.ID,
+		&i.Nome,
+		&i.Email,
+		&i.SenhaHash,
+	)
+	return i, err
+}
+
 const buscarCompradorPorEmail = `-- name: BuscarCompradorPorEmail :one
 
 SELECT id, nome, email, senha_hash

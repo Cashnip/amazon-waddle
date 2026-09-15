@@ -24,7 +24,7 @@ const tamanhoToken = 32
 // CriarSessao grava a Sessão no Redis com TTL e devolve o valor opaco do
 // cookie. O cookie não carrega conteúdo nenhum: quem sabe de quem é a Sessão é
 // o Redis, e expirar é apagar a chave.
-func CriarSessao(ctx context.Context, rdb *redis.Client, c Comprador, ttl time.Duration) (string, error) {
+func CriarSessao(ctx context.Context, rdb *redis.Client, c Conta, ttl time.Duration) (string, error) {
 	token := novoToken()
 
 	dados, err := json.Marshal(c)
@@ -58,27 +58,31 @@ func tokenPlausivel(token string) bool {
 	return err == nil
 }
 
-// LerSessao resolve o valor do cookie no Comprador. Cookie ausente, com forma
+// LerSessao resolve o valor do cookie na Conta. Cookie ausente, com forma
 // errada ou sem chave no Redis são todos ErrSessaoInvalida — nada disso é 500.
+//
+// Sessão gravada antes do papel existir desserializa com Papel vazio, e a
+// guarda de prefixo da API a recusa: forçar um login novo é o comportamento
+// certo para uma Sessão que não sabe dizer o que é.
 //
 // Ler renova o prazo: é isso que o §7.1 chama de expiração por inatividade.
 // O GetEx faz as duas coisas num comando só — ler e depois expirar seriam duas
 // idas ao Redis, com uma janela entre elas em que a chave pode sumir.
-func LerSessao(ctx context.Context, rdb *redis.Client, token string, ttl time.Duration) (Comprador, error) {
+func LerSessao(ctx context.Context, rdb *redis.Client, token string, ttl time.Duration) (Conta, error) {
 	if !tokenPlausivel(token) {
-		return Comprador{}, ErrSessaoInvalida
+		return Conta{}, ErrSessaoInvalida
 	}
 
 	dados, err := rdb.GetEx(ctx, prefixoSessao+token, ttl).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return Comprador{}, ErrSessaoInvalida
+		return Conta{}, ErrSessaoInvalida
 	}
 	if err != nil {
-		return Comprador{}, fmt.Errorf("ler a Sessão: %w", err)
+		return Conta{}, fmt.Errorf("ler a Sessão: %w", err)
 	}
-	var c Comprador
+	var c Conta
 	if err := json.Unmarshal(dados, &c); err != nil {
-		return Comprador{}, fmt.Errorf("Sessão ilegível: %w", err)
+		return Conta{}, fmt.Errorf("Sessão ilegível: %w", err)
 	}
 	return c, nil
 }
@@ -140,8 +144,8 @@ func EncerrarSessoesDoComprador(ctx context.Context, rdb *redis.Client, comprado
 				guardar(fmt.Errorf("ler a Sessão na varredura: %w", err))
 				continue
 			}
-			var c Comprador
-			if err := json.Unmarshal(dados, &c); err != nil || c.ID != compradorID {
+			var c Conta
+			if err := json.Unmarshal(dados, &c); err != nil || c.Papel != PapelComprador || c.ID != compradorID {
 				continue
 			}
 			if err := rdb.Del(ctx, chave).Err(); err != nil {

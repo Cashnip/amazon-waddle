@@ -18,6 +18,7 @@ import (
 func postarCadastro(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/compradores", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	rotas.ServeHTTP(resp, req)
 	return resp

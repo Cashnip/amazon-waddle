@@ -35,6 +35,12 @@ const (
 	senhaSemente = "azamon-comprador"
 	nomeSemente  = "Joana Ribeiro"
 
+	// O Administrador semeado desde a 1.3 (FR-4). Fica ao lado do Comprador
+	// porque é a MESMA semente: são duas tabelas, e nenhuma coluna de papel.
+	emailAdmin = "admin@azamon.test"
+	senhaAdmin = "azamon-admin"
+	nomeAdmin  = "Marcos Aleixo"
+
 	// Identificador v5 derivado do nome em media/gerar.go — estável por
 	// construção, e por isso escrevível no teste e no front.
 	produtoSemeado = "3400cd00-3f5e-5433-9171-fde099a52005"
@@ -402,6 +408,22 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("redefinir tira do bloqueio por tentativas, e só o do dono", func(t *testing.T) {
 		redefinirTiraDoBloqueio(t, rotas)
 	})
+
+	// A 2.4 no fim: as contas são próprias (o segundo Comprador nasce aqui, e o
+	// Administrador vem da semente), e nenhum par que os subtestes acima
+	// sujaram é usado.
+	t.Run("Pedido de outro dono é indistinguível de Pedido inexistente", func(t *testing.T) {
+		negacaoPorDono(t, rotas, cookieValido, pedidoCriado)
+	})
+	t.Run("cada login consulta só a sua tabela", func(t *testing.T) {
+		loginPorTabelaPropria(t, rotas)
+	})
+	t.Run("a guarda do prefixo administrativo devolve 404", func(t *testing.T) {
+		guardaDoPrefixoAdministrativo(t, rotas, rdb, cookieValido)
+	})
+	t.Run("corpo sem Content-Type de JSON sai em 400", func(t *testing.T) {
+		corpoSemContentTypeDa400(t, rotas)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
@@ -415,6 +437,7 @@ func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRe
 func postarDe(t *testing.T, rotas http.Handler, corpo, origem string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sessoes", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = origem
 	resp := httptest.NewRecorder()
 	rotas.ServeHTTP(resp, req)

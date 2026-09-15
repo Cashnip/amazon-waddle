@@ -350,6 +350,7 @@ func pegarPedido(t *testing.T, rotas http.Handler, id string, cookie *http.Cooki
 func postarPedido(t *testing.T, rotas http.Handler, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/pedidos", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}

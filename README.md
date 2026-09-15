@@ -80,6 +80,34 @@ não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
 Os intervalos são do `.env` (`AZAMON_CONFIRMACAO_ATRASO`, `AZAMON_ENTREGA_INTERVALO`) e
 existem para caber numa apresentação.
 
+### Entrar como Administrador
+
+Os dois papéis do FR-4 são **tabelas separadas**, e cada login consulta só a sua: a conta
+de Administrador não entra por `/entrar`, e a de Comprador não entra pela porta abaixo. A
+credencial já estava na tabela desde a primeira migração — o que faltava era a porta.
+
+```bash
+curl -i -X POST http://localhost:8080/api/v1/admin/sessoes \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@azamon.test","senha":"azamon-admin"}'
+```
+
+O `Set-Cookie` da resposta é a Sessão de Administrador, e com ela
+`curl -b azamon_sessao=<token> http://localhost:8080/api/v1/admin/sessao` responde 200.
+
+Ainda **não há tela**: a área administrativa é da Épica 3. O que existe aqui é a guarda —
+tudo sob `/api/v1/admin/` exige a Sessão de Administrador, e quem não a tem recebe o mesmo
+**404** de uma rota que não existe (a área não aparece para quem não é Administrador,
+UX-DR9). A exceção é a porta acima: `POST /api/v1/admin/sessoes` fica **fora** da guarda,
+senão ninguém entraria, e por isso ela responde **401** a quem erra a credencial.
+
+Do outro lado, a Sessão de Administrador leva **401** nas rotas da loja que pedem Sessão
+de Comprador — `GET /api/v1/sessao`, `POST` e `GET /api/v1/pedidos`. As rotas que não
+pedem Sessão nenhuma continuam servindo normalmente (`/api/v1/saude`,
+`/api/v1/produtos/{id}`, `/api/v1/media/{arquivo}`), e `DELETE /api/v1/sessao` encerra a
+Sessão de qualquer papel com o mesmo **204** — sair é idempotente, e não é lugar de
+conferir papel.
+
 ## 3. Rede desconectada (NFR-15)
 
 A demonstração tem de rodar com a rede fora. Duas verificações, uma automática e uma de

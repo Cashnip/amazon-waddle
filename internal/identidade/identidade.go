@@ -37,11 +37,24 @@ var ErrEmailJaCadastrado = errors.New("Já existe uma conta com este e-mail.")
 // quais contas existem. Os parâmetros são os do AD-9, senão o custo difere.
 const hashDeDescarte = "$argon2id$v=19$m=19456,t=2,p=1$YXphbW9uLWRlc2NhcnRlMA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-// Comprador é o que a Sessão carrega — o suficiente para a saudação da casca
-// e para o Pedido da 1.6 saber de quem ele é.
-type Comprador struct {
-	ID   string `json:"id"`
-	Nome string `json:"nome"`
+// Papel é o que distingue os dois papéis do FR-4. É campo da Conta, e nunca
+// coluna: `comprador` e `administrador` continuam tabelas separadas, e o papel
+// é carimbado por QUAL função autenticou — não há valor lido do banco que
+// pudesse promover ninguém.
+type Papel string
+
+const (
+	PapelComprador     Papel = "comprador"
+	PapelAdministrador Papel = "administrador"
+)
+
+// Conta é o que a Sessão carrega — o suficiente para a saudação da casca, para
+// o Pedido da 1.6 saber de quem ele é, e para a guarda de prefixo da API
+// decidir o papel sem voltar ao Postgres a cada requisição.
+type Conta struct {
+	ID    string `json:"id"`
+	Nome  string `json:"nome"`
+	Papel Papel  `json:"papel"`
 }
 
 // Autenticar devolve o Comprador da semente ou ErrCredencialInvalida. O
@@ -50,19 +63,42 @@ type Comprador struct {
 // O parâmetro é a DBTX do sqlc, e não *gerado.Queries: assim `api/` passa o
 // pool sem importar o pacote gerado de dentro deste módulo, que é o que o
 // AD-1 proíbe — a única porta de identidade é este arquivo.
-func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Comprador, error) {
+func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Conta, error) {
 	linha, err := gerado.New(bd).BuscarCompradorPorEmail(ctx, normalizarEmail(email))
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = Verificar(hashDeDescarte, senha)
-		return Comprador{}, ErrCredencialInvalida
+		return Conta{}, ErrCredencialInvalida
 	}
 	if err != nil {
-		return Comprador{}, err
+		return Conta{}, err
 	}
 	if err := Verificar(linha.SenhaHash, senha); err != nil {
-		return Comprador{}, err
+		return Conta{}, err
 	}
-	return Comprador{ID: uuidTexto(linha.ID), Nome: linha.Nome}, nil
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelComprador}, nil
+}
+
+// AutenticarAdministrador consulta SÓ `identidade.administrador`. É uma função
+// por tabela, e não um parâmetro de papel numa função só: assim a separação é
+// estrutural — quem escolhe o papel é a rota que chama, e não existe ordem de
+// consulta que pudesse deixar o mesmo e-mail entrar pelo lado errado.
+//
+// O hashDeDescarte é o mesmo do Comprador: sem ele o tempo de resposta desta
+// rota diria quais e-mails são de Administrador, que é a enumeração que mais
+// vale a pena fazer no sistema inteiro.
+func AutenticarAdministrador(ctx context.Context, bd gerado.DBTX, email, senha string) (Conta, error) {
+	linha, err := gerado.New(bd).BuscarAdministradorPorEmail(ctx, normalizarEmail(email))
+	if errors.Is(err, pgx.ErrNoRows) {
+		_ = Verificar(hashDeDescarte, senha)
+		return Conta{}, ErrCredencialInvalida
+	}
+	if err != nil {
+		return Conta{}, err
+	}
+	if err := Verificar(linha.SenhaHash, senha); err != nil {
+		return Conta{}, err
+	}
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelAdministrador}, nil
 }
 
 // Cadastrar cria o Comprador e devolve o mesmo Comprador de Autenticar — quem
@@ -73,10 +109,10 @@ func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Compr
 // normalizada. A duplicidade é decidida pelo próprio UNIQUE (SQLSTATE 23505),
 // nunca por um SELECT antes do INSERT — dois cadastros simultâneos do mesmo
 // e-mail passariam pelo teste-e-depois-grava.
-func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (Comprador, error) {
+func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (Conta, error) {
 	hash, err := Gerar(senha)
 	if err != nil {
-		return Comprador{}, err
+		return Conta{}, err
 	}
 	linha, err := gerado.New(bd).CriarComprador(ctx, gerado.CriarCompradorParams{
 		Nome:      nome,
@@ -85,12 +121,12 @@ func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (
 	})
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return Comprador{}, ErrEmailJaCadastrado
+		return Conta{}, ErrEmailJaCadastrado
 	}
 	if err != nil {
-		return Comprador{}, err
+		return Conta{}, err
 	}
-	return Comprador{ID: uuidTexto(linha.ID), Nome: linha.Nome}, nil
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelComprador}, nil
 }
 
 // normalizarEmail é a forma canônica do e-mail dentro do módulo: a coluna tem

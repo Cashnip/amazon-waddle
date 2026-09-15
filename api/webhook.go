@@ -2,7 +2,6 @@ package api
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -44,8 +43,8 @@ func (s *servidor) receberConfirmacao(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var c pagamento.Confirmacao
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&c); err != nil {
-		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+	if err := decodificarCorpo(w, r, &c); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 	// Validação na fronteira de confiança: sem isto um resultado desconhecido

@@ -7,6 +7,14 @@ SELECT id, nome, email, senha_hash
 FROM identidade.comprador
 WHERE email = $1;
 
+-- O molde é o de Comprador, e a tabela é outra de propósito: são duas consultas
+-- porque são dois papéis, e o papel de quem entra é decidido pela rota que
+-- chamou — nunca pela ordem em que as tabelas seriam tentadas.
+-- name: BuscarAdministradorPorEmail :one
+SELECT id, nome, email, senha_hash
+FROM identidade.administrador
+WHERE email = $1;
+
 -- O e-mail chega já normalizado: quem grava é identidade.Cadastrar, e a coluna
 -- tem CHECK (email = lower(email)). A duplicidade sai da violação do UNIQUE —
 -- um SELECT antes do INSERT deixaria dois cadastros simultâneos passarem.

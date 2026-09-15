@@ -32,6 +32,7 @@ import (
 func postarRedefinicao(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/redefinicoes-de-senha", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = origemDeTeste
 	resp := httptest.NewRecorder()
 	rotas.ServeHTTP(resp, req)
@@ -42,6 +43,7 @@ func postarRedefinicao(t *testing.T, rotas http.Handler, corpo string) *httptest
 func putRedefinicao(t *testing.T, rotas http.Handler, token, corpo string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/redefinicoes-de-senha/"+token, strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = origemDeTeste
 	resp := httptest.NewRecorder()
 	rotas.ServeHTTP(resp, req)
@@ -198,6 +200,20 @@ func solicitacaoNaoVazaConta(t *testing.T, rotas http.Handler, rdb *redis.Client
 			t.Errorf("%s: a solicitação veio com cookie", caso.nome)
 		}
 	}
+	// O Content-Type errado entra na mesma igualdade, e não no 400 das outras
+	// rotas: aqui a recusa é silenciosa de propósito. Um 400 num tipo e um 202
+	// no outro contaria de fora qual corpo a rota chegou a ler, e a enumeração
+	// que esta rota existe para esconder voltaria pelo cabeçalho.
+	comTipoErrado := postarComTipo(t, rotas, "/api/v1/redefinicoes-de-senha", `{"email":"`+email+`"}`, "text/plain")
+	if comTipoErrado.Code != respExistente.Code || comTipoErrado.Body.Len() != 0 {
+		t.Errorf("Content-Type text/plain = %d (%q); quero o mesmo %d de corpo vazio da conta existente",
+			comTipoErrado.Code, comTipoErrado.Body.String(), respExistente.Code)
+	}
+	if cabecalhosComparaveis(comTipoErrado) != cabecalhosComparaveis(respExistente) {
+		t.Errorf("Content-Type text/plain: cabeçalhos = %s, quero os mesmos %s",
+			cabecalhosComparaveis(comTipoErrado), cabecalhosComparaveis(respExistente))
+	}
+
 	if depois := len(tokensDeRedefinicao(t, rdb)); depois != depoisDaExistente {
 		t.Errorf("tokens = %d depois das recusas, eram %d; nenhuma delas podia criar chave", depois, depoisDaExistente)
 	}

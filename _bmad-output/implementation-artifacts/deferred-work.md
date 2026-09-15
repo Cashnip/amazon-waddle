@@ -151,3 +151,10 @@ Append-only: não edite nem remova entradas existentes.
   summary: A verificacao de acessibilidade das duas telas novas (foco visivel a 3:1 e ausencia de rolagem horizontal de 360 a 1440 px) nao foi percorrida em navegador.
   evidence: Mesmo desfecho da 2.1 e da 2.2 — a extensao do Chrome nao esta conectada nesta maquina. Na fonte, as telas reusam a casca `max-w-md` de `/entrar` e `/cadastrar`, sem largura fixa. Settlement: percorrer as duas telas so pelo teclado antes de aceitar a Epica 2.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-autorizacao-por-dono-e-separacao-de-papeis.md`
+  summary: RESOLVIDO — a sobreposição de e-mail entre Comprador e Administrador fica permitida, e a precedência deixa de ser ambígua porque não existe ordem de consulta.
+  evidence: São duas funções, uma por tabela: `identidade.Autenticar` só olha `identidade.comprador` e `identidade.AutenticarAdministrador` só olha `identidade.administrador`. Quem escolhe o papel é a rota — `POST /api/v1/sessoes` contra `POST /api/v1/admin/sessoes` —, e a redefinição de senha continua sendo de Comprador. Proibir a sobreposição exigiria restrição compartilhada dentro do schema, que é migração nova. Fecha as duas entradas da 1.3 e da 2.1 sobre o mesmo defeito, e `api/autorizacao_test.go` prova as duas travessias cruzadas em 401.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-autorizacao-por-dono-e-separacao-de-papeis.md`
+  summary: RESOLVIDO — o POST cross-site que fixava Sessão não decodifica mais: toda rota que lê corpo JSON exige `Content-Type: application/json`.
+  evidence: `api.decodificarCorpo` é o único ponto que decodifica corpo, e recusa com `ErrEntradaInvalida` o que não vem como `application/json` — um `<form>` só consegue emitir `text/plain`, `x-www-form-urlencoded` ou `multipart/form-data`, e `application/json` exigiria `fetch`, com o preflight do CORS na frente. Nenhum chamador legítimo mudou: o `web/` e o Provedor Simulado já mandavam o cabeçalho. `Secure` no cookie continua aberto, numa entrada própria.

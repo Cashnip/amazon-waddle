@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"log/slog"
 	"net"
@@ -21,19 +21,39 @@ type entradaSessao struct {
 	Senha string `json:"senha"`
 }
 
-// saidaSessao é o que a casca precisa para saudar o Comprador. O identificador
-// fica na Sessão, dentro do Redis — o navegador não tem o que fazer com ele.
+// saidaSessao é o que a casca precisa para saudar quem entrou — Comprador ou
+// Administrador. O identificador e o papel ficam na Sessão, dentro do Redis: o
+// navegador não tem o que fazer com nenhum dos dois, e um papel que viajasse no
+// corpo seria papel que a casca pode mentir.
 type saidaSessao struct {
 	Nome string `json:"nome"`
 }
 
-// criarSessao autentica e emite o cookie opaco.
+// criarSessao autentica na loja e emite o cookie opaco. Só consulta
+// `identidade.comprador`: o mesmo e-mail pode existir como Administrador, e
+// quem decide o papel é a rota, nunca uma ordem de consulta.
 func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
+	s.entrar(w, r, func(ctx context.Context, email, senha string) (identidade.Conta, error) {
+		return identidade.Autenticar(ctx, s.pool, email, senha)
+	})
+}
+
+// autenticador é a assinatura comum das duas autenticações, com o pool já
+// fechado dentro do fecho: `api` não nomeia a DBTX do pacote gerado — a única
+// porta de identidade é identidade.go (AD-1).
+type autenticador func(ctx context.Context, email, senha string) (identidade.Conta, error)
+
+// entrar é o corpo dos dois logins — o da loja e o da área administrativa. O
+// que muda entre eles é só a tabela consultada, e por isso a autenticação chega
+// como parâmetro: duas cópias deste fluxo divergiriam no bloqueio por
+// tentativas, e o login de Administrador ficaria com um Argon2id sem teto de
+// custo — a conta mais valiosa atrás da porta mais fraca.
+func (s *servidor) entrar(w http.ResponseWriter, r *http.Request, autenticar autenticador) {
 	semCache(w)
 
 	var entrada entradaSessao
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&entrada); err != nil {
-		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+	if err := decodificarCorpo(w, r, &entrada); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 
@@ -63,7 +83,7 @@ func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	comprador, err := identidade.Autenticar(r.Context(), s.pool, entrada.Email, entrada.Senha)
+	conta, err := autenticar(r.Context(), entrada.Email, entrada.Senha)
 	if err != nil {
 		// Só credencial inválida conta: um Postgres fora do ar é 500, e contar
 		// isso como tentativa bloquearia o Comprador por uma falha nossa.
@@ -86,10 +106,10 @@ func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 		slog.ErrorContext(r.Context(), "esquecer as falhas de login", "erro", falha.Error())
 	}
 
-	if !s.abrirSessao(w, r, comprador) {
+	if !s.abrirSessao(w, r, conta) {
 		return
 	}
-	escreverJSON(w, http.StatusOK, saidaSessao{Nome: comprador.Nome})
+	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome})
 }
 
 // abrirSessao grava a Sessão no Redis e emite o cookie opaco. O cookie é
@@ -100,8 +120,8 @@ func (s *servidor) criarSessao(w http.ResponseWriter, r *http.Request) {
 //
 // Devolve false depois de já ter escrito o envelope de erro — quem chama só
 // precisa voltar.
-func (s *servidor) abrirSessao(w http.ResponseWriter, r *http.Request, comprador identidade.Comprador) bool {
-	token, err := identidade.CriarSessao(r.Context(), s.rdb, comprador, s.cfg.SessaoExpiracao)
+func (s *servidor) abrirSessao(w http.ResponseWriter, r *http.Request, conta identidade.Conta) bool {
+	token, err := identidade.CriarSessao(r.Context(), s.rdb, conta, s.cfg.SessaoExpiracao)
 	if err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return false
@@ -140,29 +160,47 @@ func origemDe(r *http.Request) string {
 // o Pedido — de um a outro.
 func semCache(w http.ResponseWriter) { w.Header().Set("Cache-Control", "no-store") }
 
-// compradorDaRequisicao resolve o cookie de Sessão. Ausente, adulterado ou
-// fora do Redis saem todos como ErrSessaoInvalida — para quem chama, expirada
-// e inexistente são a mesma coisa. São duas rotas autenticadas em todo o
-// sistema, e por isso isto é uma função, e não um middleware.
-func (s *servidor) compradorDaRequisicao(r *http.Request) (identidade.Comprador, error) {
+// compradorDaRequisicao e administradorDaRequisicao resolvem o cookie de Sessão
+// exigindo o papel de cada lado. Cookie ausente, adulterado, fora do Redis ou
+// de papel errado saem todos como ErrSessaoInvalida — para quem chama, expirada,
+// inexistente e "não é sua" são a mesma coisa. O papel vem de dentro da Sessão,
+// e por isso conferi-lo não custa uma ida ao Postgres.
+func (s *servidor) compradorDaRequisicao(r *http.Request) (identidade.Conta, error) {
+	return s.contaDaRequisicao(r, identidade.PapelComprador)
+}
+
+func (s *servidor) administradorDaRequisicao(r *http.Request) (identidade.Conta, error) {
+	return s.contaDaRequisicao(r, identidade.PapelAdministrador)
+}
+
+func (s *servidor) contaDaRequisicao(r *http.Request, papel identidade.Papel) (identidade.Conta, error) {
 	cookie, err := r.Cookie(identidade.NomeCookieSessao)
 	if err != nil {
-		return identidade.Comprador{}, identidade.ErrSessaoInvalida
+		return identidade.Conta{}, identidade.ErrSessaoInvalida
 	}
 	// O TTL vai junto porque ler renova o prazo: é a expiração por inatividade
 	// do §7.1, e quem sabe o prazo configurado é esta camada.
-	return identidade.LerSessao(r.Context(), s.rdb, cookie.Value, s.cfg.SessaoExpiracao)
+	conta, err := identidade.LerSessao(r.Context(), s.rdb, cookie.Value, s.cfg.SessaoExpiracao)
+	if err != nil {
+		return identidade.Conta{}, err
+	}
+	// Papel vazio cai aqui também: é a Sessão gravada antes desta estória, e
+	// quem não sabe dizer o que é entra de novo.
+	if conta.Papel != papel {
+		return identidade.Conta{}, identidade.ErrSessaoInvalida
+	}
+	return conta, nil
 }
 
 func (s *servidor) lerSessao(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
-	comprador, err := s.compradorDaRequisicao(r)
+	conta, err := s.compradorDaRequisicao(r)
 	if err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
-	escreverJSON(w, http.StatusOK, saidaSessao{Nome: comprador.Nome})
+	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome})
 }
 
 // encerrarSessao apaga a chave no Redis e expira o cookie. Sem cookie, com

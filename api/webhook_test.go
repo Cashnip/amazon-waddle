@@ -289,6 +289,7 @@ func postarWebhook(t *testing.T, rotas http.Handler, corpo string) *httptest.Res
 func postarWebhookCom(t *testing.T, rotas http.Handler, corpo, segredo string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/pagamento", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
 	if segredo != "" {
 		req.Header.Set("X-Azamon-Segredo", segredo)
 	}

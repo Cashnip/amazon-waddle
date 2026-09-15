@@ -77,7 +77,5 @@ func produtoAusenteDa404(t *testing.T, rotas http.Handler) {
 
 func pegar(t *testing.T, rotas http.Handler, caminho string) *httptest.ResponseRecorder {
 	t.Helper()
-	resp := httptest.NewRecorder()
-	rotas.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, caminho, nil))
-	return resp
+	return pegarCom(t, rotas, caminho, nil)
 }

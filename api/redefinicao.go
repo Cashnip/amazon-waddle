@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -30,7 +29,7 @@ func (s *servidor) criarRedefinicao(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
 	var entrada entradaRedefinicao
-	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&entrada)
+	err := decodificarCorpo(w, r, &entrada)
 	entrada.Email = strings.TrimSpace(entrada.Email)
 	// O teto limita o que um chamador não autenticado manda ao Postgres: sem
 	// ele, cada requisição vira uma consulta com um texto do tamanho do corpo.
@@ -70,8 +69,8 @@ func (s *servidor) redefinirSenha(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
 	var entrada entradaSenhaNova
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&entrada); err != nil {
-		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+	if err := decodificarCorpo(w, r, &entrada); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 

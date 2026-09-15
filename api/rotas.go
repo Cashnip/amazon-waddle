@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -55,6 +56,27 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// idempotência não autentica ninguém — ela é derivada do identificador do
 	// Pedido, que o próprio Comprador conhece.
 	mux.HandleFunc("POST /api/v1/webhooks/pagamento", s.receberConfirmacao)
+
+	// A área administrativa tem mux próprio, e a guarda mora no prefixo. Rota
+	// nova da Épica 3 entra no `admin` e herda a autorização sem ninguém
+	// lembrar dela — um `if` por handler seria esquecido no primeiro handler
+	// escrito com pressa.
+	admin := http.NewServeMux()
+	admin.HandleFunc("GET /api/v1/admin/sessao", s.lerSessaoAdministrador)
+	admin.HandleFunc("/", naoEncontrado)
+	guardado := s.somenteAdministrador(admin)
+	mux.Handle("/api/v1/admin/", guardado)
+	// E o caminho exato, sem a barra: o ServeMux redirecionaria `/api/v1/admin`
+	// para `/api/v1/admin/` com um 307 de corpo HTML, ANTES da guarda — um
+	// chamador anônimo confirmaria a subárvore (contra a UX-DR9) e a API teria
+	// um segundo contrato de erro (contra o AD-14). Atrás da MESMA guarda ele
+	// cai no 404 do envelope, como qualquer outra rota administrativa.
+	mux.Handle("/api/v1/admin", guardado)
+	// O login do Administrador fica FORA da própria guarda, no mux raiz: padrão
+	// mais específico ganha do prefixo (Go 1.22+). Sem isto ninguém entraria —
+	// a guarda pediria a Sessão que só este handler sabe emitir.
+	mux.HandleFunc("POST /api/v1/admin/sessoes", s.criarSessaoAdministrador)
+
 	// Sem isto o ServeMux responderia "404 page not found" em texto puro, e a
 	// API teria dois contratos de erro conforme a rota exista ou não (AD-14).
 	mux.HandleFunc("/", naoEncontrado)
@@ -63,6 +85,32 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 
 func naoEncontrado(w http.ResponseWriter, r *http.Request) {
 	erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
+}
+
+// decodificarCorpo é o único lugar que lê corpo JSON de requisição. Junta as
+// duas guardas que toda rota com corpo precisa: o teto do NFR-14 e a exigência
+// do `Content-Type: application/json`.
+//
+// O cabeçalho é o que fecha a fixação de Sessão por formulário cross-site: um
+// <form> só consegue emitir text/plain, x-www-form-urlencoded ou
+// multipart/form-data — application/json exigiria fetch, e aí o preflight do
+// CORS entra na frente. A recusa mora aqui, junto do MaxBytesReader, e não num
+// middleware: GET e DELETE não têm corpo e não podem passar a exigir cabeçalho.
+//
+// Devolve ErrEntradaInvalida em todos os casos; quem chama decide o que
+// escrever — a solicitação de redefinição, por exemplo, responde o mesmo 202
+// de sempre, porque distinguir os caminhos ali enumeraria contas.
+func decodificarCorpo(w http.ResponseWriter, r *http.Request, destino any) error {
+	// ParseMediaType e não comparação crua: `application/json; charset=utf-8` é
+	// o mesmo tipo, e um chamador legítimo que mande o parâmetro não pode ser
+	// recusado.
+	if tipo, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || tipo != "application/json" {
+		return erro.ErrEntradaInvalida
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(destino); err != nil {
+		return erro.ErrEntradaInvalida
+	}
+	return nil
 }
 
 // escreverJSON é o único lugar que serializa resposta de sucesso. O status é

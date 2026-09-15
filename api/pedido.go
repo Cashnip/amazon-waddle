@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -55,8 +54,8 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var entrada entradaPedido
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(&entrada); err != nil {
-		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+	if err := decodificarCorpo(w, r, &entrada); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 
