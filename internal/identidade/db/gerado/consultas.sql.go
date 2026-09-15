@@ -11,10 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const atualizarSenhaDoComprador = `-- name: AtualizarSenhaDoComprador :exec
+const atualizarSenhaDoComprador = `-- name: AtualizarSenhaDoComprador :one
 UPDATE identidade.comprador
 SET senha_hash = $2
 WHERE id = $1
+RETURNING email
 `
 
 type AtualizarSenhaDoCompradorParams struct {
@@ -24,9 +25,17 @@ type AtualizarSenhaDoCompradorParams struct {
 
 // Quem chama já resolveu o token de redefinição no Redis, e é ele que provou
 // de quem é a conta — por isso a cláusula é pelo id, e não pelo e-mail.
-func (q *Queries) AtualizarSenhaDoComprador(ctx context.Context, arg AtualizarSenhaDoCompradorParams) error {
-	_, err := q.db.Exec(ctx, atualizarSenhaDoComprador, arg.ID, arg.SenhaHash)
-	return err
+//
+// O RETURNING devolve o e-mail porque o contador de tentativas do bloqueio
+// chaveia por ele, e quem redefiniu a senha tem de sair do bloqueio: sem isto
+// a consulta seria :exec, e quem chama pagaria um SELECT a mais só para saber
+// de quem era o id que ele acabou de escrever. De quebra, o :one distingue o
+// UPDATE que não achou linha nenhuma, que o :exec engoliria em silêncio.
+func (q *Queries) AtualizarSenhaDoComprador(ctx context.Context, arg AtualizarSenhaDoCompradorParams) (string, error) {
+	row := q.db.QueryRow(ctx, atualizarSenhaDoComprador, arg.ID, arg.SenhaHash)
+	var email string
+	err := row.Scan(&email)
+	return email, err
 }
 
 const buscarCompradorPorEmail = `-- name: BuscarCompradorPorEmail :one

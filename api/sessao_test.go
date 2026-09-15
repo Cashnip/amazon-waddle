@@ -397,6 +397,11 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("token expirado, já usado ou inexistente sai em 404", func(t *testing.T) {
 		tokenInvalidoDa404(t, rotas, rdb)
 	})
+	// Por último de tudo: este suja o contador de dois pares por 15 minutos, e
+	// o vizinho fica bloqueado de propósito até o fim da suíte.
+	t.Run("redefinir tira do bloqueio por tentativas, e só o do dono", func(t *testing.T) {
+		redefinirTiraDoBloqueio(t, rotas)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

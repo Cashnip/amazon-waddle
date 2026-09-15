@@ -17,7 +17,14 @@ RETURNING id, nome;
 
 -- Quem chama já resolveu o token de redefinição no Redis, e é ele que provou
 -- de quem é a conta — por isso a cláusula é pelo id, e não pelo e-mail.
--- name: AtualizarSenhaDoComprador :exec
+--
+-- O RETURNING devolve o e-mail porque o contador de tentativas do bloqueio
+-- chaveia por ele, e quem redefiniu a senha tem de sair do bloqueio: sem isto
+-- a consulta seria :exec, e quem chama pagaria um SELECT a mais só para saber
+-- de quem era o id que ele acabou de escrever. De quebra, o :one distingue o
+-- UPDATE que não achou linha nenhuma, que o :exec engoliria em silêncio.
+-- name: AtualizarSenhaDoComprador :one
 UPDATE identidade.comprador
 SET senha_hash = $2
-WHERE id = $1;
+WHERE id = $1
+RETURNING email;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -65,4 +66,58 @@ func EsquecerFalhas(ctx context.Context, rdb *redis.Client, email, origem string
 		return fmt.Errorf("esquecer as tentativas: %w", err)
 	}
 	return nil
+}
+
+// EsquecerFalhasDeTodasAsOrigens apaga o contador daquele e-mail venha ele de
+// onde vier. É o que a redefinição de senha chama: quem esqueceu a senha errou
+// o login antes — é o caminho mais comum até aqui — e sair da redefinição para
+// cair num 429 seria a recuperação não recuperar nada.
+//
+// Por todas as origens, e não só pela do pedido: as tentativas falhas vêm do
+// navegador de onde o Comprador tentou entrar, e o link pode ser aberto de
+// outro aparelho. Limpar não dá poder novo a ninguém — quem chega aqui provou
+// a posse do token, e com ele já podia trocar a senha.
+//
+// ponytail: O(chaves do Redis) por redefinição, como a varredura de Sessões. O
+// contador não tem índice por e-mail, e criar um custaria escrita a mais em
+// toda tentativa falha para servir isto, que acontece uma vez por esquecimento.
+func EsquecerFalhasDeTodasAsOrigens(ctx context.Context, rdb *redis.Client, email string) error {
+	// O e-mail entra num padrão de glob, e a RFC 5322 aceita `*`, `?` e `[` no
+	// nome — `a*b@exemplo.br` é endereço válido e cadastrável. Sem escapar, o
+	// padrão varreria o contador dos vizinhos junto.
+	padrao := prefixoFalhas + escaparGlob(normalizarEmail(email)) + "|*"
+
+	var cursor uint64
+	var primeiroErro error
+	for {
+		chaves, proximo, err := rdb.Scan(ctx, cursor, padrao, 100).Result()
+		if err != nil {
+			// Sem cursor não há como continuar: o SCAN é o que enumera.
+			return fmt.Errorf("varrer as tentativas: %w", err)
+		}
+		if len(chaves) > 0 {
+			// Uma falha aqui não interrompe a varredura, como na varredura de
+			// Sessões: desistir no meio deixaria justamente os contadores que a
+			// redefinição existe para limpar.
+			if err := rdb.Del(ctx, chaves...).Err(); err != nil && primeiroErro == nil {
+				primeiroErro = fmt.Errorf("esquecer as tentativas: %w", err)
+			}
+		}
+		cursor = proximo
+		if cursor == 0 {
+			return primeiroErro
+		}
+	}
+}
+
+// escaparGlob neutraliza os metacaracteres que o MATCH do Redis entende, para
+// que o texto seja procurado como texto.
+func escaparGlob(s string) string {
+	return strings.NewReplacer(
+		`\`, `\\`,
+		`*`, `\*`,
+		`?`, `\?`,
+		`[`, `\[`,
+		`]`, `\]`,
+	).Replace(s)
 }

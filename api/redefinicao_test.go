@@ -449,6 +449,58 @@ func semearSessoes(t *testing.T, rdb *redis.Client, cookie *http.Cookie, quantas
 	return quantas
 }
 
+// redefinirTiraDoBloqueio é o caminho mais comum até a recuperação de senha:
+// quem esqueceu a senha errou o login antes. Sem isto a estória entrega uma
+// senha nova que só funciona quinze minutos depois, e a recuperação não
+// recupera nada.
+//
+// O par de e-mails é escolhido a dedo: `ana*cruz@` é endereço válido pela RFC
+// 5322 (o `*` é atext) e, sem escapar, o padrão de MATCH `falhas:ana*cruz@…|*`
+// varreria também o contador de `anaxcruz@`. É o que separa "limpar o contador
+// deste Comprador" de "limpar o contador dos vizinhos".
+func redefinirTiraDoBloqueio(t *testing.T, rotas http.Handler) {
+	const (
+		glob      = "ana*cruz@exemplo.br"
+		vizinho   = "anaxcruz@exemplo.br"
+		senha     = "senha-da-ana-1"
+		senhaNova = "nova-senha-da-ana-2"
+	)
+
+	for _, email := range []string{glob, vizinho} {
+		if resp := postarCadastro(t, rotas, `{"nome":"Ana Cruz","email":`+string(marcarJSON(t, email))+`,"senha":"`+senha+`"}`); resp.Code != http.StatusCreated {
+			t.Fatalf("%s: cadastro = %d (%s), quero 201", email, resp.Code, resp.Body.String())
+		}
+		// Até o limiar, e mais uma para confirmar que o par está bloqueado.
+		for i := 1; i <= tentativasDeTeste; i++ {
+			if resp := postar(t, rotas, `{"email":`+string(marcarJSON(t, email))+`,"senha":"nao-e-a-senha"}`); resp.Code != http.StatusUnauthorized {
+				t.Fatalf("%s: tentativa %d = %d, quero 401 até o limiar", email, i, resp.Code)
+			}
+		}
+		if resp := postar(t, rotas, `{"email":`+string(marcarJSON(t, email))+`,"senha":"`+senha+`"}`); resp.Code != http.StatusTooManyRequests {
+			t.Fatalf("%s: depois de %d falhas o status = %d, quero 429", email, tentativasDeTeste, resp.Code)
+		}
+	}
+
+	_, token := solicitar(t, rotas, glob)
+	if token == "" {
+		t.Fatal("a solicitação não gerou token")
+	}
+	if resp := putRedefinicao(t, rotas, token, `{"senha":"`+senhaNova+`"}`); resp.Code != http.StatusNoContent {
+		t.Fatalf("redefinir = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+
+	// A condição de aceite: a senha nova entra na hora, sem esperar o prazo.
+	if resp := postar(t, rotas, `{"email":`+string(marcarJSON(t, glob))+`,"senha":"`+senhaNova+`"}`); resp.Code != http.StatusOK {
+		t.Errorf("login logo depois de redefinir = %d (%s), quero 200 — redefinir tem de tirar do bloqueio",
+			resp.Code, resp.Body.String())
+	}
+	// E o vizinho continua bloqueado: o padrão de varredura é texto, não glob.
+	if resp := postar(t, rotas, `{"email":"`+vizinho+`","senha":"`+senha+`"}`); resp.Code != http.StatusTooManyRequests {
+		t.Errorf("o vizinho %s saiu do bloqueio junto: status = %d, quero 429 — o e-mail entra escapado no MATCH",
+			vizinho, resp.Code)
+	}
+}
+
 // cookieDe extrai o cookie de Sessão da resposta, conferindo o status antes —
 // os três casos deste arquivo precisam de uma Sessão de verdade, e um cookie
 // ausente aqui viraria um nil difícil de ler vinte linhas adiante.

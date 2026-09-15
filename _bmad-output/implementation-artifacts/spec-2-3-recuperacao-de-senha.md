@@ -101,6 +101,25 @@ context: []
   apresentá-lo — o mesmo truque que a 2.2 usa para provar a renovação do prazo
   da Sessão, porque com o prazo cheio não há como esperar os 30 minutos.
 
+- **Redefinir passou a tirar do bloqueio por tentativas** (decisão do humano
+  depois da revisão, leitura (a) das três). `AtualizarSenhaDoComprador` virou
+  `:one` com `RETURNING email`: o e-mail que a limpeza precisa volta do próprio
+  `UPDATE`, sem um `SELECT` a mais, e de brinde o `pgx.ErrNoRows` passou a
+  distinguir o `UPDATE` que não achou linha nenhuma — que o `:exec` engolia em
+  silêncio e devolvia 204 sem ter gravado nada.
+- `EsquecerFalhasDeTodasAsOrigens` varre `falhas:<e-mail>|*`, e não só a origem
+  do pedido: as tentativas falhas vêm do navegador onde o Comprador tentou
+  entrar, e o link pode ser aberto de outro aparelho. O e-mail entra no padrão
+  **escapado**: `*`, `?` e `[` são atext na RFC 5322, e `ana*cruz@exemplo.br` é
+  endereço cadastrável cujo padrão cru varreria o contador de
+  `anaxcruz@exemplo.br` junto.
+- A limpeza do contador vem **antes** da varredura de Sessões: a varredura é a
+  parte que pode falhar por chave, e conseguir entrar com a senha nova vale mais
+  para o Comprador do que ver a última Sessão morrer.
+- `redefinirTiraDoBloqueio` prende as duas metades, e as duas foram verificadas
+  por mutação: sem a chamada da limpeza o login pós-redefinição cai em 429; sem
+  o escape do glob o vizinho `anaxcruz@` sai do bloqueio junto.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -125,7 +144,7 @@ context: []
 | Nada limita `POST /api/v1/redefinicoes-de-senha`, e cada pedido invalida o link que o Comprador legítimo está segurando | medium (não corrigido) | Real, mas é consequência direta do invariante que a FR-3 **exige** ("nova solicitação invalida os tokens anteriores"): toda implementação correta numa rota não autenticada tem essa propriedade. Não é defeito desta implementação, é uma aresta do requisito | defer |
 | Se a varredura falhar depois do `UPDATE`, a tela diz "não foi possível redefinir" para uma redefinição que aconteceu pela metade | medium (não corrigido) | Real. Mas 204 com Sessões vivas quebra a condição de aceite, e 500 mente ao contrário — não há opção claramente melhor, e ambas só ocorrem com o Redis fora do ar. A resiliência da varredura foi corrigida (linha acima); o dilema 204-vs-500 fica registrado | defer |
 | O guarda de `EmailMax` não é observável: removê-lo deixa a suíte verde | low (não corrigido) | A própria camada dispôs `defer`: o dano é limitado pelo `corpoMaximo` de 4 KiB, e a única afirmação honesta seria sobre um caminho interno, sem gancho no arnês | defer |
-| Redefinir a senha não limpa o contador de bloqueio da 2.2 | medium (não corrigido) | Real e verificado: `RedefinirSenha` toca Sessões, nunca `prefixoFalhas`. Quem erra cinco logins, é bloqueado e então redefine continua em 429 com a senha nova até o prazo passar. **Não é desvio deste spec nem da intenção capturada:** a FR-3 do PRD lista quatro consequências testáveis e nenhuma cita o bloqueio, e a Épica trata os dois como regras separadas. Há mais de uma leitura defensável (limpar para todas as origens / só para a origem do pedido / não limpar, honrando a regra plana do bloqueio), e o contador se cura sozinho em 15 min. Precisa da decisão do humano, não de um conserto inferido | defer |
+| Redefinir a senha não limpa o contador de bloqueio da 2.2 | medium — **corrigido depois da decisão do humano** | Real e verificado: `RedefinirSenha` tocava Sessões e nunca `prefixoFalhas`, então quem errava cinco logins, era bloqueado e redefinia continuava em 429 com a senha nova. Levado ao humano por ter três leituras defensáveis; decidida a (a), limpar para **todas as origens** daquele e-mail — o contador protegia uma senha que deixou de existir, e limpá-lo não dá poder novo a ninguém, porque quem resgata o token já podia trocar a senha. Ver as notas de implementação | patch (2ª rodada) |
 | Token não é de uso único de forma atômica: `Get` agora, `Del` depois do Argon2id | low | Real, mas os dois PUTs concorrentes são o mesmo portador do mesmo link (duplo clique / duas abas); o desfecho é o mesmo de um pedido só, com a última escrita vencendo. O `GetDel` que fecharia a janela inverteria a ordem gravar-antes-de-apagar, que é deliberada e documentada — não é correção direta | rejeitado |
 | Escrita do token e do ponteiro não é atômica; duas solicitações interleaved deixariam dois tokens válidos | low | Real, mas o dano é limitado pelo TTL de 30 min e os dois tokens pertencem ao mesmo Comprador legítimo. O conserto é script Lua ou pipeline transacional — complexidade acrescentada | rejeitado |
 | `AtualizarSenhaDoComprador` é `:exec` e esconde um `UPDATE` de zero linhas | low | O estado é inalcançável: não existe caminho de exclusão de Comprador em lugar nenhum do sistema. O conserto (`:execrows` + regeneração + ramo novo) é mais que correção direta | rejeitado |

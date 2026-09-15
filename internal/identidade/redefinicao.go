@@ -99,16 +99,32 @@ func RedefinirSenha(ctx context.Context, bd gerado.DBTX, rdb *redis.Client, toke
 	if err != nil {
 		return err
 	}
-	if err := gerado.New(bd).AtualizarSenhaDoComprador(ctx, gerado.AtualizarSenhaDoCompradorParams{
+	email, err := gerado.New(bd).AtualizarSenhaDoComprador(ctx, gerado.AtualizarSenhaDoCompradorParams{
 		ID:        chave,
 		SenhaHash: hash,
-	}); err != nil {
+	})
+	// Nenhuma linha quer dizer que o token aponta para uma conta que não existe
+	// mais: para quem chama é a mesma coisa que um token que nunca valeu, e
+	// responder 204 prometeria uma senha que ninguém gravou.
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrTokenInvalido
+	}
+	if err != nil {
 		return fmt.Errorf("gravar a senha nova: %w", err)
 	}
 
 	// O token é de uso único: some junto com o ponteiro que o apontava.
 	if err := rdb.Del(ctx, prefixoRedefinicao+token, prefixoRedefinicaoDe+id).Err(); err != nil {
 		return fmt.Errorf("gastar o token de redefinição: %w", err)
+	}
+
+	// Quem esqueceu a senha errou o login antes, e sair da redefinição para
+	// cair no bloqueio da 2.2 seria a recuperação não recuperar nada. O
+	// contador vai embora ANTES das Sessões: a varredura de Sessões é a parte
+	// que pode falhar por chave, e o Comprador precisa mais de conseguir entrar
+	// com a senha nova do que de ver a última Sessão morrer.
+	if err := EsquecerFalhasDeTodasAsOrigens(ctx, rdb, email); err != nil {
+		return err
 	}
 	return EncerrarSessoesDoComprador(ctx, rdb, id)
 }
