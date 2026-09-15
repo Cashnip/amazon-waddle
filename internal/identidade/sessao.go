@@ -25,9 +25,7 @@ const tamanhoToken = 32
 // cookie. O cookie não carrega conteúdo nenhum: quem sabe de quem é a Sessão é
 // o Redis, e expirar é apagar a chave.
 func CriarSessao(ctx context.Context, rdb *redis.Client, c Comprador, ttl time.Duration) (string, error) {
-	var b [tamanhoToken]byte
-	rand.Read(b[:]) // crypto/rand.Read nunca falha desde o Go 1.24.
-	token := hex.EncodeToString(b[:])
+	token := novoToken()
 
 	dados, err := json.Marshal(c)
 	if err != nil {
@@ -37,6 +35,16 @@ func CriarSessao(ctx context.Context, rdb *redis.Client, c Comprador, ttl time.D
 		return "", fmt.Errorf("gravar a Sessão: %w", err)
 	}
 	return token, nil
+}
+
+// novoToken são os 256 bits opacos do AD-9 em hexadecimal. Fica numa função
+// porque a Sessão e o token de redefinição de senha nascem da MESMA fonte:
+// duas cópias da geração divergiriam, e um token de redefinição com menos
+// entropia que o cookie seria a porta mais fraca da mesma conta.
+func novoToken() string {
+	var b [tamanhoToken]byte
+	rand.Read(b[:]) // crypto/rand.Read nunca falha desde o Go 1.24.
+	return hex.EncodeToString(b[:])
 }
 
 // tokenPlausivel confere a forma do valor do cookie. O token vem do navegador
@@ -87,4 +95,62 @@ func EncerrarSessao(ctx context.Context, rdb *redis.Client, token string) error 
 		return fmt.Errorf("encerrar a Sessão: %w", err)
 	}
 	return nil
+}
+
+// EncerrarSessoesDoComprador apaga TODAS as Sessões daquele Comprador — é o
+// que faz a redefinição de senha derrubar quem já estava dentro, inclusive de
+// outro navegador. Expirar o cookie não serviria: quem sabe da Sessão é o
+// Redis.
+//
+// A varredura é por SCAN, e não por um índice reverso comprador→tokens. Quem lê
+// a Sessão é LerSessao, num GetEx só; um índice custaria um comando a mais em
+// TODA requisição autenticada para servir uma operação que acontece uma vez por
+// esquecimento de senha. O SCAN é cursor, e não KEYS: não trava o Redis.
+//
+// ponytail: O(chaves de Sessão) por redefinição. Índice reverso se um dia o
+// volume de Sessões vivas tornar a varredura visível.
+// Uma falha numa chave não interrompe a varredura: quem chama já gravou a
+// senha nova, e desistir no meio deixaria vivas justamente as Sessões que a
+// troca de senha existe para derrubar. O primeiro erro é guardado e devolvido
+// no fim — quem chama continua sabendo que a promessa não foi cumprida por
+// inteiro, depois de a varredura ter feito o que pôde.
+func EncerrarSessoesDoComprador(ctx context.Context, rdb *redis.Client, compradorID string) error {
+	var cursor uint64
+	var primeiroErro error
+	guardar := func(err error) {
+		if primeiroErro == nil {
+			primeiroErro = err
+		}
+	}
+	for {
+		chaves, proximo, err := rdb.Scan(ctx, cursor, prefixoSessao+"*", 100).Result()
+		if err != nil {
+			// Sem cursor não há como continuar: o SCAN é o que enumera.
+			guardar(fmt.Errorf("varrer as Sessões: %w", err))
+			return primeiroErro
+		}
+		for _, chave := range chaves {
+			// Get puro, e não GetEx: renovar o prazo aqui daria sobrevida às
+			// Sessões dos OUTROS Compradores a cada redefinição.
+			dados, err := rdb.Get(ctx, chave).Bytes()
+			if errors.Is(err, redis.Nil) {
+				continue // expirou entre o SCAN e a leitura
+			}
+			if err != nil {
+				guardar(fmt.Errorf("ler a Sessão na varredura: %w", err))
+				continue
+			}
+			var c Comprador
+			if err := json.Unmarshal(dados, &c); err != nil || c.ID != compradorID {
+				continue
+			}
+			if err := rdb.Del(ctx, chave).Err(); err != nil {
+				guardar(fmt.Errorf("encerrar a Sessão do Comprador: %w", err))
+			}
+		}
+		cursor = proximo
+		if cursor == 0 {
+			return primeiroErro
+		}
+	}
 }

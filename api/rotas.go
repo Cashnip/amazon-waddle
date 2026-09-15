@@ -39,6 +39,11 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// O Comprador é o recurso criado, e por isso o plural — o mesmo padrão de
 	// `sessoes`. Cadastrar já abre a Sessão: o visitante sai autenticado.
 	mux.HandleFunc("POST /api/v1/compradores", s.criarComprador)
+	// A redefinição é o recurso: o POST a solicita (e sempre responde 202, para
+	// não enumerar contas), e o PUT sobre o token a consome. O token está no
+	// caminho, e não no corpo, porque é o próprio link que chega ao Comprador.
+	mux.HandleFunc("POST /api/v1/redefinicoes-de-senha", s.criarRedefinicao)
+	mux.HandleFunc("PUT /api/v1/redefinicoes-de-senha/{token}", s.redefinirSenha)
 	// Só o detalhe: a listagem (GET /api/v1/produtos) é de `busca`, na Épica 3.
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
 	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura

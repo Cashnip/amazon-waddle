@@ -14,3 +14,10 @@ WHERE email = $1;
 INSERT INTO identidade.comprador (nome, email, senha_hash)
 VALUES ($1, $2, $3)
 RETURNING id, nome;
+
+-- Quem chama já resolveu o token de redefinição no Redis, e é ele que provou
+-- de quem é a conta — por isso a cláusula é pelo id, e não pelo e-mail.
+-- name: AtualizarSenhaDoComprador :exec
+UPDATE identidade.comprador
+SET senha_hash = $2
+WHERE id = $1;

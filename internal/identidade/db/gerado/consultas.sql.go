@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const atualizarSenhaDoComprador = `-- name: AtualizarSenhaDoComprador :exec
+UPDATE identidade.comprador
+SET senha_hash = $2
+WHERE id = $1
+`
+
+type AtualizarSenhaDoCompradorParams struct {
+	ID        pgtype.UUID
+	SenhaHash string
+}
+
+// Quem chama já resolveu o token de redefinição no Redis, e é ele que provou
+// de quem é a conta — por isso a cláusula é pelo id, e não pelo e-mail.
+func (q *Queries) AtualizarSenhaDoComprador(ctx context.Context, arg AtualizarSenhaDoCompradorParams) error {
+	_, err := q.db.Exec(ctx, atualizarSenhaDoComprador, arg.ID, arg.SenhaHash)
+	return err
+}
+
 const buscarCompradorPorEmail = `-- name: BuscarCompradorPorEmail :one
 
 SELECT id, nome, email, senha_hash

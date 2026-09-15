@@ -126,3 +126,28 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-autenticacao-encerramento-de-sessao-e-bloqueio.md`
   summary: A tela `/cadastrar` descarta o `destino`, e o link "Criar conta" de `/entrar` perde a busca — quem cai no 401 e escolhe criar conta não volta ao ponto em que parou.
   evidence: `web/app/cadastrar/page.tsx` empurra `router.push("/")` fixo, e o link para `/cadastrar` em `web/app/entrar/page.tsx` é `href` sem query. A condição de aceite da 2.2 fala do Login preservando o destino, e a porta do cadastro nunca teve destino nenhum — por isso ficou de fora. Settlement: passar o `destino` adiante no link e consumi-lo no sucesso do cadastro, com o mesmo `destinoSeguro` de `web/lib/destino.ts`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: Redefinir a senha nao limpa o contador de bloqueio por tentativas da 2.2 — quem erra cinco logins, e bloqueado e entao redefine continua em 429 com a senha nova ate os 15 minutos passarem.
+  evidence: `internal/identidade/redefinicao.go` toca Sessoes e nunca `prefixoFalhas`; `EsquecerFalhas` so e chamada no sucesso do login (`api/sessao.go`). E o caminho mais natural ate a recuperacao de senha, e o unico que a estoria nao fecha. Nao e desvio do spec: a FR-3 do PRD lista quatro consequencias testaveis e nenhuma cita o bloqueio. Settlement: decidir entre limpar para todas as origens daquele e-mail (exige o e-mail no valor do token, ou consulta por id), limpar so para a origem do pedido, ou nao limpar — e registrar a decisao.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: A solicitacao de redefinicao distingue conta existente de inexistente pelo tempo de resposta — a existente paga um GET, ate um DEL e dois SET no Redis que a outra nao paga.
+  evidence: `SolicitarRedefinicao` devolve cedo em `pgx.ErrNoRows`, antes do primeiro comando Redis. O login fechou esse canal de proposito com o `hashDeDescarte` (`internal/identidade/identidade.go`), e esta rota nao tem equivalente. Nao foi corrigido porque o sinal aqui e ~3 idas ao Redis em soquete local contra o ~50 ms do Argon2id que justificou o `hashDeDescarte` — ordens de grandeza menor, e igualar exige trabalho ficticio no caminho da conta inexistente. Settlement: medir a diferenca sob carga; se for distinguivel, gastar os mesmos comandos no ramo sem conta.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: `POST /api/v1/redefinicoes-de-senha` nao tem limite de taxa, e como cada pedido invalida o token anterior, quem souber um e-mail pode derrubar indefinidamente o link que o Comprador legitimo esta segurando.
+  evidence: A rota e aberta, e o contador da 2.2 e so do login. E consequencia direta do invariante que a propria FR-3 exige ("nova solicitacao invalida os tokens anteriores"), entao toda implementacao correta numa rota nao autenticada tem essa propriedade. Settlement: contador proprio por (e-mail, origem) nesta rota, ou aceitar e registrar no addendum.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: Se a varredura de Sessoes falhar depois do UPDATE, a resposta e 500 e a tela diz "nao foi possivel redefinir" para uma redefinicao que ja gravou a senha e gastou o token.
+  evidence: `RedefinirSenha` termina em `EncerrarSessoesDoComprador`, cujo erro sobe ate `erro.Escrever`. A varredura passou a ser resiliente a erro por chave nesta estoria, mas o dilema fica: 204 com Sessoes vivas quebra a condicao de aceite, e 500 mente ao contrario. Settlement: decidir qual das duas mentiras e preferivel, ou dar a rota uma mensagem propria para o sucesso parcial.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: O teto de `EmailMax` em `criarRedefinicao` nao e observavel de fora — remove-lo deixa a suite verde, porque um e-mail gigante tambem nao acha conta nenhuma.
+  evidence: O caso da matriz afirma status, corpo, cabecalhos e ausencia de chave nova, e todos valem igual para um endereco desconhecido. O dano e limitado pelo `corpoMaximo` de 4 KiB. Settlement: so com um gancho que observe a ida ao Postgres, que o arnes nao tem.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-recuperacao-de-senha.md`
+  summary: A verificacao de acessibilidade das duas telas novas (foco visivel a 3:1 e ausencia de rolagem horizontal de 360 a 1440 px) nao foi percorrida em navegador.
+  evidence: Mesmo desfecho da 2.1 e da 2.2 — a extensao do Chrome nao esta conectada nesta maquina. Na fonte, as telas reusam a casca `max-w-md` de `/entrar` e `/cadastrar`, sem largura fixa. Settlement: percorrer as duas telas so pelo teclado antes de aceitar a Epica 2.
+

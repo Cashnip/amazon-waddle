@@ -82,9 +82,23 @@ func (s *servidor) validarComprador(e entradaComprador) (campo, mensagem string)
 		return "email", "Informe um e-mail válido, no formato nome@dominio.com."
 	case len(e.Email) > s.cfg.EmailMax:
 		return "email", fmt.Sprintf("O e-mail pode ter no máximo %d caracteres.", s.cfg.EmailMax)
-	case utf8.RuneCountInString(e.Senha) < s.cfg.SenhaMin:
+	}
+	return s.validarSenha(e.Senha)
+}
+
+// validarSenha são as regras de senha da 2.1, numa função só porque a
+// redefinição promete "as mesmas regras" — e isso só é verdade se for a mesma
+// função. Duas cópias divergiriam na primeira mudança de limiar, e o Comprador
+// escolheria na redefinição uma senha que o cadastro recusaria.
+//
+// A senha é contada em runas, e não em bytes: "señ@-de-8" tem nove caracteres
+// para quem digita, e um limite medido em bytes recusaria senhas acentuadas
+// antes da hora.
+func (s *servidor) validarSenha(senha string) (campo, mensagem string) {
+	switch {
+	case utf8.RuneCountInString(senha) < s.cfg.SenhaMin:
 		return "senha", fmt.Sprintf("A senha precisa de pelo menos %d caracteres.", s.cfg.SenhaMin)
-	case utf8.RuneCountInString(e.Senha) > s.cfg.SenhaMax:
+	case utf8.RuneCountInString(senha) > s.cfg.SenhaMax:
 		return "senha", fmt.Sprintf("A senha pode ter no máximo %d caracteres.", s.cfg.SenhaMax)
 	}
 	return "", ""

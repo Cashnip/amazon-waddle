@@ -48,6 +48,10 @@ var registro = []traducao{
 	{ErrNaoAutorizado, http.StatusUnauthorized, "NAO_AUTORIZADO"},
 	{identidade.ErrCredencialInvalida, http.StatusUnauthorized, "CREDENCIAL_INVALIDA"},
 	{identidade.ErrSessaoInvalida, http.StatusUnauthorized, "SESSAO_INVALIDA"},
+	// 404 e não 401: o link de redefinição não é credencial de ninguém, e o
+	// recurso que ele nomeia de fato não existe mais. Expirado, já usado e
+	// inexistente saem os três por aqui — a tela oferece solicitar outro.
+	{identidade.ErrTokenInvalido, http.StatusNotFound, "TOKEN_INVALIDO"},
 	// 409 e não 400: o corpo veio correto, o que não comporta é o estado do
 	// mundo. O campo em falta viaja em `dados`, como em todo erro em linha.
 	{identidade.ErrEmailJaCadastrado, http.StatusConflict, "EMAIL_JA_CADASTRADO"},

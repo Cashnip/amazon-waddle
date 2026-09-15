@@ -58,6 +58,11 @@ const (
 	bloqueioDeTeste   = 15 * time.Minute
 )
 
+// validadeDeTeste são os 30 minutos do AZAMON_SENHA_TOKEN_VALIDADE. Precisa
+// estar na Config do teste pelo mesmo motivo dos dois acima: com o zero-value,
+// o token nasceria com TTL zero e nenhuma redefinição resolveria.
+const validadeDeTeste = 30 * time.Minute
+
 // origemDeTeste é o RemoteAddr que o httptest põe em toda requisição. Fica
 // escrito porque o contador de tentativas chaveia pelo par (e-mail, origem), e
 // há um subteste que precisa chegar de outra origem.
@@ -135,6 +140,7 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		SessaoExpiracao:     expiracaoDeTeste,
 		AuthTentativasMax:   tentativasDeTeste,
 		AuthBloqueioDuracao: bloqueioDeTeste,
+		SenhaTokenValidade:  validadeDeTeste,
 
 		WebhookSegredo:   segredoDeTeste,
 		CompradorNomeMax: nomeMaxDeTeste,
@@ -377,6 +383,19 @@ func TestSessaoEProduto(t *testing.T) {
 	})
 	t.Run("o par bloqueia no limiar, exista ou não a conta", func(t *testing.T) {
 		bloqueioDepoisDoLimiar(t, rotas)
+	})
+
+	// A 2.3 depois do bloqueio: as contas são próprias, e o contador de
+	// tentativas que o subteste acima deixou sujo é do par (e-mail, origem) —
+	// não alcança nenhuma delas.
+	t.Run("a solicitação responde o mesmo exista ou não a conta", func(t *testing.T) {
+		solicitacaoNaoVazaConta(t, rotas, rdb)
+	})
+	t.Run("redefinir troca a senha e derruba todas as Sessões do dono", func(t *testing.T) {
+		redefinicaoTrocaSenhaEDerrubaSessoes(t, rotas, rdb)
+	})
+	t.Run("token expirado, já usado ou inexistente sai em 404", func(t *testing.T) {
+		tokenInvalidoDa404(t, rotas, rdb)
 	})
 }
 

@@ -113,9 +113,14 @@ export default function Entrar() {
               </Button>
             </form>
 
-            {/* Sem o menu da conta (2.6), este link é a única porta para a
-                tela de cadastro. */}
-            <p className="text-muted-foreground mt-4 text-sm">
+            {/* Sem o menu da conta (2.6), estes dois links são as únicas portas
+                para o cadastro e para a recuperação de senha. */}
+            <p className="mt-4 text-sm">
+              <a className="text-link underline" href="/esqueci-a-senha">
+                Esqueci minha senha
+              </a>
+            </p>
+            <p className="text-muted-foreground mt-2 text-sm">
               Ainda não tem conta?{" "}
               <a className="text-link underline" href="/cadastrar">
                 Criar conta
