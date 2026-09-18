@@ -156,6 +156,8 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 
 		EnderecoTextoMax:        enderecoTextoMaxDeTeste,
 		EnderecoPorCompradorMax: enderecoPorCompradorMaxDeTeste,
+
+		VendedorNomeMax: vendedorNomeMaxDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -449,6 +451,12 @@ func TestSessaoEProduto(t *testing.T) {
 	})
 	t.Run("as rotas de Endereço exigem Sessão de Comprador", func(t *testing.T) {
 		enderecoExigeSessaoDeComprador(t, rotas)
+	})
+
+	// A 3.1 com Vendedor próprio: desativar um semeado esconderia Produtos de
+	// que os subtestes acima dependem.
+	t.Run("a gestão de Vendedores e o Produto de Vendedor desativado", func(t *testing.T) {
+		gestaoDeVendedores(t, rotas, pool)
 	})
 }
 

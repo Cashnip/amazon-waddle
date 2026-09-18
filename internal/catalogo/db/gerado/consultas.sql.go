@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const atualizarVendedor = `-- name: AtualizarVendedor :one
+UPDATE catalogo.vendedor SET nome = $1, ativo = $2
+WHERE id = $3
+RETURNING id, nome, ativo
+`
+
+type AtualizarVendedorParams struct {
+	Nome  string
+	Ativo bool
+	ID    pgtype.UUID
+}
+
+// Desativar é este UPDATE de `ativo`: nenhum Pedido é tocado, e quem esconde
+// os Produtos é a VIEW produto_visivel.
+func (q *Queries) AtualizarVendedor(ctx context.Context, arg AtualizarVendedorParams) (CatalogoVendedor, error) {
+	row := q.db.QueryRow(ctx, atualizarVendedor, arg.Nome, arg.Ativo, arg.ID)
+	var i CatalogoVendedor
+	err := row.Scan(&i.ID, &i.Nome, &i.Ativo)
+	return i, err
+}
+
 const baixarEstoqueTotal = `-- name: BaixarEstoqueTotal :exec
 UPDATE catalogo.produto
 SET estoque_total = estoque_total - $1
@@ -33,10 +54,9 @@ func (q *Queries) BaixarEstoqueTotal(ctx context.Context, arg BaixarEstoqueTotal
 }
 
 const buscarProdutoComVendedor = `-- name: BuscarProdutoComVendedor :one
-SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url, v.nome AS vendedor_nome
-FROM catalogo.produto p
-JOIN catalogo.vendedor v ON v.id = p.vendedor_id
-WHERE p.id = $1
+SELECT id, nome, descricao, preco_centavos, imagem_url, vendedor_nome
+FROM catalogo.produto_visivel
+WHERE id = $1
 `
 
 type BuscarProdutoComVendedorRow struct {
@@ -48,10 +68,9 @@ type BuscarProdutoComVendedorRow struct {
 	VendedorNome  string
 }
 
-// A consulta da Página de Produto (FR-9). O JOIN é dentro do mesmo schema —
-// chave estrangeira cruzando schema é proibida (AD-2), e esta não cruza.
-// `busca_normalizada` fica de fora: é dado de índice, e a busca de verdade,
-// com paginação, é da Épica 3.
+// A consulta da Página de Produto (FR-9). Lê da VIEW do AD-19: Produto de
+// Vendedor desativado sai daqui como zero linhas, o mesmo 404 do inexistente.
+// `busca_normalizada` fica de fora: é dado de índice.
 func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) (BuscarProdutoComVendedorRow, error) {
 	row := q.db.QueryRow(ctx, buscarProdutoComVendedor, id)
 	var i BuscarProdutoComVendedorRow
@@ -118,6 +137,59 @@ func (q *Queries) CriarReservaAtiva(ctx context.Context, arg CriarReservaAtivaPa
 	return err
 }
 
+const criarVendedor = `-- name: CriarVendedor :one
+INSERT INTO catalogo.vendedor (nome) VALUES ($1)
+RETURNING id, nome, ativo
+`
+
+// Nome duplicado é decidido pelo UNIQUE (23505), nunca por SELECT antes.
+func (q *Queries) CriarVendedor(ctx context.Context, nome string) (CatalogoVendedor, error) {
+	row := q.db.QueryRow(ctx, criarVendedor, nome)
+	var i CatalogoVendedor
+	err := row.Scan(&i.ID, &i.Nome, &i.Ativo)
+	return i, err
+}
+
+const listarVendedores = `-- name: ListarVendedores :many
+SELECT id, nome, ativo FROM catalogo.vendedor ORDER BY nome, id
+`
+
+// A gestão de Vendedores (3.1). A lista traz ativos e inativos — é a tela do
+// Administrador, e não a loja — por nome, com desempate estável por id.
+func (q *Queries) ListarVendedores(ctx context.Context) ([]CatalogoVendedor, error) {
+	rows, err := q.db.Query(ctx, listarVendedores)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogoVendedor
+	for rows.Next() {
+		var i CatalogoVendedor
+		if err := rows.Scan(&i.ID, &i.Nome, &i.Ativo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removerVendedor = `-- name: RemoverVendedor :execrows
+DELETE FROM catalogo.vendedor WHERE id = $1
+`
+
+// Vendedor com Produto é barrado pela FK `produto.vendedor_id` (23503), sem
+// contagem antes.
+func (q *Queries) RemoverVendedor(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, removerVendedor, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const somarReservasAtivas = `-- name: SomarReservasAtivas :one
 SELECT coalesce(sum(quantidade), 0)::bigint AS reservado
 FROM catalogo.reserva_estoque
@@ -134,11 +206,12 @@ func (q *Queries) SomarReservasAtivas(ctx context.Context, produtoID pgtype.UUID
 }
 
 const travarProdutosParaReserva = `-- name: TravarProdutosParaReserva :many
-SELECT id, estoque_total
-FROM catalogo.produto
-WHERE id = ANY($1::uuid[])
-ORDER BY id
-FOR UPDATE
+SELECT p.id, p.estoque_total
+FROM catalogo.produto p
+WHERE p.id = ANY($1::uuid[])
+  AND p.id IN (SELECT id FROM catalogo.produto_visivel)
+ORDER BY p.id
+FOR UPDATE OF p
 `
 
 type TravarProdutosParaReservaRow struct {
@@ -152,6 +225,10 @@ type TravarProdutosParaReservaRow struct {
 //
 // Primeiro a trava. O `ORDER BY id` não é estilo: sem ele, dois Pedidos com os
 // mesmos dois Produtos em ordem inversa travam um no outro.
+//
+// A visibilidade entra na mesma consulta, por subconsulta à VIEW, e a trava é
+// `OF p`: `FOR UPDATE` sobre a VIEW travaria também a linha do Vendedor, e
+// Pedidos de Produtos diferentes do mesmo Vendedor esperariam um pelo outro.
 func (q *Queries) TravarProdutosParaReserva(ctx context.Context, ids []pgtype.UUID) ([]TravarProdutosParaReservaRow, error) {
 	rows, err := q.db.Query(ctx, travarProdutosParaReserva, ids)
 	if err != nil {

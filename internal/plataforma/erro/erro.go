@@ -59,6 +59,10 @@ var registro = []traducao{
 	// comporta. O disponível viaja em `dados`, e não na mensagem.
 	{catalogo.ErrEstoqueInsuficiente, http.StatusConflict, "ESTOQUE_INSUFICIENTE"},
 	{pedido.ErrEstadoJaAvancado, http.StatusConflict, "ESTADO_JA_AVANCADO"},
+	// 409 nos dois: o nome duplicado e o Vendedor com Produtos são estado do
+	// mundo. O campo do duplicado viaja em `dados`, como no e-mail.
+	{catalogo.ErrVendedorJaCadastrado, http.StatusConflict, "VENDEDOR_JA_CADASTRADO"},
+	{catalogo.ErrVendedorComProdutos, http.StatusConflict, "VENDEDOR_COM_PRODUTOS"},
 }
 
 // CodigoInterno é o código de todo erro que não está no registro.

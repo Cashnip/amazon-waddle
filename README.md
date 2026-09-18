@@ -143,8 +143,13 @@ curl -i -X POST http://localhost:8080/api/v1/admin/sessoes \
 O `Set-Cookie` da resposta é a Sessão de Administrador, e com ela
 `curl -b azamon_sessao=<token> http://localhost:8080/api/v1/admin/sessao` responde 200.
 
-Ainda **não há tela**: a área administrativa é da Épica 3. O que existe aqui é a guarda —
-tudo sob `/api/v1/admin/` exige a Sessão de Administrador, e quem não a tem recebe o mesmo
+A área administrativa fica em **`/admin`**: `/admin/entrar` é o login, e `/admin` leva à
+tela **Vendedores** (`/admin/vendedores`), onde o Administrador cria, renomeia, desativa,
+reativa e remove Vendedores. Desativar esconde os Produtos do Vendedor na Página de Produto
+e na compra sem tocar em Pedido nenhum; Vendedor com Produtos não é removível, e a recusa
+oferece desativar no lugar. Sem Sessão de Administrador, `/admin/...` cai em `/admin/entrar`.
+
+A guarda é do Go: tudo sob `/api/v1/admin/` exige a Sessão de Administrador, e quem não a tem recebe o mesmo
 **404** de uma rota que não existe (a área não aparece para quem não é Administrador,
 UX-DR9). A exceção é a porta acima: `POST /api/v1/admin/sessoes` fica **fora** da guarda,
 senão ninguém entraria, e por isso ela responde **401** a quem erra a credencial.

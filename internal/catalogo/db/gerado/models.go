@@ -26,6 +26,19 @@ type CatalogoProduto struct {
 	EstoqueTotal     int32
 }
 
+type CatalogoProdutoVisivel struct {
+	ID               pgtype.UUID
+	Nome             string
+	Descricao        string
+	PrecoCentavos    int64
+	ImagemUrl        string
+	VendedorID       pgtype.UUID
+	CategoriaID      pgtype.UUID
+	BuscaNormalizada string
+	EstoqueTotal     int32
+	VendedorNome     string
+}
+
 type CatalogoReservaEstoque struct {
 	ID         pgtype.UUID
 	ProdutoID  pgtype.UUID

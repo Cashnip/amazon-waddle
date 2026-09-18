@@ -45,7 +45,8 @@ func TestSchemaESemente(t *testing.T) {
 		tem := textos(t, ctx, conexao, `
 			SELECT table_schema || '.' || table_name
 			FROM information_schema.tables
-			WHERE table_schema = ANY($1) ORDER BY 1`, schemasDeModulo)
+			WHERE table_schema = ANY($1) AND table_type = 'BASE TABLE'
+			ORDER BY 1`, schemasDeModulo)
 		quer := []string{
 			"catalogo.categoria", "catalogo.produto", "catalogo.reserva_estoque", "catalogo.vendedor",
 			"identidade.administrador", "identidade.comprador", "identidade.endereco",

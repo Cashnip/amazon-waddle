@@ -73,6 +73,11 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// escrito com pressa.
 	admin := http.NewServeMux()
 	admin.HandleFunc("GET /api/v1/admin/sessao", s.lerSessaoAdministrador)
+	// A gestão de Vendedores (3.1): criar, editar, desativar e remover.
+	admin.HandleFunc("GET /api/v1/admin/vendedores", s.listarVendedores)
+	admin.HandleFunc("POST /api/v1/admin/vendedores", s.criarVendedor)
+	admin.HandleFunc("PUT /api/v1/admin/vendedores/{id}", s.atualizarVendedor)
+	admin.HandleFunc("DELETE /api/v1/admin/vendedores/{id}", s.removerVendedor)
 	admin.HandleFunc("/", naoEncontrado)
 	guardado := s.somenteAdministrador(admin)
 	mux.Handle("/api/v1/admin/", guardado)

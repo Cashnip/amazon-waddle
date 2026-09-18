@@ -47,6 +47,7 @@ type Config struct {
 
 	ProdutoNomeMax      int
 	ProdutoDescricaoMax int
+	VendedorNomeMax     int
 
 	VarreduraIntervalo time.Duration
 	ConfirmacaoAtraso  time.Duration
@@ -113,6 +114,7 @@ func carregar(l *leitor) Config {
 
 		ProdutoNomeMax:      l.inteiro("AZAMON_PRODUTO_NOME_MAX", 200),
 		ProdutoDescricaoMax: l.inteiro("AZAMON_PRODUTO_DESCRICAO_MAX", 4000),
+		VendedorNomeMax:     l.inteiro("AZAMON_VENDEDOR_NOME_MAX", 120),
 
 		VarreduraIntervalo: l.duracao("AZAMON_VARREDURA_INTERVALO", time.Second),
 		ConfirmacaoAtraso:  l.duracao("AZAMON_CONFIRMACAO_ATRASO", 5*time.Second),
