@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-17 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador.
+**Atualizado:** 2026-09-18 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 começou:** a 3.1 (Gestão de Vendedores) está em `main`, com a primeira área administrativa do `web/` (`/admin/entrar` e `/admin/vendedores`) e a VIEW `catalogo.produto_visivel`, que é o predicado único do AD-19.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,10 +59,23 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 3.1** — Gestão de Vendedores, primeira da **Épica 3** (Catálogo, Estoque e
-Busca). Com a 2.6 fechada, a conta está inteira; a Épica 3 é quem dá ao Administrador o CRUD de
-Vendedores, Categorias e Produtos, e ao visitante a Vitrine com busca — inclusive o que remove o
-achado da 1.9 abaixo. `epic-2-retrospective` continua `optional` no `sprint-status.yaml`, sem dono.
+`bmad-build` na **Estória 3.2** — Gestão de Categorias. Ela e a 3.3 (Produtos) são o mesmo CRUD da 3.1
+e podem ir numa spec só, com uma lente de revisão. A 3.1 deixou prontos o molde e a casca: `api/vendedor.go`
+e `internal/catalogo/vendedor.go` para o CRUD, com o banco decidindo duplicado (23505) e remoção recusada
+(23503); `web/components/casca-admin.tsx` para a área administrativa; e `vendedores.tsx` para a tela.
+A Navegação administrativa mostra só os destinos que existem: cada estória acrescenta o seu, e o `Sheet`
+abaixo de 640 px entra quando houver mais de um. `epic-2-retrospective` continua `optional`, sem dono.
+
+**O que a 3.1 deixou para a 3.4:** o predicado de visibilidade, a VIEW `catalogo.produto_visivel`, hoje só
+tem "Vendedor ativo"; a 3.4 acrescenta "Produto ativo" **nela**, e nunca num `WHERE ativo` em outro lugar.
+O `Reservar` já passa pela VIEW, com `FOR UPDATE OF p`, para não travar o Vendedor. Hoje Produto invisível sai
+como `ErrNoRows` (404); o `ErrEstoqueInsuficiente` que o AD-19 pede é da 3.4. Fica aceita a janela entre desativar
+o Vendedor e uma Reserva já em andamento.
+
+**Não verificado na 3.1:** as telas administrativas não foram abertas no navegador. `go test ./...` e
+`npm run build` estão verdes, mas o passeio manual da seção Verification da spec
+(`_bmad-output/implementation-artifacts/spec-3-1-gestao-de-vendedores.md`) continua pendente. Por isso a 3.1
+está em `review`, e não em `done`, no `sprint-status.yaml`.
 
 Da Épica 2, fechada, está tudo em `main`: a 2.1 (cadastro que já abre a Sessão), a 2.2 (bloqueio por
 tentativas, encerramento no servidor e o retorno ao destino), a 2.3 (redefinição por token de uso
@@ -160,7 +173,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épicas 1 e 2 fechadas. Próximo passo: Estória 3.1, primeira da Épica 3.
+Épicas 1 e 2 fechadas; a 3.1 está em main. Próximo passo: Estória 3.2 (Categorias).
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
