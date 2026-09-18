@@ -157,6 +157,35 @@ falta para nada disto.
 
 ## Spec Change Log
 
+## Review Triage Log
+
+Três camadas rodaram sobre o diff inteiro (`blind-hunter`, `edge-case-hunter`,
+`verification-gap`). Nenhuma achou lacuna de intenção ou desvio de spec —
+zero `intent_gap`, zero `bad_spec`. Quatro achados viraram patch, aplicados e
+reverificados com `go build`/`go test`/`npm run build` verdes; o resto foi
+`defer` (para `deferred-work.md`) ou `reject` (ruído, descartado sem registro
+por instrução do próprio processo de triagem).
+
+| Veredito | Achado | Correção |
+|---|---|---|
+| patch | `AutenticarAdministrador` ganharia `Email` pela simples simetria com `Autenticar`, mas nenhuma tela de Administrador desta estória o lê, e `saidaSessao.Email` não tem `omitempty` — preenchê-lo faria `POST /api/v1/admin/sessoes` devolver o e-mail enquanto `GET /api/v1/admin/sessao` (fora do escopo) continuaria em `""`, duas rotas administrativas discordando do mesmo campo | `AutenticarAdministrador` explicitamente **não** ganhou `Email`; o porquê está em comentário na própria função (`internal/identidade/identidade.go:103`) para o próximo leitor não "corrigir" a assimetria por engano |
+| patch | O cadastro (`api/comprador_test.go`) afirmava `nome` na resposta e na Sessão relida, mas não `email` — a AC da 2.6 depende do e-mail chegar ao `MenuDaConta`/Perfil também pelo caminho do cadastro, não só do login, e ficava sem prova | Duas asserções novas em `cadastroValidoAbreSessao` (`api/comprador_test.go:47,77`): resposta e Sessão relida devolvem `ana@exemplo.br` |
+| patch | `sair()` vivia dentro de `menu-da-conta.tsx`; o Perfil (2.6) também precisa de um botão Sair, e importar de um componente de dropdown para reusar uma função de rede acopla o Perfil à existência do menu | `sair()` extraído para `web/lib/sessao.ts`; `menu-da-conta.tsx` e `perfil.tsx` importam do mesmo lugar |
+| patch | A primeira versão de "Meus pedidos" listava `numero` e Status sem o total — a tela existe para o Comprador reconhecer o Pedido, e o valor é o dado que mais diferencia dois Pedidos com o mesmo Status | `meus-pedidos.tsx` ganhou a coluna `Preco` (copiada de `acompanhamento.tsx`, não importada — o arquivo inteiro é o esboço que a 6.1 substitui) |
+
+Os sete achados `defer` (não causados por esta estória, ou decisão de escopo
+consciente sem consumidor ainda) estão em `deferred-work.md` sob
+`spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida`: a UJ-1 não foi
+percorrida só pelo teclado neste ambiente (sem extensão do Chrome conectada —
+mesmo desfecho das estórias 2.1-2.3), `meus-pedidos.tsx`/`perfil.tsx` sem
+estado de carregamento (padrão pré-existente do repo), `GET /api/v1/pedidos`
+sem `LIMIT`, os quatro arquivos novos do `web/` sem teste automatizado
+(lacuna estrutural do repo, não desta estória), `Conta.Email` agora viajando
+para dentro da Sessão gravada no Redis sem decisão escrita sobre dado pessoal
+em repouso, Sessão do Redis criada antes desta estória subir desserializando
+com `Email` vazio, e o lampejo do estado "sem Sessão" no `MenuDaConta` antes
+de `GET /api/v1/sessao` responder.
+
 ## Design Notes
 
 **Por que `email` entra em `Conta` e não numa consulta à parte.** As duas

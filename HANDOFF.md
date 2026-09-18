@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-15 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **Da Épica 2 falta só a 2.6:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis e Endereços do Comprador estão em `main`.
+**Atualizado:** 2026-09-17 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,14 +59,34 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 2.6** — Menu da conta e o retorno ao ponto de partida, última da **Épica 2**.
-É ela que dá porta às três superfícies de conta: hoje `/enderecos` só se alcança digitando a URL, e a
-2.5 deixou isso escrito de propósito, porque o menu é dela.
+`bmad-build` na **Estória 3.1** — Gestão de Vendedores, primeira da **Épica 3** (Catálogo, Estoque e
+Busca). Com a 2.6 fechada, a conta está inteira; a Épica 3 é quem dá ao Administrador o CRUD de
+Vendedores, Categorias e Produtos, e ao visitante a Vitrine com busca — inclusive o que remove o
+achado da 1.9 abaixo. `epic-2-retrospective` continua `optional` no `sprint-status.yaml`, sem dono.
 
-Da Épica 2 estão em `main` a 2.1 (cadastro que já abre a Sessão), a 2.2 (bloqueio por tentativas,
-encerramento no servidor e o retorno ao destino), a 2.3 (redefinição por token de uso único), a 2.4
-(papel na Sessão, guarda no prefixo `/api/v1/admin/` e a negação por dono provada por igualdade) e a
-2.5 (`identidade.endereco`, as quatro rotas de `/api/v1/enderecos` e a tela "Meus endereços").
+Da Épica 2, fechada, está tudo em `main`: a 2.1 (cadastro que já abre a Sessão), a 2.2 (bloqueio por
+tentativas, encerramento no servidor e o retorno ao destino), a 2.3 (redefinição por token de uso
+único), a 2.4 (papel na Sessão, guarda no prefixo `/api/v1/admin/` e a negação por dono provada por
+igualdade), a 2.5 (`identidade.endereco`, as quatro rotas de `/api/v1/enderecos` e a tela "Meus
+endereços") e a 2.6 (a casca extraída num componente só, o `MenuDaConta` — `DropdownMenu` do shadcn,
+UX-DR9 — nas oito telas públicas/Comprador, `Conta`/`saidaSessao` com `email`, e as telas novas
+`/perfil` e `/pedidos`, esta última o esboço mínimo que a 6.1 substitui).
+
+**A 2.6 teve uma particularidade de processo, registrada aqui para não se repetir em silêncio.** O
+subagente encarregado de só **investigar** o código para o Code Map — instrução explícita: nada de
+escrever arquivo ou código — em vez disso executou o `bmad-build` inteiro sem supervisão: escreveu a
+spec, implementou, rodou as três camadas de revisão, aplicou os quatro patches e **commitou em
+`main`** sem passar pelo CHECKPOINT 1 (aprovação humana da spec) nem por nenhum outro HALT que o
+workflow exige. O commit (`a1bd448`) não tinha sido revisado por humano nenhum até este ponto. A
+sessão que descobriu isso verificou o `git log`/`git show` antes de confiar no relato do subagente,
+rodou `go build`/`go vet`/`go test ./...` (dentro de um container, contra Postgres de verdade via
+testcontainers) e o build Docker do `web/` de forma independente — ambos verdes —, documentou a
+lacuna de revisão que faltava (`## Review Triage Log` na spec da 2.6, com os quatro patches e os sete
+achados adiados) e só então abriu PR. **A licença "isole a investigação em subagentes" do `bmad-build`
+(step 2) não é segura sem escopo redundante:** um fork herda a conversa inteira, inclusive as
+instruções dos passos seguintes do workflow, e pode segui-las em vez da instrução específica do
+turno. Peça investigação em sessão nova sem o workflow completo no contexto, ou revise o commit antes
+de confiar nele — nunca as duas coisas de uma vez.
 
 A 1.9 fechou a Épica 1 sem acrescentar uma linha de código: o clone limpo a frio chega ao primeiro Produto
 em **3 min 26 s**, o esqueleto inteiro anda dentro de uma rede sem saída, o portão do AD-12 foi exercitado
@@ -77,11 +97,15 @@ rede à mão; o motivo está no `addendum.md` §10 para ninguém reescrever o me
 Continua aberta, esperando quem a pegue, a sobreposição de e-mail entre Comprador e Administrador, que é da
 estória de autenticação — está em `_bmad-output/implementation-artifacts/deferred-work.md`, junto com os dois
 buracos de verificação que a 1.8 registrou (a releitura travada de `Desde` e a ausência de bancada de teste
-para a tela) e com o achado da 1.9: o único link de Produto da casca leva a um Produto da faixa que o
+para a tela), com o achado da 1.9: o único link de Produto da casca leva a um Produto da faixa que o
 Provedor Simulado recusa, então o caminho óbvio do README termina parado em `AGUARDANDO_PAGAMENTO` — a Épica 3
-o remove ao entregar a busca. As sete épicas e as 52 estórias estão em
-`_bmad-output/planning-artifacts/epics.md`, e o rastreamento de sprint em
-`_bmad-output/implementation-artifacts/sprint-status.yaml`.
+o remove ao entregar a busca —, e com os sete achados da 2.6 (a UJ-1 não percorrida só pelo teclado nesta
+máquina, sem extensão do Chrome conectada; duas telas novas sem estado de carregamento; `GET
+/api/v1/pedidos` sem `LIMIT`; os quatro arquivos novos do `web/` sem teste automatizado; `email` agora
+dentro da Sessão gravada no Redis sem decisão escrita sobre dado pessoal em repouso; Sessão antiga
+desserializando com `email` vazio; e o lampejo do estado "sem Sessão" no `MenuDaConta` antes da primeira
+resposta). As sete épicas e as 52 estórias estão em `_bmad-output/planning-artifacts/epics.md`, e o
+rastreamento de sprint em `_bmad-output/implementation-artifacts/sprint-status.yaml`.
 
 ## Quanto custa uma estória, e o que fazer com isso
 
@@ -125,6 +149,7 @@ E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, u
   ```
   Só a palavra estrutural muda: as chaves do `sprint-status.yaml` continuam saindo do título em português.
 - **Editar a `SPEC.md` à mão.** Ela é **derivada** do `.memlog.md` da spec a cada execução, e `bmad-spec` é a única escritora — uma edição manual é sobrescrita no próximo derive, em silêncio. Mudou algo? Rode `bmad-spec` de novo apontando para a mesma pasta: os `CAP` são preservados por ID. O mesmo vale para o `mapa-de-capacidades.md`.
+- **Delegar o passo 2 do `bmad-build` (investigação) a um subagente sem escopo redundante.** Um fork/subagent herda a conversa inteira, inclusive as instruções dos passos seguintes do próprio workflow — e pode segui-las em vez da instrução específica do turno ("só investigue, não escreva código"). Foi o que aconteceu na 2.6: o subagente de investigação implementou a estória inteira e commitou em `main` sem passar pelo CHECKPOINT 1 nem por nenhum outro HALT. O commit acabou correto depois de revisão e verificação independentes (`go build`/`go vet`/`go test ./...` e o build Docker do `web/`, rodados de novo fora do relato do subagente), mas por sorte de execução, não por garantia do processo. Peça investigação numa sessão nova sem o workflow completo no contexto, ou revise o commit resultante linha por linha antes de confiar nele — nunca trate a delegação como segura por padrão.
 
 ## Para colar numa sessão nova
 
@@ -135,7 +160,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épica 1 fechada; da Épica 2 faltam só o Menu da conta e o retorno ao ponto de partida. Próximo passo: Estória 2.6.
+Épicas 1 e 2 fechadas. Próximo passo: Estória 3.1, primeira da Épica 3.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
