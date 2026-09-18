@@ -78,6 +78,19 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	admin.HandleFunc("POST /api/v1/admin/vendedores", s.criarVendedor)
 	admin.HandleFunc("PUT /api/v1/admin/vendedores/{id}", s.atualizarVendedor)
 	admin.HandleFunc("DELETE /api/v1/admin/vendedores/{id}", s.removerVendedor)
+	// A gestão de Categorias (3.2): criar, renomear e remover.
+	admin.HandleFunc("GET /api/v1/admin/categorias", s.listarCategorias)
+	admin.HandleFunc("POST /api/v1/admin/categorias", s.criarCategoria)
+	admin.HandleFunc("PUT /api/v1/admin/categorias/{id}", s.renomearCategoria)
+	admin.HandleFunc("DELETE /api/v1/admin/categorias/{id}", s.removerCategoria)
+	// A gestão de Produtos (3.3): criar, editar, desativar e reativar — nunca
+	// remover (FR-9). A listagem é administrativa e do `catalogo` (AD-16); a
+	// da loja continua sendo de `busca`.
+	admin.HandleFunc("GET /api/v1/admin/produtos", s.listarProdutosAdmin)
+	admin.HandleFunc("POST /api/v1/admin/produtos", s.criarProduto)
+	admin.HandleFunc("PUT /api/v1/admin/produtos/{id}", s.atualizarProduto)
+	// As imagens que um Produto pode usar: as de media/, embutidas.
+	admin.HandleFunc("GET /api/v1/admin/midias", listarMidias)
 	admin.HandleFunc("/", naoEncontrado)
 	guardado := s.somenteAdministrador(admin)
 	mux.Handle("/api/v1/admin/", guardado)
@@ -116,13 +129,19 @@ func naoEncontrado(w http.ResponseWriter, r *http.Request) {
 // escrever — a solicitação de redefinição, por exemplo, responde o mesmo 202
 // de sempre, porque distinguir os caminhos ali enumeraria contas.
 func decodificarCorpo(w http.ResponseWriter, r *http.Request, destino any) error {
+	return decodificarCorpoAte(w, r, destino, corpoMaximo)
+}
+
+// decodificarCorpoAte é o decodificarCorpo com outro teto de bytes — hoje só o
+// Produto, cuja descrição de milhares de caracteres não cabe nos 4 KiB.
+func decodificarCorpoAte(w http.ResponseWriter, r *http.Request, destino any, maximo int64) error {
 	// ParseMediaType e não comparação crua: `application/json; charset=utf-8` é
 	// o mesmo tipo, e um chamador legítimo que mande o parâmetro não pode ser
 	// recusado.
 	if tipo, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || tipo != "application/json" {
 		return erro.ErrEntradaInvalida
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, corpoMaximo)).Decode(destino); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maximo)).Decode(destino); err != nil {
 		return erro.ErrEntradaInvalida
 	}
 	return nil

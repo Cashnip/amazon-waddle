@@ -11,6 +11,70 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const atualizarCategoria = `-- name: AtualizarCategoria :one
+UPDATE catalogo.categoria SET nome = $1
+WHERE id = $2
+RETURNING id, nome
+`
+
+type AtualizarCategoriaParams struct {
+	Nome string
+	ID   pgtype.UUID
+}
+
+type AtualizarCategoriaRow struct {
+	ID   pgtype.UUID
+	Nome string
+}
+
+func (q *Queries) AtualizarCategoria(ctx context.Context, arg AtualizarCategoriaParams) (AtualizarCategoriaRow, error) {
+	row := q.db.QueryRow(ctx, atualizarCategoria, arg.Nome, arg.ID)
+	var i AtualizarCategoriaRow
+	err := row.Scan(&i.ID, &i.Nome)
+	return i, err
+}
+
+const atualizarProduto = `-- name: AtualizarProduto :one
+UPDATE catalogo.produto
+SET nome = $1, descricao = $2, preco_centavos = $3,
+    imagem_url = $4, vendedor_id = $5, categoria_id = $6,
+    ativo = $7, busca_normalizada = $8
+WHERE id = $9
+RETURNING id
+`
+
+type AtualizarProdutoParams struct {
+	Nome             string
+	Descricao        string
+	PrecoCentavos    int64
+	ImagemUrl        string
+	VendedorID       pgtype.UUID
+	CategoriaID      pgtype.UUID
+	Ativo            bool
+	BuscaNormalizada string
+	ID               pgtype.UUID
+}
+
+// O Estoque total não está aqui: o ajuste depois da criação é da 3.4, com a
+// guarda das Reservas. Desativar é este UPDATE de `ativo`, e quem esconde o
+// Produto é a VIEW produto_visivel.
+func (q *Queries) AtualizarProduto(ctx context.Context, arg AtualizarProdutoParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, atualizarProduto,
+		arg.Nome,
+		arg.Descricao,
+		arg.PrecoCentavos,
+		arg.ImagemUrl,
+		arg.VendedorID,
+		arg.CategoriaID,
+		arg.Ativo,
+		arg.BuscaNormalizada,
+		arg.ID,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const atualizarVendedor = `-- name: AtualizarVendedor :one
 UPDATE catalogo.vendedor SET nome = $1, ativo = $2
 WHERE id = $3
@@ -51,6 +115,52 @@ type BaixarEstoqueTotalParams struct {
 func (q *Queries) BaixarEstoqueTotal(ctx context.Context, arg BaixarEstoqueTotalParams) error {
 	_, err := q.db.Exec(ctx, baixarEstoqueTotal, arg.Quantidade, arg.ProdutoID)
 	return err
+}
+
+const buscarProdutoAdmin = `-- name: BuscarProdutoAdmin :one
+SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url,
+       p.estoque_total, p.ativo,
+       v.id AS vendedor_id, v.nome AS vendedor_nome,
+       c.id AS categoria_id, c.nome AS categoria_nome
+FROM catalogo.produto p
+JOIN catalogo.vendedor v ON v.id = p.vendedor_id
+JOIN catalogo.categoria c ON c.id = p.categoria_id
+WHERE p.id = $1
+`
+
+type BuscarProdutoAdminRow struct {
+	ID            pgtype.UUID
+	Nome          string
+	Descricao     string
+	PrecoCentavos int64
+	ImagemUrl     string
+	EstoqueTotal  int32
+	Ativo         bool
+	VendedorID    pgtype.UUID
+	VendedorNome  string
+	CategoriaID   pgtype.UUID
+	CategoriaNome string
+}
+
+// A linha que o criar e o editar devolvem, com os nomes de Vendedor e
+// Categoria da listagem.
+func (q *Queries) BuscarProdutoAdmin(ctx context.Context, id pgtype.UUID) (BuscarProdutoAdminRow, error) {
+	row := q.db.QueryRow(ctx, buscarProdutoAdmin, id)
+	var i BuscarProdutoAdminRow
+	err := row.Scan(
+		&i.ID,
+		&i.Nome,
+		&i.Descricao,
+		&i.PrecoCentavos,
+		&i.ImagemUrl,
+		&i.EstoqueTotal,
+		&i.Ativo,
+		&i.VendedorID,
+		&i.VendedorNome,
+		&i.CategoriaID,
+		&i.CategoriaNome,
+	)
+	return i, err
 }
 
 const buscarProdutoComVendedor = `-- name: BuscarProdutoComVendedor :one
@@ -121,6 +231,84 @@ func (q *Queries) ConsolidarReservasDoPedido(ctx context.Context, pedidoID pgtyp
 	return items, nil
 }
 
+const contarProdutos = `-- name: ContarProdutos :one
+SELECT count(*) FROM catalogo.produto
+`
+
+func (q *Queries) ContarProdutos(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, contarProdutos)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const contarProdutosDaCategoria = `-- name: ContarProdutosDaCategoria :one
+SELECT count(*) FROM catalogo.produto WHERE categoria_id = $1
+`
+
+// Só depois do 23503: a recusa diz quantos Produtos estão vinculados, e o
+// caminho comum (remover Categoria vazia) continua sendo uma ida ao banco.
+func (q *Queries) ContarProdutosDaCategoria(ctx context.Context, categoriaID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, contarProdutosDaCategoria, categoriaID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const criarCategoria = `-- name: CriarCategoria :one
+INSERT INTO catalogo.categoria (nome) VALUES ($1)
+RETURNING id, nome
+`
+
+type CriarCategoriaRow struct {
+	ID   pgtype.UUID
+	Nome string
+}
+
+// Nome duplicado é decidido pelo UNIQUE (23505), nunca por SELECT antes.
+func (q *Queries) CriarCategoria(ctx context.Context, nome string) (CriarCategoriaRow, error) {
+	row := q.db.QueryRow(ctx, criarCategoria, nome)
+	var i CriarCategoriaRow
+	err := row.Scan(&i.ID, &i.Nome)
+	return i, err
+}
+
+const criarProduto = `-- name: CriarProduto :one
+INSERT INTO catalogo.produto
+    (nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, estoque_total, busca_normalizada)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id
+`
+
+type CriarProdutoParams struct {
+	Nome             string
+	Descricao        string
+	PrecoCentavos    int64
+	ImagemUrl        string
+	VendedorID       pgtype.UUID
+	CategoriaID      pgtype.UUID
+	EstoqueTotal     int32
+	BuscaNormalizada string
+}
+
+// Vendedor ou Categoria inexistente é decidido pelas FKs (23503), e o nome da
+// constraint diz qual campo errou. `busca_normalizada` vem do Go.
+func (q *Queries) CriarProduto(ctx context.Context, arg CriarProdutoParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, criarProduto,
+		arg.Nome,
+		arg.Descricao,
+		arg.PrecoCentavos,
+		arg.ImagemUrl,
+		arg.VendedorID,
+		arg.CategoriaID,
+		arg.EstoqueTotal,
+		arg.BuscaNormalizada,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const criarReservaAtiva = `-- name: CriarReservaAtiva :exec
 INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
 VALUES ($1, $2, $3, 'ATIVA')
@@ -150,6 +338,103 @@ func (q *Queries) CriarVendedor(ctx context.Context, nome string) (CatalogoVende
 	return i, err
 }
 
+const listarCategorias = `-- name: ListarCategorias :many
+SELECT id, nome FROM catalogo.categoria ORDER BY nome, id
+`
+
+type ListarCategoriasRow struct {
+	ID   pgtype.UUID
+	Nome string
+}
+
+// A gestão de Categorias (3.2). `categoria_pai_id` não sai daqui: a Categoria
+// é plana, e a coluna existe nula e não exposta.
+func (q *Queries) ListarCategorias(ctx context.Context) ([]ListarCategoriasRow, error) {
+	rows, err := q.db.Query(ctx, listarCategorias)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarCategoriasRow
+	for rows.Next() {
+		var i ListarCategoriasRow
+		if err := rows.Scan(&i.ID, &i.Nome); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listarProdutosAdmin = `-- name: ListarProdutosAdmin :many
+SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url,
+       p.estoque_total, p.ativo,
+       v.id AS vendedor_id, v.nome AS vendedor_nome,
+       c.id AS categoria_id, c.nome AS categoria_nome
+FROM catalogo.produto p
+JOIN catalogo.vendedor v ON v.id = p.vendedor_id
+JOIN catalogo.categoria c ON c.id = p.categoria_id
+ORDER BY p.nome, p.id
+LIMIT $2 OFFSET $1
+`
+
+type ListarProdutosAdminParams struct {
+	Deslocamento int32
+	Limite       int32
+}
+
+type ListarProdutosAdminRow struct {
+	ID            pgtype.UUID
+	Nome          string
+	Descricao     string
+	PrecoCentavos int64
+	ImagemUrl     string
+	EstoqueTotal  int32
+	Ativo         bool
+	VendedorID    pgtype.UUID
+	VendedorNome  string
+	CategoriaID   pgtype.UUID
+	CategoriaNome string
+}
+
+// A listagem administrativa de Produto (3.3, AD-16 emendado): é do
+// `catalogo`, e traz ativos e inativos — a VIEW de `busca` só enxerga Produto
+// visível. Desempate sempre em id (AD-18).
+func (q *Queries) ListarProdutosAdmin(ctx context.Context, arg ListarProdutosAdminParams) ([]ListarProdutosAdminRow, error) {
+	rows, err := q.db.Query(ctx, listarProdutosAdmin, arg.Deslocamento, arg.Limite)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarProdutosAdminRow
+	for rows.Next() {
+		var i ListarProdutosAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Nome,
+			&i.Descricao,
+			&i.PrecoCentavos,
+			&i.ImagemUrl,
+			&i.EstoqueTotal,
+			&i.Ativo,
+			&i.VendedorID,
+			&i.VendedorNome,
+			&i.CategoriaID,
+			&i.CategoriaNome,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listarVendedores = `-- name: ListarVendedores :many
 SELECT id, nome, ativo FROM catalogo.vendedor ORDER BY nome, id
 `
@@ -174,6 +459,19 @@ func (q *Queries) ListarVendedores(ctx context.Context) ([]CatalogoVendedor, err
 		return nil, err
 	}
 	return items, nil
+}
+
+const removerCategoria = `-- name: RemoverCategoria :execrows
+DELETE FROM catalogo.categoria WHERE id = $1
+`
+
+// Categoria com Produto é barrada pela FK `produto.categoria_id` (23503).
+func (q *Queries) RemoverCategoria(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, removerCategoria, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const removerVendedor = `-- name: RemoverVendedor :execrows

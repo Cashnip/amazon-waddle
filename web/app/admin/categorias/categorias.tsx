@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -25,48 +25,43 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Nenhuma regra mora aqui (AD-10): o teto do nome, o duplicado e a recusa de
-// remover Vendedor com Produtos são todos do Go, e a mensagem exibida é sempre
-// a do envelope. O erro em linha é ligado ao campo por `dados.campo`.
-//
-// 404 na leitura da lista é a guarda do prefixo: a Sessão de Administrador
-// sumiu, e a tela volta ao login administrativo. 404 numa mutação pode ser só
-// o Vendedor que não existe mais — a lista é relida, e é ela que decide.
+// O molde de Vendedores (3.1), sem situação: a Categoria não se desativa. O
+// teto do nome, o duplicado e a recusa de remover Categoria com Produtos são
+// do Go, e a recusa exibe a mensagem do servidor, que já traz a contagem.
 
-type Vendedor = { id: string; nome: string; ativo: boolean };
+type Categoria = { id: string; nome: string };
 type ErroDoForm = { campo: "nome" | null; mensagem: string };
 
 function rotaDe(id: string) {
-  return `/api/v1/admin/vendedores/${encodeURIComponent(id)}`;
+  return `/api/v1/admin/categorias/${encodeURIComponent(id)}`;
 }
 
-export function Vendedores() {
+export function Categorias() {
   const router = useRouter();
-  const [vendedores, setVendedores] = useState<Vendedor[] | null>(null);
+  const [categorias, setCategorias] = useState<Categoria[] | null>(null);
   const [erroDaLista, setErroDaLista] = useState<string | null>(null);
-  // A recusa de remover Vendedor com Produtos: o Alert oferece desativar.
-  const [recusa, setRecusa] = useState<{ vendedor: Vendedor; mensagem: string } | null>(null);
+  const [recusa, setRecusa] = useState<string | null>(null);
   // `null` = nenhum formulário; "" = cadastrando; um id = editando.
   const [editando, setEditando] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [erro, setErro] = useState<ErroDoForm | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [aRemover, setARemover] = useState<Vendedor | null>(null);
+  const [aRemover, setARemover] = useState<Categoria | null>(null);
   const campoNome = useRef<HTMLInputElement>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const { resposta, json } = await pedir("/api/v1/admin/vendedores", "GET");
+      const { resposta, json } = await pedir("/api/v1/admin/categorias", "GET");
       if (resposta.status === 404) {
         router.replace("/admin/entrar");
         return;
       }
       if (!resposta.ok) {
-        setErroDaLista(json?.erro?.mensagem ?? "Não foi possível ler os Vendedores.");
+        setErroDaLista(json?.erro?.mensagem ?? "Não foi possível ler as Categorias.");
         return;
       }
       setErroDaLista(null);
-      setVendedores(json ?? []);
+      setCategorias(json ?? []);
     } catch {
       setErroDaLista(FALHA_DE_REDE);
     }
@@ -76,18 +71,16 @@ export function Vendedores() {
     carregar();
   }, [carregar]);
 
-  // Falha de mutação fora do formulário: relê a lista (que manda ao login se a
-  // Sessão caiu) e só então escreve a mensagem — o carregar() a limparia.
   async function falhou(mensagem: string) {
     await carregar();
     setErroDaLista(mensagem);
   }
 
-  function abrir(vendedor: Vendedor | null) {
+  function abrir(categoria: Categoria | null) {
     setErro(null);
     setRecusa(null);
-    setEditando(vendedor ? vendedor.id : "");
-    setNome(vendedor ? vendedor.nome : "");
+    setEditando(categoria ? categoria.id : "");
+    setNome(categoria ? categoria.nome : "");
   }
 
   async function salvar(evento: React.FormEvent) {
@@ -95,27 +88,27 @@ export function Vendedores() {
     if (editando === null) return;
     setEnviando(true);
     setErro(null);
-    const atual = vendedores?.find((v) => v.id === editando);
-    // Editando um Vendedor que saiu da lista (removido no meio da edição): sem
-    // isto o formulário cairia no POST e criaria um Vendedor novo.
+    const atual = categorias?.find((c) => c.id === editando);
+    // Editando uma Categoria que saiu da lista: sem isto o formulário cairia
+    // no POST e criaria outra.
     if (editando !== "" && !atual) {
       setEditando(null);
       setEnviando(false);
-      await falhou("Vendedor não encontrado.");
+      await falhou("Categoria não encontrada.");
       return;
     }
     try {
       const { resposta, json } = atual
-        ? await pedir(rotaDe(atual.id), "PUT", { nome, ativo: atual.ativo })
-        : await pedir("/api/v1/admin/vendedores", "POST", { nome });
+        ? await pedir(rotaDe(atual.id), "PUT", { nome })
+        : await pedir("/api/v1/admin/categorias", "POST", { nome });
       if (resposta.status === 404) {
         setEditando(null);
-        await falhou(json?.erro?.mensagem ?? "Vendedor não encontrado.");
+        await falhou(json?.erro?.mensagem ?? "Categoria não encontrada.");
         return;
       }
       if (!resposta.ok) {
         const campo = json?.erro?.dados?.campo === "nome" ? "nome" : null;
-        setErro({ campo, mensagem: json?.erro?.mensagem ?? "Não foi possível salvar o Vendedor." });
+        setErro({ campo, mensagem: json?.erro?.mensagem ?? "Não foi possível salvar a Categoria." });
         if (campo) campoNome.current?.focus();
         return;
       }
@@ -128,38 +121,20 @@ export function Vendedores() {
     }
   }
 
-  // Desativar e reativar são o mesmo PUT da linha inteira, com `ativo` trocado.
-  async function definirAtivo(vendedor: Vendedor, ativo: boolean) {
-    setEnviando(true);
-    setRecusa(null);
-    try {
-      const { resposta, json } = await pedir(rotaDe(vendedor.id), "PUT", { nome: vendedor.nome, ativo });
-      if (!resposta.ok) {
-        await falhou(json?.erro?.mensagem ?? "Não foi possível salvar o Vendedor.");
-        return;
-      }
-      await carregar();
-    } catch {
-      setErroDaLista(FALHA_DE_REDE);
-    } finally {
-      setEnviando(false);
-    }
-  }
-
   async function remover() {
     if (!aRemover) return;
-    const vendedor = aRemover;
+    const categoria = aRemover;
     setEnviando(true);
     try {
-      const { resposta, json } = await pedir(rotaDe(vendedor.id), "DELETE");
+      const { resposta, json } = await pedir(rotaDe(categoria.id), "DELETE");
       // O Dialog fecha antes da mensagem: ele cobriria o Alert.
       setARemover(null);
       if (resposta.status === 409) {
-        setRecusa({ vendedor, mensagem: json?.erro?.mensagem ?? "Este Vendedor não pode ser removido." });
+        setRecusa(json?.erro?.mensagem ?? "Esta Categoria não pode ser removida.");
         return;
       }
       if (!resposta.ok) {
-        await falhou(json?.erro?.mensagem ?? "Não foi possível remover o Vendedor.");
+        await falhou(json?.erro?.mensagem ?? "Não foi possível remover a Categoria.");
         return;
       }
       await carregar();
@@ -175,7 +150,7 @@ export function Vendedores() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-medium">Vendedores</h1>
+      <h1 className="text-2xl font-medium">Categorias</h1>
 
       {erroDaLista && (
         <Alert variant="destructive">
@@ -185,54 +160,36 @@ export function Vendedores() {
 
       {recusa && (
         <Alert variant="destructive">
-          <AlertDescription>{recusa.mensagem}</AlertDescription>
-          {recusa.vendedor.ativo && (
-            <AlertAction>
-              <Button size="sm" disabled={enviando} onClick={() => definirAtivo(recusa.vendedor, false)}>
-                Desativar
-              </Button>
-            </AlertAction>
-          )}
+          <AlertDescription>{recusa}</AlertDescription>
         </Alert>
       )}
 
-      {/* Antes da primeira leitura não há lista nem vazio. */}
-      {vendedores?.length === 0 && editando === null && (
+      {categorias?.length === 0 && editando === null && (
         <Card>
           <CardContent className="space-y-4 text-center">
-            <p>Nenhum Vendedor cadastrado.</p>
-            <Button onClick={() => abrir(null)}>Cadastrar Vendedor</Button>
+            <p>Nenhuma Categoria cadastrada.</p>
+            <Button onClick={() => abrir(null)}>Cadastrar Categoria</Button>
           </CardContent>
         </Card>
       )}
 
-      {vendedores !== null && vendedores.length > 0 && (
+      {categorias !== null && categorias.length > 0 && (
         <>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vendedores.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell className="font-medium whitespace-normal">{v.nome}</TableCell>
-                  <TableCell>{v.ativo ? "Ativo" : "Inativo"}</TableCell>
+              {categorias.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-medium whitespace-normal">{c.nome}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap justify-end gap-2">
-                      <Button variant="outline" size="sm" disabled={enviando} onClick={() => abrir(v)}>
-                        Editar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={enviando}
-                        onClick={() => definirAtivo(v, !v.ativo)}
-                      >
-                        {v.ativo ? "Desativar" : "Reativar"}
+                      <Button variant="outline" size="sm" disabled={enviando} onClick={() => abrir(c)}>
+                        Renomear
                       </Button>
                       <Button
                         variant="outline"
@@ -240,7 +197,7 @@ export function Vendedores() {
                         disabled={enviando}
                         onClick={() => {
                           setRecusa(null);
-                          setARemover(v);
+                          setARemover(c);
                         }}
                       >
                         Remover
@@ -251,7 +208,7 @@ export function Vendedores() {
               ))}
             </TableBody>
           </Table>
-          {editando === null && <Button onClick={() => abrir(null)}>Cadastrar Vendedor</Button>}
+          {editando === null && <Button onClick={() => abrir(null)}>Cadastrar Categoria</Button>}
         </>
       )}
 
@@ -259,7 +216,7 @@ export function Vendedores() {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h2>{editando === "" ? "Novo Vendedor" : "Editar Vendedor"}</h2>
+              <h2>{editando === "" ? "Nova Categoria" : "Renomear Categoria"}</h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -293,7 +250,7 @@ export function Vendedores() {
 
               <div className="flex gap-2">
                 <Button type="submit" disabled={enviando}>
-                  {enviando ? "Salvando…" : "Salvar Vendedor"}
+                  {enviando ? "Salvando…" : "Salvar Categoria"}
                 </Button>
                 <Button type="button" variant="outline" disabled={enviando} onClick={() => setEditando(null)}>
                   Cancelar
@@ -307,7 +264,7 @@ export function Vendedores() {
       <Dialog open={aRemover !== null} onOpenChange={(aberto) => !aberto && setARemover(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remover Vendedor</DialogTitle>
+            <DialogTitle>Remover Categoria</DialogTitle>
             <DialogDescription>
               {aRemover && `${aRemover.nome}. Esta ação não pode ser desfeita.`}
             </DialogDescription>

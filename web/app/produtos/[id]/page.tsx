@@ -1,7 +1,7 @@
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Casca } from "@/components/casca";
+import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import { Comprar } from "./comprar";
 
 // Página de Produto crua da estória 1.5. A composição de marca — Estoque,
@@ -58,16 +58,8 @@ export default async function PaginaDeProduto({
       <main className="mx-auto grid max-w-conteudo gap-grid-gutter px-page-margin py-section-sm md:grid-cols-2 lg:px-page-margin-lg">
         <Card>
           <CardContent>
-            <Image
-              // unoptimized: o Next 16 recusa otimizar imagem cujo upstream
-              // resolva para IP privado, e em compose o Go é exatamente isso.
-              unoptimized
-              src={produto.imagem_url}
-              alt={produto.nome}
-              width={800}
-              height={800}
-              className="h-auto w-full"
-            />
+            {/* Imagem ausente ou quebrada vira o bloco neutro com o nome. */}
+            <ImagemDoProduto src={produto.imagem_url} nome={produto.nome} />
           </CardContent>
         </Card>
 

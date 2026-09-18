@@ -76,3 +76,75 @@ RETURNING id, nome, ativo;
 -- contagem antes.
 -- name: RemoverVendedor :execrows
 DELETE FROM catalogo.vendedor WHERE id = @id;
+
+-- A gestão de Categorias (3.2). `categoria_pai_id` não sai daqui: a Categoria
+-- é plana, e a coluna existe nula e não exposta.
+-- name: ListarCategorias :many
+SELECT id, nome FROM catalogo.categoria ORDER BY nome, id;
+
+-- Nome duplicado é decidido pelo UNIQUE (23505), nunca por SELECT antes.
+-- name: CriarCategoria :one
+INSERT INTO catalogo.categoria (nome) VALUES (@nome)
+RETURNING id, nome;
+
+-- name: AtualizarCategoria :one
+UPDATE catalogo.categoria SET nome = @nome
+WHERE id = @id
+RETURNING id, nome;
+
+-- Categoria com Produto é barrada pela FK `produto.categoria_id` (23503).
+-- name: RemoverCategoria :execrows
+DELETE FROM catalogo.categoria WHERE id = @id;
+
+-- Só depois do 23503: a recusa diz quantos Produtos estão vinculados, e o
+-- caminho comum (remover Categoria vazia) continua sendo uma ida ao banco.
+-- name: ContarProdutosDaCategoria :one
+SELECT count(*) FROM catalogo.produto WHERE categoria_id = @categoria_id;
+
+-- A listagem administrativa de Produto (3.3, AD-16 emendado): é do
+-- `catalogo`, e traz ativos e inativos — a VIEW de `busca` só enxerga Produto
+-- visível. Desempate sempre em id (AD-18).
+-- name: ListarProdutosAdmin :many
+SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url,
+       p.estoque_total, p.ativo,
+       v.id AS vendedor_id, v.nome AS vendedor_nome,
+       c.id AS categoria_id, c.nome AS categoria_nome
+FROM catalogo.produto p
+JOIN catalogo.vendedor v ON v.id = p.vendedor_id
+JOIN catalogo.categoria c ON c.id = p.categoria_id
+ORDER BY p.nome, p.id
+LIMIT @limite OFFSET @deslocamento;
+
+-- name: ContarProdutos :one
+SELECT count(*) FROM catalogo.produto;
+
+-- A linha que o criar e o editar devolvem, com os nomes de Vendedor e
+-- Categoria da listagem.
+-- name: BuscarProdutoAdmin :one
+SELECT p.id, p.nome, p.descricao, p.preco_centavos, p.imagem_url,
+       p.estoque_total, p.ativo,
+       v.id AS vendedor_id, v.nome AS vendedor_nome,
+       c.id AS categoria_id, c.nome AS categoria_nome
+FROM catalogo.produto p
+JOIN catalogo.vendedor v ON v.id = p.vendedor_id
+JOIN catalogo.categoria c ON c.id = p.categoria_id
+WHERE p.id = @id;
+
+-- Vendedor ou Categoria inexistente é decidido pelas FKs (23503), e o nome da
+-- constraint diz qual campo errou. `busca_normalizada` vem do Go.
+-- name: CriarProduto :one
+INSERT INTO catalogo.produto
+    (nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id, estoque_total, busca_normalizada)
+VALUES (@nome, @descricao, @preco_centavos, @imagem_url, @vendedor_id, @categoria_id, @estoque_total, @busca_normalizada)
+RETURNING id;
+
+-- O Estoque total não está aqui: o ajuste depois da criação é da 3.4, com a
+-- guarda das Reservas. Desativar é este UPDATE de `ativo`, e quem esconde o
+-- Produto é a VIEW produto_visivel.
+-- name: AtualizarProduto :one
+UPDATE catalogo.produto
+SET nome = @nome, descricao = @descricao, preco_centavos = @preco_centavos,
+    imagem_url = @imagem_url, vendedor_id = @vendedor_id, categoria_id = @categoria_id,
+    ativo = @ativo, busca_normalizada = @busca_normalizada
+WHERE id = @id
+RETURNING id;

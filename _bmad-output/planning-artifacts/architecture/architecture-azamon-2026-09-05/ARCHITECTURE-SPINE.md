@@ -224,15 +224,16 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 
 - **Binds:** FR-12..FR-15, NFR-4, §11 do PRD
 - **Prevents:** consultas de busca espalhadas por controladores, transformando a troca pelo Elasticsearch numa caça ao `SELECT`
-- **Rule:** **`GET /api/v1/produtos` é servido exclusivamente por `busca`, com ou sem `termo`** — "listar sem termo" é "buscar com termo vazio", nunca uma rota separada; a Vitrine é uma listagem. `catalogo` **não registra handler de listagem nem de paginação de Produto**; expõe `ObterVisivel(id)` para a página de Produto e `Visiveis`/`Disponivel` por chamada Go. Duas equipes registrando o mesmo padrão no `ServeMux` fazem o binário entrar em pânico no arranque, então a posse é exaustiva como a do AD-1:
+- **Rule:** **`GET /api/v1/produtos` é servido exclusivamente por `busca`, com ou sem `termo`** — "listar sem termo" é "buscar com termo vazio", nunca uma rota separada; a Vitrine é uma listagem. `catalogo` **não registra handler de listagem nem de paginação de Produto da loja** — a proibição de listagem e de consulta de Produto vale para a loja; a listagem administrativa, que inclui Produtos inativos, é do `catalogo` —; expõe `ObterVisivel(id)` para a página de Produto e `Visiveis`/`Disponivel` por chamada Go. Duas equipes registrando o mesmo padrão no `ServeMux` fazem o binário entrar em pânico no arranque, então a posse é exaustiva como a do AD-1:
 
   | Rota | Dono |
   |---|---|
   | `GET /api/v1/produtos` (com ou sem `termo`, filtros, ordenação, paginação) | `busca` |
   | `GET /api/v1/produtos/<id>` | `catalogo` |
   | `/api/v1/admin/produtos…` (CRUD, Estoque) | `catalogo` |
+  | `GET /api/v1/admin/produtos` (listagem administrativa, inclui inativos) | `catalogo` |
 
-  Rota de Produto sem linha nesta tabela é defeito. Nenhum módulo além de `busca` monta consulta para localizar Produto. `busca` lê `catalogo` por VIEW, nunca por tabela, e **a VIEW expõe `estoque_disponivel` derivado (AD-5), nunca `estoque_total`** — senão a Vitrine promete unidade que o Carrinho recusa. Normalização (sem acento, minúscula) acontece **na escrita**, em coluna dedicada preenchida pelo Go, com índice GIN `pg_trgm` — não em `tsvector` com pontuação, porque o §5 do PRD proíbe relevância por pontuação e a FR-14 já fixa três ordenações com desempate estável. `CREATE EXTENSION IF NOT EXISTS pg_trgm` é a primeira migração de `catalogo` — a imagem oficial do Postgres traz a extensão, mas não habilitada.
+  Rota de Produto sem linha nesta tabela é defeito. Nenhum módulo além de `busca` monta consulta para localizar Produto na loja. `busca` lê `catalogo` por VIEW, nunca por tabela, e **a VIEW expõe `estoque_disponivel` derivado (AD-5), nunca `estoque_total`** — senão a Vitrine promete unidade que o Carrinho recusa. Normalização (sem acento, minúscula) acontece **na escrita**, em coluna dedicada preenchida pelo Go, com índice GIN `pg_trgm` — não em `tsvector` com pontuação, porque o §5 do PRD proíbe relevância por pontuação e a FR-14 já fixa três ordenações com desempate estável. `CREATE EXTENSION IF NOT EXISTS pg_trgm` é a primeira migração de `catalogo` — a imagem oficial do Postgres traz a extensão, mas não habilitada.
 
 ### AD-17 — A Regra de Frete é dado, e mora no Pedido
 

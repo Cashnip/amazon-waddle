@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io/fs"
 	"net/http"
 
 	"github.com/Cashnip/amazon-waddle/internal/plataforma/erro"
@@ -27,4 +28,23 @@ func midia(w http.ResponseWriter, r *http.Request) {
 	// operacional, e o embed guarda um tipo de arquivo só.
 	w.Header().Set("Content-Type", "image/svg+xml")
 	_, _ = w.Write(conteudo)
+}
+
+// midias é a lista das imagens que um Produto pode usar, na ordem do nome do
+// arquivo: a mesma fonte que serve os bytes, então só entra na lista o que
+// GET /api/v1/media/{arquivo} de fato responde. Upload é da fase 2.
+func midias() []string {
+	// O padrão é literal e válido: o único erro possível do Glob é padrão malformado.
+	nomes, _ := fs.Glob(media.Arquivos, "*.svg")
+	urls := make([]string, 0, len(nomes))
+	for _, n := range nomes {
+		urls = append(urls, "/api/v1/media/"+n)
+	}
+	return urls
+}
+
+// listarMidias alimenta o seletor de imagem da tela de Produto.
+func listarMidias(w http.ResponseWriter, _ *http.Request) {
+	semCache(w)
+	escreverJSON(w, http.StatusOK, midias())
 }

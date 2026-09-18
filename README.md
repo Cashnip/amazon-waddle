@@ -149,6 +149,14 @@ reativa e remove Vendedores. Desativar esconde os Produtos do Vendedor na Págin
 e na compra sem tocar em Pedido nenhum; Vendedor com Produtos não é removível, e a recusa
 oferece desativar no lugar. Sem Sessão de Administrador, `/admin/...` cai em `/admin/entrar`.
 
+Ao lado ficam **Categorias** (`/admin/categorias`: criar, renomear e remover; Categoria com
+Produtos não é removível, e a recusa diz quantos estão vinculados) e **Produtos**
+(`/admin/produtos`: a lista paginada, com ativos e inativos, e criar, editar, desativar e
+reativar — Produto não se remove). O Estoque total é informado só na criação, e a imagem é
+escolhida entre as de `media/`, ou nenhuma. Produto criado abre em `/produtos/{id}` na hora;
+desativado, some da Página de Produto e da compra, e o Pedido já feito não muda. Abaixo de
+640 px, os destinos da área administrativa ficam num menu lateral.
+
 A guarda é do Go: tudo sob `/api/v1/admin/` exige a Sessão de Administrador, e quem não a tem recebe o mesmo
 **404** de uma rota que não existe (a área não aparece para quem não é Administrador,
 UX-DR9). A exceção é a porta acima: `POST /api/v1/admin/sessoes` fica **fora** da guarda,

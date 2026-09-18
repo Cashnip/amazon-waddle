@@ -24,6 +24,7 @@ type CatalogoProduto struct {
 	CategoriaID      pgtype.UUID
 	BuscaNormalizada string
 	EstoqueTotal     int32
+	Ativo            bool
 }
 
 type CatalogoProdutoVisivel struct {

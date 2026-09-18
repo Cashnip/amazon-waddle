@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Cashnip/amazon-waddle/internal/catalogo"
@@ -63,6 +64,7 @@ var registro = []traducao{
 	// mundo. O campo do duplicado viaja em `dados`, como no e-mail.
 	{catalogo.ErrVendedorJaCadastrado, http.StatusConflict, "VENDEDOR_JA_CADASTRADO"},
 	{catalogo.ErrVendedorComProdutos, http.StatusConflict, "VENDEDOR_COM_PRODUTOS"},
+	{catalogo.ErrCategoriaJaCadastrada, http.StatusConflict, "CATEGORIA_JA_CADASTRADA"},
 }
 
 // CodigoInterno é o código de todo erro que não está no registro.
@@ -126,6 +128,34 @@ func EscreverCampo(ctx context.Context, w http.ResponseWriter, campo, mensagem s
 func EscreverLimiteDeEnderecos(ctx context.Context, w http.ResponseWriter, maximo int) {
 	envelopar(ctx, w, http.StatusConflict, "LIMITE_DE_ENDERECOS",
 		fmt.Sprintf("Você já tem %d Endereços cadastrados. Remova um para cadastrar outro.", maximo), nil)
+}
+
+// EscreverCategoriaComProdutos é o 409 da Categoria com Produtos (3.2). Fica
+// fora do registro pelo motivo do EscreverLimiteDeEnderecos: a mensagem nomeia
+// um número vindo de fora do sentinela — aqui, a contagem feita depois do
+// 23503. O número viaja também em `dados.produtos`.
+func EscreverCategoriaComProdutos(ctx context.Context, w http.ResponseWriter, n int64) {
+	produtos := "1 Produto vinculado"
+	if n != 1 {
+		produtos = Milhar(n) + " Produtos vinculados"
+	}
+	envelopar(ctx, w, http.StatusConflict, "CATEGORIA_COM_PRODUTOS",
+		fmt.Sprintf("Esta Categoria tem %s e não pode ser removida.", produtos),
+		map[string]int64{"produtos": n})
+}
+
+// Milhar escreve o inteiro com o separador de milhar do português: 4000 vira
+// "4.000". É o formato de todo número que uma mensagem de erro nomeia.
+func Milhar(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	sinal := ""
+	if n < 0 {
+		sinal, s = "-", s[1:]
+	}
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "." + s[i:]
+	}
+	return sinal + s
 }
 
 // EscreverBloqueio é o 429 do login bloqueado por tentativas. Não passa pelo

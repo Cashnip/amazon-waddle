@@ -4,6 +4,7 @@ package plataforma
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -45,9 +46,12 @@ type Config struct {
 	EntregaIntervalo      time.Duration
 	EntregaSimulacaoAtiva bool
 
-	ProdutoNomeMax      int
-	ProdutoDescricaoMax int
-	VendedorNomeMax     int
+	ProdutoNomeMax          int
+	ProdutoDescricaoMax     int
+	ProdutoPrecoMaxCentavos int64
+	ProdutoEstoqueMax       int
+	VendedorNomeMax         int
+	CategoriaNomeMax        int
 
 	VarreduraIntervalo time.Duration
 	ConfirmacaoAtraso  time.Duration
@@ -112,9 +116,13 @@ func carregar(l *leitor) Config {
 		EntregaIntervalo:      l.duracao("AZAMON_ENTREGA_INTERVALO", 24*time.Hour),
 		EntregaSimulacaoAtiva: l.booleano("AZAMON_ENTREGA_SIMULACAO_ATIVA", true),
 
-		ProdutoNomeMax:      l.inteiro("AZAMON_PRODUTO_NOME_MAX", 200),
-		ProdutoDescricaoMax: l.inteiro("AZAMON_PRODUTO_DESCRICAO_MAX", 4000),
-		VendedorNomeMax:     l.inteiro("AZAMON_VENDEDOR_NOME_MAX", 120),
+		ProdutoNomeMax:          l.inteiro("AZAMON_PRODUTO_NOME_MAX", 200),
+		ProdutoDescricaoMax:     l.inteiro("AZAMON_PRODUTO_DESCRICAO_MAX", 4000),
+		ProdutoPrecoMaxCentavos: l.centavos("AZAMON_PRODUTO_PRECO_MAX_CENTAVOS", 100000000),
+		// O teto do Estoque cabe no `integer` da coluna com folga.
+		ProdutoEstoqueMax: l.inteiro("AZAMON_PRODUTO_ESTOQUE_MAX", 100000),
+		VendedorNomeMax:   l.inteiro("AZAMON_VENDEDOR_NOME_MAX", 120),
+		CategoriaNomeMax:  l.inteiro("AZAMON_CATEGORIA_NOME_MAX", 120),
 
 		VarreduraIntervalo: l.duracao("AZAMON_VARREDURA_INTERVALO", time.Second),
 		ConfirmacaoAtraso:  l.duracao("AZAMON_CONFIRMACAO_ATRASO", 5*time.Second),
@@ -137,6 +145,11 @@ func carregar(l *leitor) Config {
 	}
 	if c.ProvedorAprovadoAteCentavos >= c.ProvedorRecusadoAteCentavos {
 		l.erros = append(l.erros, "AZAMON_PROVEDOR_APROVADO_ATE_CENTAVOS tem de vir antes de AZAMON_PROVEDOR_RECUSADO_ATE_CENTAVOS")
+	}
+	// A coluna `estoque_total` é integer: um teto acima de int32 deixaria
+	// passar um valor que dá a volta na conversão e grava Estoque negativo.
+	if c.ProdutoEstoqueMax > math.MaxInt32 {
+		l.erros = append(l.erros, "AZAMON_PRODUTO_ESTOQUE_MAX não pode passar do teto de integer do Postgres")
 	}
 	return c
 }

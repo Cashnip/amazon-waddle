@@ -157,7 +157,14 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		EnderecoTextoMax:        enderecoTextoMaxDeTeste,
 		EnderecoPorCompradorMax: enderecoPorCompradorMaxDeTeste,
 
-		VendedorNomeMax: vendedorNomeMaxDeTeste,
+		VendedorNomeMax:  vendedorNomeMaxDeTeste,
+		CategoriaNomeMax: categoriaNomeMaxDeTeste,
+
+		ProdutoNomeMax:          produtoNomeMaxDeTeste,
+		ProdutoDescricaoMax:     produtoDescricaoMaxDeTeste,
+		ProdutoPrecoMaxCentavos: produtoPrecoMaxDeTeste,
+		ProdutoEstoqueMax:       produtoEstoqueMaxDeTeste,
+		PaginaTamanho:           paginaTamanhoDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -457,6 +464,13 @@ func TestSessaoEProduto(t *testing.T) {
 	// que os subtestes acima dependem.
 	t.Run("a gestão de Vendedores e o Produto de Vendedor desativado", func(t *testing.T) {
 		gestaoDeVendedores(t, rotas, pool)
+	})
+	// A 3.2 e a 3.3, também com Vendedor, Categoria e Produtos próprios.
+	t.Run("a gestão de Categorias e a recusa com Produtos vinculados", func(t *testing.T) {
+		gestaoDeCategorias(t, rotas, pool)
+	})
+	t.Run("a gestão de Produtos, a listagem administrativa e o Produto desativado", func(t *testing.T) {
+		gestaoDeProdutos(t, rotas, pool)
 	})
 }
 

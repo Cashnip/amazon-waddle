@@ -58,8 +58,8 @@ development_status:
 
   epic-3: in-progress
   3-1-gestão-de-vendedores: review
-  3-2-gestão-de-categorias: backlog
-  3-3-gestão-de-produtos: backlog
+  3-2-gestão-de-categorias: review
+  3-3-gestão-de-produtos: review
   3-4-estoque-disponível-guarda-de-reservas-e-o-predicado-de-visib: backlog
   3-5-a-vitrine-e-o-envelope-de-listagem: backlog
   3-6-página-de-produto: backlog
