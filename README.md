@@ -58,17 +58,16 @@ credenciais não são segredo; elas estão versionadas junto com a lista, em `me
 O que a Épica 1 entrega é **um** Pedido atravessando o sistema inteiro, com telas cruas:
 não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
 
-1. Abra <http://localhost:3000>. É a página de conferência da casca, com dois links
-   temporários no rodapé do último cartão: `/entrar` e um Produto semeado.
-2. **Entre** por `/entrar`, com as credenciais do Comprador acima.
+1. Abra <http://localhost:3000>. É a Vitrine: os Produtos visíveis do Catálogo Semeado,
+   20 por página, em cartões que levam à Página de Produto.
+2. **Entre** por "Entrar", no canto da barra, com as credenciais do Comprador acima.
 3. **Escolha o Produto com cuidado.** O Provedor Simulado decide pelos centavos do total
    (§7.1 do PRD): até `,89` ele aprova, de `,90` a `,94` recusa, e de `,95` a `,99` não
    manda confirmação nenhuma. Só a aprovação é emitida hoje — recusa e expiração são da
    Épica 5 —, então **qualquer** total acima de `,89` deixa o Pedido parado em
-   `AGUARDANDO_PAGAMENTO`, para sempre e sem erro na tela. O Produto ligado na página de
-   conferência é o **Fone de Ouvido Bluetooth Aurora, R$ 249,90** — ele cai justamente na
-   faixa parada. Para ver o ciclo inteiro, troque o identificador na URL pelo de um
-   Produto de centavos `,00`:
+   `AGUARDANDO_PAGAMENTO`, para sempre e sem erro na tela. O **Fone de Ouvido Bluetooth
+   Aurora, R$ 249,90**, por exemplo, cai justamente na faixa parada. Para ver o ciclo
+   inteiro, abra um Produto de centavos `,00` — este está na página 2 da Vitrine:
 
    <http://localhost:3000/produtos/a0ae8ff1-da13-5591-9291-4a4f1ce15383> — Caixa de Som
    Portátil Maré, R$ 189,00.

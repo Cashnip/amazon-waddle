@@ -165,6 +165,7 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		ProdutoPrecoMaxCentavos: produtoPrecoMaxDeTeste,
 		ProdutoEstoqueMax:       produtoEstoqueMaxDeTeste,
 		PaginaTamanho:           paginaTamanhoDeTeste,
+		PaginaTamanhoMax:        paginaTamanhoMaxDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -476,6 +477,10 @@ func TestSessaoEProduto(t *testing.T) {
 	})
 	t.Run("a gestão de Produtos, a listagem administrativa e o Produto desativado", func(t *testing.T) {
 		gestaoDeProdutos(t, rotas, pool)
+	})
+	// A 3.5, com Produto próprio desativado: o invisível fica fora da Vitrine.
+	t.Run("a Vitrine: o envelope de listagem e só Produto visível", func(t *testing.T) {
+		vitrine(t, rotas, pool)
 	})
 }
 

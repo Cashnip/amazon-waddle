@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Casca } from "@/components/casca";
 import { ImagemDoProduto } from "@/components/imagem-do-produto";
+import { Preco } from "@/components/preco";
 import { Comprar } from "./comprar";
 
 // Página de Produto crua da estória 1.5. A composição de marca — Estoque,
@@ -21,20 +22,6 @@ type Produto = {
   imagem_url: string;
   vendedor: string;
 };
-
-// O valor viaja em centavos inteiros de ponta a ponta (AD-3); o `R$` é escrito
-// aqui, no front, e em nenhum outro lugar. Os dois papéis tipográficos
-// monetários trazem o tabular-nums junto.
-function Preco({ centavos }: { centavos: number }) {
-  const reais = Math.floor(centavos / 100);
-  const resto = String(centavos % 100).padStart(2, "0");
-  return (
-    <p>
-      <span className="preco">R$ {reais.toLocaleString("pt-BR")}</span>
-      <span className="preco-centavos align-super">{resto}</span>
-    </p>
-  );
-}
 
 export default async function PaginaDeProduto({
   params,

@@ -198,3 +198,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
   summary: `MenuDaConta` pisca o estado "sem Sessão" (Entrar + Criar conta) antes de resolver para o `DropdownMenu`, mesmo para quem já está autenticado.
   evidence: A `Saudacao` antiga tinha o mesmo lampejo com um único link "Entrar"; o `MenuDaConta` da 2.6 dobra para dois elementos interativos (Entrar e Criar conta) no mesmo instante, nas oito telas, enquanto `GET /api/v1/sessao` não responde — sem menção na spec nem registro anterior.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-a-vitrine-e-o-envelope-de-listagem.md`
+  summary: O `web/` não tem `error.tsx`; a Vitrine (e as outras telas Server Component) cai na página de erro genérica do Next quando a API não responde 2xx.
+  evidence: `web/app/page.tsx` lança em `!resposta.ok`, e não existe fronteira de erro em `web/app/`; a EXPERIENCE.md não define o texto desse estado.

@@ -22,6 +22,7 @@ const (
 	produtoPrecoMaxDeTeste     = 100000000
 	produtoEstoqueMaxDeTeste   = 100000
 	paginaTamanhoDeTeste       = 20
+	paginaTamanhoMaxDeTeste    = 60
 )
 
 // gestaoDeProdutos é a matriz da 3.3 num subteste só. Vendedor, Categoria e

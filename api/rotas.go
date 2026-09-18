@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"mime"
 	"net/http"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -45,7 +46,8 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// caminho, e não no corpo, porque é o próprio link que chega ao Comprador.
 	mux.HandleFunc("POST /api/v1/redefinicoes-de-senha", s.criarRedefinicao)
 	mux.HandleFunc("PUT /api/v1/redefinicoes-de-senha/{token}", s.redefinirSenha)
-	// Só o detalhe: a listagem (GET /api/v1/produtos) é de `busca`, na Épica 3.
+	// A listagem da loja é de `busca` (AD-16), e o detalhe é de `catalogo`.
+	mux.HandleFunc("GET /api/v1/produtos", s.listarProdutos)
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
 	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura
 	// é a tela do Pedido em processamento, consultada a cada 3 s.
@@ -159,4 +161,37 @@ func escreverJSON(w http.ResponseWriter, status int, valor any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(valor)
+}
+
+// listagem é o envelope do AD-18, o mesmo para a loja e para o Administrador.
+type listagem[T any] struct {
+	Itens     []T   `json:"itens"`
+	Pagina    int   `json:"pagina"`
+	PorPagina int   `json:"por_pagina"`
+	Total     int64 `json:"total"`
+}
+
+// paginacaoDe lê `pagina` e `por_pagina` da URL. Ausentes, valem 1 e o padrão
+// da Config; `por_pagina` acima do teto é rebaixado ao teto, e não recusado.
+// Não inteiro ou menor que 1 escreve o erro em linha e devolve ok falso.
+func paginacaoDe(w http.ResponseWriter, r *http.Request, cfg plataforma.Config) (pagina, porPagina int, ok bool) {
+	ler := func(campo, mensagem string, padrao int) (int, bool) {
+		texto := r.URL.Query().Get(campo)
+		if texto == "" {
+			return padrao, true
+		}
+		n, err := strconv.Atoi(texto)
+		if err != nil || n < 1 {
+			erro.EscreverCampo(r.Context(), w, campo, mensagem)
+			return 0, false
+		}
+		return n, true
+	}
+	if pagina, ok = ler("pagina", "A página é um número inteiro a partir de 1.", 1); !ok {
+		return 0, 0, false
+	}
+	if porPagina, ok = ler("por_pagina", "Os itens por página são um número inteiro a partir de 1.", cfg.PaginaTamanho); !ok {
+		return 0, 0, false
+	}
+	return pagina, min(porPagina, cfg.PaginaTamanhoMax), true
 }

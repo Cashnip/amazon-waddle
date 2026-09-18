@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -48,28 +47,15 @@ type saidaReferencia struct {
 	Nome string `json:"nome"`
 }
 
-// listagem é o envelope do AD-18.
-type listagem[T any] struct {
-	Itens     []T   `json:"itens"`
-	Pagina    int   `json:"pagina"`
-	PorPagina int   `json:"por_pagina"`
-	Total     int64 `json:"total"`
-}
-
 // listarProdutosAdmin é a listagem administrativa (AD-16 emendado): do
 // `catalogo`, com ativos e inativos, por nome e id.
 func (s *servidor) listarProdutosAdmin(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
-	pagina := 1
-	if texto := r.URL.Query().Get("pagina"); texto != "" {
-		n, err := strconv.Atoi(texto)
-		if err != nil || n < 1 {
-			erro.EscreverCampo(r.Context(), w, "pagina", "A página é um número inteiro a partir de 1.")
-			return
-		}
-		pagina = n
+	pagina, porPagina, ok := paginacaoDe(w, r, s.cfg)
+	if !ok {
+		return
 	}
-	produtos, total, err := catalogo.ListarProdutosAdmin(r.Context(), s.pool, pagina, s.cfg.PaginaTamanho)
+	produtos, total, err := catalogo.ListarProdutosAdmin(r.Context(), s.pool, pagina, porPagina)
 	if err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
@@ -78,7 +64,7 @@ func (s *servidor) listarProdutosAdmin(w http.ResponseWriter, r *http.Request) {
 	for _, p := range produtos {
 		itens = append(itens, saidaProdutoAdminDe(p))
 	}
-	escreverJSON(w, http.StatusOK, listagem[saidaProdutoAdmin]{itens, pagina, s.cfg.PaginaTamanho, total})
+	escreverJSON(w, http.StatusOK, listagem[saidaProdutoAdmin]{itens, pagina, porPagina, total})
 }
 
 func (s *servidor) criarProduto(w http.ResponseWriter, r *http.Request) {
