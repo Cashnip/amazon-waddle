@@ -469,6 +469,11 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a gestão de Categorias e a recusa com Produtos vinculados", func(t *testing.T) {
 		gestaoDeCategorias(t, rotas, pool)
 	})
+	// A 3.4, com Produto próprio: o ajuste do Estoque total, a guarda das
+	// Reservas e a interface de Estoque chamada direto.
+	t.Run("o ajuste do Estoque, a guarda das Reservas e o predicado de visibilidade", func(t *testing.T) {
+		estoqueEReservas(t, rotas, pool)
+	})
 	t.Run("a gestão de Produtos, a listagem administrativa e o Produto desativado", func(t *testing.T) {
 		gestaoDeProdutos(t, rotas, pool)
 	})

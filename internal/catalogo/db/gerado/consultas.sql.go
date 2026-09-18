@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const ajustarEstoqueTotal = `-- name: AjustarEstoqueTotal :exec
+UPDATE catalogo.produto SET estoque_total = $1 WHERE id = $2
+`
+
+type AjustarEstoqueTotalParams struct {
+	EstoqueTotal int32
+	ID           pgtype.UUID
+}
+
+func (q *Queries) AjustarEstoqueTotal(ctx context.Context, arg AjustarEstoqueTotalParams) error {
+	_, err := q.db.Exec(ctx, ajustarEstoqueTotal, arg.EstoqueTotal, arg.ID)
+	return err
+}
+
 const atualizarCategoria = `-- name: AtualizarCategoria :one
 UPDATE catalogo.categoria SET nome = $1
 WHERE id = $2
@@ -55,8 +69,9 @@ type AtualizarProdutoParams struct {
 	ID               pgtype.UUID
 }
 
-// O Estoque total não está aqui: o ajuste depois da criação é da 3.4, com a
-// guarda das Reservas. Desativar é este UPDATE de `ativo`, e quem esconde o
+// O Estoque total não está aqui: o ajuste tem rota própria, com a guarda das
+// Reservas (3.4) — a tela reenvia a linha lida, e isto regravaria um total
+// velho por cima de uma consolidação. Desativar é este UPDATE de `ativo`, e quem esconde o
 // Produto é a VIEW produto_visivel.
 func (q *Queries) AtualizarProduto(ctx context.Context, arg AtualizarProdutoParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, atualizarProduto,
@@ -338,6 +353,53 @@ func (q *Queries) CriarVendedor(ctx context.Context, nome string) (CatalogoVende
 	return i, err
 }
 
+const disponivelDosVisiveis = `-- name: DisponivelDosVisiveis :many
+SELECT id, estoque_disponivel
+FROM catalogo.produto_visivel
+WHERE id = ANY($1::uuid[])
+`
+
+type DisponivelDosVisiveisRow struct {
+	ID                pgtype.UUID
+	EstoqueDisponivel int32
+}
+
+// O disponível de `Disponivel` e `Visiveis` (AD-19): lido da VIEW, que é o
+// único lugar do predicado de visibilidade. Id invisível ou inexistente não
+// volta, e quem preenche o zero é o Go.
+func (q *Queries) DisponivelDosVisiveis(ctx context.Context, ids []pgtype.UUID) ([]DisponivelDosVisiveisRow, error) {
+	rows, err := q.db.Query(ctx, disponivelDosVisiveis, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DisponivelDosVisiveisRow
+	for rows.Next() {
+		var i DisponivelDosVisiveisRow
+		if err := rows.Scan(&i.ID, &i.EstoqueDisponivel); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const liberarReservasDoPedido = `-- name: LiberarReservasDoPedido :exec
+UPDATE catalogo.reserva_estoque
+SET estado = 'LIBERADA'
+WHERE pedido_id = $1 AND estado = 'ATIVA'
+`
+
+// A liberação (AD-5): muda só o estado, nunca `estoque_total`. O
+// `estado = 'ATIVA'` é compare-and-swap: repetir não encontra nada, e é no-op.
+func (q *Queries) LiberarReservasDoPedido(ctx context.Context, pedidoID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, liberarReservasDoPedido, pedidoID)
+	return err
+}
+
 const listarCategorias = `-- name: ListarCategorias :many
 SELECT id, nome FROM catalogo.categoria ORDER BY nome, id
 `
@@ -488,19 +550,56 @@ func (q *Queries) RemoverVendedor(ctx context.Context, id pgtype.UUID) (int64, e
 	return result.RowsAffected(), nil
 }
 
-const somarReservasAtivas = `-- name: SomarReservasAtivas :one
-SELECT coalesce(sum(quantidade), 0)::bigint AS reservado
+const somarReservasAtivas = `-- name: SomarReservasAtivas :many
+SELECT produto_id, sum(quantidade)::bigint AS reservado
 FROM catalogo.reserva_estoque
-WHERE produto_id = $1 AND estado = 'ATIVA'
+WHERE produto_id = ANY($1::uuid[]) AND estado = 'ATIVA'
+GROUP BY produto_id
 `
 
-// Só depois a soma. Com a trava segura, nenhuma Reserva nova entra entre a
-// soma e o INSERT que a sucede.
-func (q *Queries) SomarReservasAtivas(ctx context.Context, produtoID pgtype.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, somarReservasAtivas, produtoID)
-	var reservado int64
-	err := row.Scan(&reservado)
-	return reservado, err
+type SomarReservasAtivasRow struct {
+	ProdutoID pgtype.UUID
+	Reservado int64
+}
+
+// Só depois a soma, em lote. Com a trava segura, nenhuma Reserva nova entra
+// entre a soma e o INSERT que a sucede — nem, no ajuste do Administrador,
+// entre a soma e o UPDATE do total. Produto sem Reserva ativa não aparece.
+func (q *Queries) SomarReservasAtivas(ctx context.Context, ids []pgtype.UUID) ([]SomarReservasAtivasRow, error) {
+	rows, err := q.db.Query(ctx, somarReservasAtivas, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SomarReservasAtivasRow
+	for rows.Next() {
+		var i SomarReservasAtivasRow
+		if err := rows.Scan(&i.ProdutoID, &i.Reservado); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const travarProdutoParaAjuste = `-- name: TravarProdutoParaAjuste :one
+SELECT id FROM catalogo.produto
+WHERE id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE
+`
+
+// A trava do ajuste do Administrador, primeiro dos dois comandos do AD-5.
+// Sem a VIEW: o ajuste vale para Produto inativo, e travar pela VIEW faria do
+// inativo um 404.
+func (q *Queries) TravarProdutoParaAjuste(ctx context.Context, ids []pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, travarProdutoParaAjuste, ids)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const travarProdutosParaReserva = `-- name: TravarProdutosParaReserva :many

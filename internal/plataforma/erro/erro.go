@@ -144,6 +144,19 @@ func EscreverCategoriaComProdutos(ctx context.Context, w http.ResponseWriter, n 
 		map[string]int64{"produtos": n})
 }
 
+// EscreverEstoqueComprometido é o 409 do ajuste de Estoque abaixo das Reservas
+// ativas (3.4). Fica fora do registro pelo motivo do
+// EscreverCategoriaComProdutos: a mensagem nomeia a contagem feita sob a trava.
+// O número viaja também em `dados.comprometidas`, com o campo do erro em linha.
+func EscreverEstoqueComprometido(ctx context.Context, w http.ResponseWriter, n int64) {
+	mensagem := "Há 1 unidade comprometida em Pedidos abertos. O Estoque total não pode ficar abaixo disso."
+	if n != 1 {
+		mensagem = fmt.Sprintf("Há %s unidades comprometidas em Pedidos abertos. O Estoque total não pode ficar abaixo disso.", Milhar(n))
+	}
+	envelopar(ctx, w, http.StatusConflict, "ESTOQUE_COMPROMETIDO", mensagem,
+		map[string]any{"campo": "estoque_total", "comprometidas": n})
+}
+
 // Milhar escreve o inteiro com o separador de milhar do português: 4000 vira
 // "4.000". É o formato de todo número que uma mensagem de erro nomeia.
 func Milhar(n int64) string {

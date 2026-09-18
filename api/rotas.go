@@ -89,6 +89,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	admin.HandleFunc("GET /api/v1/admin/produtos", s.listarProdutosAdmin)
 	admin.HandleFunc("POST /api/v1/admin/produtos", s.criarProduto)
 	admin.HandleFunc("PUT /api/v1/admin/produtos/{id}", s.atualizarProduto)
+	// O ajuste do Estoque total (3.4), em rota própria e com a guarda das
+	// Reservas ativas.
+	admin.HandleFunc("PUT /api/v1/admin/produtos/{id}/estoque", s.ajustarEstoque)
 	// As imagens que um Produto pode usar: as de media/, embutidas.
 	admin.HandleFunc("GET /api/v1/admin/midias", listarMidias)
 	admin.HandleFunc("/", naoEncontrado)

@@ -5,6 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +40,9 @@ import { centavosParaReais, formatarPreco, reaisParaCentavos } from "@/lib/preco
 //
 // A página vive na URL (`?pagina=`): recarregar e voltar reproduzem a lista.
 // Produto não se remove (FR-9): desativa-se, e o inativo continua na lista.
+// O Estoque total só se escreve na criação e no "Ajustar Estoque" (3.4), que
+// tem rota própria: o Editar e o Desativar reenviam a linha lida, e um total
+// junto regravaria um valor velho por cima de uma consolidação.
 
 type Referencia = { id: string; nome: string };
 type Produto = {
@@ -69,6 +80,14 @@ function rotaDe(id: string) {
   return `/api/v1/admin/produtos/${encodeURIComponent(id)}`;
 }
 
+// Texto que não é inteiro vai como -1, e a mensagem que volta é a do Go, com
+// o teto. isSafeInteger: dígitos demais não podem virar um número que o Go nem
+// decodifica — o erro tem de cair no campo, e não num 400 genérico.
+function estoqueDe(texto: string) {
+  const digitado = texto.trim();
+  return /^\d+$/.test(digitado) && Number.isSafeInteger(Number(digitado)) ? Number(digitado) : -1;
+}
+
 function corpoDe(p: Produto, ativo: boolean) {
   return {
     nome: p.nome,
@@ -95,6 +114,11 @@ export function Produtos() {
   const [erro, setErro] = useState<ErroDoForm | null>(null);
   const [enviando, setEnviando] = useState(false);
   const refs = useRef<Partial<Record<Campo, HTMLElement | null>>>({});
+  // O "Ajustar Estoque": o Produto da linha, o texto do campo e o erro dele.
+  const [ajustando, setAjustando] = useState<Produto | null>(null);
+  const [ajuste, setAjuste] = useState("");
+  const [erroDoAjuste, setErroDoAjuste] = useState<string | null>(null);
+  const campoDoAjuste = useRef<HTMLInputElement | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -182,12 +206,8 @@ export function Produtos() {
       vendedor_id: form.vendedor,
       categoria_id: form.categoria,
     };
-    // O Estoque total só existe na criação: o ajuste é da 3.4. Texto que não
-    // é inteiro vai como -1, e a mensagem que volta é a do Go, com o teto.
-    // isSafeInteger: dígitos demais não podem virar um número que o Go nem
-    // decodifica — o erro tem de cair no campo, e não num 400 genérico.
-    const digitado = form.estoque.trim();
-    const estoque = /^\d+$/.test(digitado) && Number.isSafeInteger(Number(digitado)) ? Number(digitado) : -1;
+    // O Estoque total só vai na criação: depois, é o "Ajustar Estoque".
+    const estoque = estoqueDe(form.estoque);
     setEnviando(true);
     setErro(null);
     try {
@@ -225,6 +245,41 @@ export function Produtos() {
       await carregar();
     } catch {
       setErroDaLista(FALHA_DE_REDE);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  function abrirAjuste(produto: Produto) {
+    setErroDoAjuste(null);
+    setAjuste(String(produto.estoque_total));
+    setAjustando(produto);
+  }
+
+  // O 409 das Reservas e o 400 do teto voltam em linha, no campo e com foco.
+  async function ajustarEstoque(evento: React.FormEvent) {
+    evento.preventDefault();
+    if (ajustando === null) return;
+    setEnviando(true);
+    setErroDoAjuste(null);
+    try {
+      const { resposta, json } = await pedir(`${rotaDe(ajustando.id)}/estoque`, "PUT", {
+        estoque_total: estoqueDe(ajuste),
+      });
+      if (resposta.status === 404) {
+        setAjustando(null);
+        await falhou(json?.erro?.mensagem ?? "Produto não encontrado.");
+        return;
+      }
+      if (!resposta.ok) {
+        setErroDoAjuste(json?.erro?.mensagem ?? "Não foi possível ajustar o Estoque.");
+        campoDoAjuste.current?.focus();
+        return;
+      }
+      setAjustando(null);
+      await carregar();
+    } catch {
+      setErroDoAjuste(FALHA_DE_REDE);
     } finally {
       setEnviando(false);
     }
@@ -308,6 +363,9 @@ export function Produtos() {
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" disabled={enviando} onClick={() => abrir(p)}>
                         Editar
+                      </Button>
+                      <Button variant="outline" size="sm" disabled={enviando} onClick={() => abrirAjuste(p)}>
+                        Ajustar Estoque
                       </Button>
                       <Button variant="outline" size="sm" disabled={enviando} onClick={() => definirAtivo(p, !p.ativo)}>
                         {p.ativo ? "Desativar" : "Reativar"}
@@ -487,6 +545,44 @@ export function Produtos() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={ajustando !== null} onOpenChange={(aberto) => !aberto && !enviando && setAjustando(null)}>
+        <DialogContent>
+          <form className="space-y-4" onSubmit={ajustarEstoque} noValidate>
+            <DialogHeader>
+              <DialogTitle>Ajustar Estoque</DialogTitle>
+              <DialogDescription>{ajustando?.nome}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="ajuste_estoque_total">Estoque total</Label>
+              <Input
+                id="ajuste_estoque_total"
+                ref={campoDoAjuste}
+                name="estoque_total"
+                inputMode="numeric"
+                autoFocus
+                aria-invalid={erroDoAjuste !== null || undefined}
+                aria-describedby={erroDoAjuste ? "ajuste_estoque_total-erro" : undefined}
+                value={ajuste}
+                onChange={(e) => setAjuste(e.target.value)}
+              />
+              {erroDoAjuste && (
+                <p id="ajuste_estoque_total-erro" className="text-destructive text-sm" role="alert">
+                  {erroDoAjuste}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAjustando(null)} disabled={enviando}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={enviando}>
+                {enviando ? "Salvando…" : "Salvar Estoque"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

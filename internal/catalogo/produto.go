@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -105,7 +106,8 @@ func CriarProduto(ctx context.Context, bd gerado.DBTX, d DadosDoProduto) (Produt
 	return produtoAdminDe(linha), nil
 }
 
-// AtualizarProduto reescreve tudo menos o Estoque total (o ajuste é da 3.4).
+// AtualizarProduto reescreve tudo menos o Estoque total, que tem o
+// AjustarEstoque com a guarda das Reservas.
 // Desativar é só `Ativo` falso: quem esconde é a VIEW produto_visivel, e o
 // Item de Pedido já congelou o preço. Inexistente e uuid malformado saem como
 // pgx.ErrNoRows.
@@ -132,6 +134,53 @@ func AtualizarProduto(ctx context.Context, bd gerado.DBTX, id string, d DadosDoP
 	})
 	if err != nil {
 		return ProdutoAdmin{}, traduzirProduto(err)
+	}
+	linha, err := consultas.BuscarProdutoAdmin(ctx, chave)
+	if err != nil {
+		return ProdutoAdmin{}, err
+	}
+	return produtoAdminDe(linha), nil
+}
+
+// ErrEstoqueComprometido recusa o ajuste que deixaria o Estoque total abaixo
+// das Reservas ativas. Quem precisa do número usa errors.As com
+// EstoqueComprometido.
+var ErrEstoqueComprometido = errors.New("O Estoque total não pode ficar abaixo das unidades comprometidas em Pedidos abertos.")
+
+// EstoqueComprometido carrega quantas unidades as Reservas ativas seguram,
+// contadas sob a trava, até `api/`, que as nomeia na mensagem.
+type EstoqueComprometido struct{ N int64 }
+
+func (e EstoqueComprometido) Error() string { return ErrEstoqueComprometido.Error() }
+func (e EstoqueComprometido) Unwrap() error { return ErrEstoqueComprometido }
+
+// AjustarEstoque é o ajuste do Estoque total pelo Administrador, que vale para
+// Produto ativo e inativo. A ordem é a do AD-5, a mesma do Reservar: primeiro a
+// trava do Produto (sem a VIEW, ou o inativo seria 404), só depois a soma das
+// Reservas ativas — invertida, uma compra simultânea entraria entre a soma e o
+// UPDATE e o total ficaria abaixo do comprometido. Total abaixo das Reservas
+// sai como EstoqueComprometido; inexistente e uuid malformado, como
+// pgx.ErrNoRows. Quem valida o teto é `api/`.
+//
+// tx é parâmetro nomeado (AD-4): a trava só vale até o fim da transação.
+func AjustarEstoque(ctx context.Context, tx pgx.Tx, id string, total int32) (ProdutoAdmin, error) {
+	chave, err := uuidDe(id)
+	if err != nil {
+		return ProdutoAdmin{}, err
+	}
+	consultas := gerado.New(tx)
+	if _, err := consultas.TravarProdutoParaAjuste(ctx, []pgtype.UUID{chave}); err != nil {
+		return ProdutoAdmin{}, err
+	}
+	somas, err := consultas.SomarReservasAtivas(ctx, []pgtype.UUID{chave})
+	if err != nil {
+		return ProdutoAdmin{}, err
+	}
+	if len(somas) == 1 && int64(total) < somas[0].Reservado {
+		return ProdutoAdmin{}, EstoqueComprometido{N: somas[0].Reservado}
+	}
+	if err := consultas.AjustarEstoqueTotal(ctx, gerado.AjustarEstoqueTotalParams{ID: chave, EstoqueTotal: total}); err != nil {
+		return ProdutoAdmin{}, err
 	}
 	linha, err := consultas.BuscarProdutoAdmin(ctx, chave)
 	if err != nil {

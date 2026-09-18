@@ -166,7 +166,7 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedid
 		Status:        linha.Status,
 		TotalCentavos: linha.TotalCentavos,
 	}
-	if err := catalogo.Reservar(ctx, tx, produto.ID, pedido.ID, unidade); err != nil {
+	if err := catalogo.Reservar(ctx, tx, pedido.ID, []catalogo.ItemReserva{{ProdutoID: produto.ID, Quantidade: unidade}}); err != nil {
 		return Pedido{}, err
 	}
 	// A Tentativa nasce na mesma transação (AD-7): o Pedido revertido não

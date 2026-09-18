@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,6 +111,55 @@ func (s *servidor) atualizarProduto(w http.ResponseWriter, r *http.Request) {
 	escreverJSON(w, http.StatusOK, saidaProdutoAdminDe(atualizado))
 }
 
+// ajustarEstoque é a rota própria do Estoque total (3.4), e não o PUT: a tela
+// reenvia a linha lida ao desativar e reativar, e um total junto regravaria um
+// valor velho por cima de uma consolidação. Aqui cada escrita do total é
+// intencional. A transação é daqui (AD-4): a trava do AD-5 dura até o Commit.
+func (s *servidor) ajustarEstoque(w http.ResponseWriter, r *http.Request) {
+	semCache(w)
+	var e struct {
+		EstoqueTotal *int64 `json:"estoque_total"`
+	}
+	if err := decodificarCorpo(w, r, &e); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	if e.EstoqueTotal == nil || *e.EstoqueTotal < 0 || *e.EstoqueTotal > int64(s.cfg.ProdutoEstoqueMax) {
+		erro.EscreverCampo(r.Context(), w, "estoque_total", mensagemDoEstoque(s.cfg.ProdutoEstoqueMax))
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	// O mesmo par do criarPedido: Rollback depois do Commit é no-op, e os
+	// dois com WithoutCancel porque o cliente pode desistir no meio.
+	defer tx.Rollback(context.WithoutCancel(r.Context()))
+
+	ajustado, err := catalogo.AjustarEstoque(r.Context(), tx, r.PathValue("id"), int32(*e.EstoqueTotal))
+	if err != nil {
+		var comprometido catalogo.EstoqueComprometido
+		if errors.As(err, &comprometido) {
+			erro.EscreverEstoqueComprometido(r.Context(), w, comprometido.N)
+			return
+		}
+		escreverErroDeProduto(w, r, err)
+		return
+	}
+	if err := tx.Commit(context.WithoutCancel(r.Context())); err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	escreverJSON(w, http.StatusOK, saidaProdutoAdminDe(ajustado))
+}
+
+// mensagemDoEstoque é a mesma na criação e no ajuste.
+func mensagemDoEstoque(maximo int) string {
+	return fmt.Sprintf("O Estoque total tem de ficar entre 0 e %s unidades.", erro.Milhar(int64(maximo)))
+}
+
 func escreverErroDeProduto(w http.ResponseWriter, r *http.Request, err error) {
 	var referencia catalogo.ReferenciaInvalida
 	switch {
@@ -150,7 +200,7 @@ func (s *servidor) produtoDaRequisicao(w http.ResponseWriter, r *http.Request, c
 		campo, mensagem = "preco_centavos", fmt.Sprintf("O preço do Produto tem de ser maior que zero e de no máximo R$ %s,%02d.",
 			erro.Milhar(cfg.ProdutoPrecoMaxCentavos/100), cfg.ProdutoPrecoMaxCentavos%100)
 	case criando && (e.EstoqueTotal == nil || *e.EstoqueTotal < 0 || *e.EstoqueTotal > int64(cfg.ProdutoEstoqueMax)):
-		campo, mensagem = "estoque_total", fmt.Sprintf("O Estoque total tem de ficar entre 0 e %s unidades.", erro.Milhar(int64(cfg.ProdutoEstoqueMax)))
+		campo, mensagem = "estoque_total", mensagemDoEstoque(cfg.ProdutoEstoqueMax)
 	case e.ImagemURL != "" && !slices.Contains(midias(), e.ImagemURL):
 		campo, mensagem = "imagem_url", "Escolha uma imagem da lista, ou nenhuma."
 	case !criando && e.Ativo == nil:

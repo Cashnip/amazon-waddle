@@ -24,16 +24,45 @@ WHERE p.id = ANY(@ids::uuid[])
 ORDER BY p.id
 FOR UPDATE OF p;
 
--- Só depois a soma. Com a trava segura, nenhuma Reserva nova entra entre a
--- soma e o INSERT que a sucede.
--- name: SomarReservasAtivas :one
-SELECT coalesce(sum(quantidade), 0)::bigint AS reservado
+-- Só depois a soma, em lote. Com a trava segura, nenhuma Reserva nova entra
+-- entre a soma e o INSERT que a sucede — nem, no ajuste do Administrador,
+-- entre a soma e o UPDATE do total. Produto sem Reserva ativa não aparece.
+-- name: SomarReservasAtivas :many
+SELECT produto_id, sum(quantidade)::bigint AS reservado
 FROM catalogo.reserva_estoque
-WHERE produto_id = $1 AND estado = 'ATIVA';
+WHERE produto_id = ANY(@ids::uuid[]) AND estado = 'ATIVA'
+GROUP BY produto_id;
 
 -- name: CriarReservaAtiva :exec
 INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
 VALUES ($1, $2, $3, 'ATIVA');
+
+-- A liberação (AD-5): muda só o estado, nunca `estoque_total`. O
+-- `estado = 'ATIVA'` é compare-and-swap: repetir não encontra nada, e é no-op.
+-- name: LiberarReservasDoPedido :exec
+UPDATE catalogo.reserva_estoque
+SET estado = 'LIBERADA'
+WHERE pedido_id = @pedido_id AND estado = 'ATIVA';
+
+-- O disponível de `Disponivel` e `Visiveis` (AD-19): lido da VIEW, que é o
+-- único lugar do predicado de visibilidade. Id invisível ou inexistente não
+-- volta, e quem preenche o zero é o Go.
+-- name: DisponivelDosVisiveis :many
+SELECT id, estoque_disponivel
+FROM catalogo.produto_visivel
+WHERE id = ANY(@ids::uuid[]);
+
+-- A trava do ajuste do Administrador, primeiro dos dois comandos do AD-5.
+-- Sem a VIEW: o ajuste vale para Produto inativo, e travar pela VIEW faria do
+-- inativo um 404.
+-- name: TravarProdutoParaAjuste :one
+SELECT id FROM catalogo.produto
+WHERE id = ANY(@ids::uuid[])
+ORDER BY id
+FOR UPDATE;
+
+-- name: AjustarEstoqueTotal :exec
+UPDATE catalogo.produto SET estoque_total = @estoque_total WHERE id = @id;
 
 -- As duas consultas da consolidação (Estória 1.8), a única passagem em que o
 -- Estoque total muda. O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
@@ -138,8 +167,9 @@ INSERT INTO catalogo.produto
 VALUES (@nome, @descricao, @preco_centavos, @imagem_url, @vendedor_id, @categoria_id, @estoque_total, @busca_normalizada)
 RETURNING id;
 
--- O Estoque total não está aqui: o ajuste depois da criação é da 3.4, com a
--- guarda das Reservas. Desativar é este UPDATE de `ativo`, e quem esconde o
+-- O Estoque total não está aqui: o ajuste tem rota própria, com a guarda das
+-- Reservas (3.4) — a tela reenvia a linha lida, e isto regravaria um total
+-- velho por cima de uma consolidação. Desativar é este UPDATE de `ativo`, e quem esconde o
 -- Produto é a VIEW produto_visivel.
 -- name: AtualizarProduto :one
 UPDATE catalogo.produto
