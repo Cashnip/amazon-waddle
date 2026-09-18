@@ -84,8 +84,7 @@ existem para caber numa apresentação.
 
 Autenticado, o Comprador cadastra para onde a entrega vai em
 <http://localhost:3000/enderecos> — lista, cadastro, edição e remoção, com o vazio
-"Nenhum Endereço cadastrado." Ainda **não há link** para a tela na casca: o Menu da conta
-é da 2.6, e a URL se digita.
+"Nenhum Endereço cadastrado." O Menu da conta (abaixo) linka para cá.
 
 | Rota | O que faz |
 |---|---|
@@ -108,6 +107,26 @@ Três respostas que um cliente precisa tratar:
 
 O CEP é guardado em oito dígitos, sem hífen; a máscara é da tela, e a API aceita as duas
 formas na entrada.
+
+### Menu da conta, Perfil e Meus pedidos
+
+A porta única para a conta (UX-DR9): autenticado, o cabeçalho de toda tela pública/
+Comprador mostra "Olá, `<nome>`" com um `DropdownMenu` do shadcn (UX-DR1, sem alteração)
+para Meus pedidos, Meus endereços, Perfil e Sair; sem Sessão, mostra Entrar (preservando
+o destino) e Criar conta.
+
+- <http://localhost:3000/perfil> — o e-mail em leitura, e "Trocar senha" leva ao
+  `/esqueci-a-senha` existente (FR-3). Nenhuma FR pede troca de senha com a senha atual.
+- <http://localhost:3000/pedidos> — a listagem mínima dos Pedidos do dono, mais recente
+  primeiro, cada linha um link para `/pedidos/{id}`. É o esboço que a Estória 6.1
+  substitui: sem filtro por Status, sem paginação e sem `Skeleton` (UX-DR20b).
+
+| Rota | O que faz |
+|---|---|
+| `GET /api/v1/pedidos` | A lista do dono, mais recente primeiro. O dono entra na própria consulta (AD-11), e a ordem é `id DESC` — a chave é `uuidv7()`, ordenada no tempo por construção, então não precisa de coluna nova para isso. |
+
+Visitar `/perfil` ou `/pedidos` sem Sessão redireciona a `/entrar?destino=...` e volta
+exatamente para lá depois de autenticar — o mesmo `paraLogin()` de `meus-enderecos.tsx`.
 
 ### Entrar como Administrador
 

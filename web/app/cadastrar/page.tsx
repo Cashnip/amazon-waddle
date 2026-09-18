@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Casca } from "@/components/casca";
 
 // Tela de cadastro da estória 2.1. Nenhuma regra mora aqui (AD-10): a defesa
 // é o Go, e quem decide é sempre o 400 dele. O `required` e o `type="email"`
@@ -133,15 +134,7 @@ export default function Cadastrar() {
   }
 
   return (
-    <div className="min-h-svh">
-      <header className="bg-chrome text-chrome-foreground">
-        <div className="mx-auto flex max-w-conteudo items-center px-page-margin py-4 lg:px-page-margin-lg">
-          <a className="wordmark" href="/">
-            azamon
-          </a>
-        </div>
-      </header>
-
+    <Casca>
       <main className="mx-auto max-w-md px-page-margin py-section-sm">
         <Card>
           <CardHeader>
@@ -179,6 +172,6 @@ export default function Cadastrar() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </Casca>
   );
 }

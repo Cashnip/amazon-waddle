@@ -46,6 +46,17 @@ SELECT p.id, p.numero, p.status, p.total_centavos,
 FROM pedido.pedido p
 WHERE p.id = @pedido_id AND p.comprador_id = @comprador_id;
 
+-- A listagem da tela "Meus pedidos" (2.6). O dono entra no WHERE, e não numa
+-- checagem depois (AD-11): a rota nunca lê Pedido de outro Comprador para
+-- descartar depois. `id DESC` e não por data: a chave é uuidv7(), ordenada no
+-- tempo por construção, então o mais recente já sai no topo sem JOIN em
+-- transicao_status nem coluna nova — é o esboço que a Estória 6.1 substitui.
+-- name: ListarPedidosDoComprador :many
+SELECT id, numero, status, total_centavos
+FROM pedido.pedido
+WHERE comprador_id = @comprador_id
+ORDER BY id DESC;
+
 -- A leitura travada da varredura. SKIP LOCKED porque o tique que encontra o
 -- Pedido já travado não tem o que esperar: o outro caminho está aplicando, e
 -- insistir só serializaria a varredura inteira num Pedido.

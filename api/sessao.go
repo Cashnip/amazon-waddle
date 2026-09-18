@@ -25,8 +25,13 @@ type entradaSessao struct {
 // Administrador. O identificador e o papel ficam na Sessão, dentro do Redis: o
 // navegador não tem o que fazer com nenhum dos dois, e um papel que viajasse no
 // corpo seria papel que a casca pode mentir.
+//
+// Email entra na 2.6: é o mesmo envelope que o Menu da conta e a tela de
+// Perfil consomem — uma rota de Perfil separada pagaria uma ida a mais ao
+// Postgres pelo mesmo dado que a Sessão já carrega.
 type saidaSessao struct {
-	Nome string `json:"nome"`
+	Nome  string `json:"nome"`
+	Email string `json:"email"`
 }
 
 // criarSessao autentica na loja e emite o cookie opaco. Só consulta
@@ -109,7 +114,7 @@ func (s *servidor) entrar(w http.ResponseWriter, r *http.Request, autenticar aut
 	if !s.abrirSessao(w, r, conta) {
 		return
 	}
-	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome})
+	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome, Email: conta.Email})
 }
 
 // abrirSessao grava a Sessão no Redis e emite o cookie opaco. O cookie é
@@ -200,7 +205,7 @@ func (s *servidor) lerSessao(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
-	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome})
+	escreverJSON(w, http.StatusOK, saidaSessao{Nome: conta.Nome, Email: conta.Email})
 }
 
 // encerrarSessao apaga a chave no Redis e expira o cookie. Sem cookie, com

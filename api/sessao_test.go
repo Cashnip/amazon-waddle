@@ -287,6 +287,11 @@ func TestSessaoEProduto(t *testing.T) {
 		if nome := decodificar(t, resp)["nome"]; nome != nomeSemente {
 			t.Errorf("nome = %v, quero %q", nome, nomeSemente)
 		}
+		// A 2.6: é o mesmo envelope que o Menu da conta e o Perfil consomem —
+		// sem ele Perfil não tem o que exibir.
+		if email := decodificar(t, resp)["email"]; email != emailSemente {
+			t.Errorf("email = %v, quero %q", email, emailSemente)
+		}
 	})
 
 	// Cookie ausente e cookie fora do Redis são a mesma coisa para quem
@@ -366,6 +371,13 @@ func TestSessaoEProduto(t *testing.T) {
 	// dele antecede os do ano corrente na ordenação que os outros usam.
 	t.Run("a tela do Pedido lê pelo dono", func(t *testing.T) {
 		leituraDoPedido(t, rotas, pool, cookieValido, pedidoCriado)
+	})
+	// A 2.6, com conta própria: o vazio da matriz só é observável antes de
+	// qualquer Pedido existir, e é por isso que não reaproveita cookieValido
+	// — ele já tem Pedidos dos subtestes acima. Entra antes da simulação de
+	// entrega, que é a única que conta com o `estoque_total` intacto até ali.
+	t.Run("Meus pedidos: lista só os do dono, mais recente primeiro", func(t *testing.T) {
+		meusPedidosListaPorDono(t, rotas)
 	})
 	// Depois de todos: é o único subteste que baixa o `estoque_total` de
 	// produtoSemeado, e os que compram esse mesmo Produto contam com o total

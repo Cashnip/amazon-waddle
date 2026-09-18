@@ -44,6 +44,11 @@ func cadastroValidoAbreSessao(t *testing.T, rotas http.Handler, pool *pgxpool.Po
 	if devolvido := decodificar(t, resp)["nome"]; devolvido != nome {
 		t.Errorf("nome = %v, quero %q", devolvido, nome)
 	}
+	// A 2.6: o e-mail normalizado, mesmo tendo entrado com bordas e
+	// maiúsculas — é o mesmo envelope que MenuDaConta e Perfil consomem.
+	if devolvido := decodificar(t, resp)["email"]; devolvido != "ana@exemplo.br" {
+		t.Errorf("email = %v, quero %q", devolvido, "ana@exemplo.br")
+	}
 
 	cookies := resp.Result().Cookies()
 	if len(cookies) != 1 {
@@ -68,6 +73,9 @@ func cadastroValidoAbreSessao(t *testing.T, rotas http.Handler, pool *pgxpool.Po
 	}
 	if devolvido := decodificar(t, sessao)["nome"]; devolvido != nome {
 		t.Errorf("nome na Sessão = %v, quero %q", devolvido, nome)
+	}
+	if devolvido := decodificar(t, sessao)["email"]; devolvido != "ana@exemplo.br" {
+		t.Errorf("email na Sessão = %v, quero %q", devolvido, "ana@exemplo.br")
 	}
 
 	// Condição de aceite: a linha gravada. O e-mail entrou minúsculo e sem as

@@ -1,4 +1,4 @@
-import { Saudacao } from "@/app/produtos/[id]/saudacao";
+import { Casca } from "@/components/casca";
 import { Acompanhamento } from "./acompanhamento";
 
 // Tela do Pedido em processamento (FR-25). O Comprador chega aqui depois do
@@ -18,19 +18,10 @@ export default async function PaginaDePedido({
   const { id } = await params;
 
   return (
-    <div className="min-h-svh">
-      <header className="bg-chrome text-chrome-foreground">
-        <div className="mx-auto flex max-w-conteudo items-center justify-between px-page-margin py-4 lg:px-page-margin-lg">
-          <a className="wordmark" href="/">
-            azamon
-          </a>
-          <Saudacao />
-        </div>
-      </header>
-
+    <Casca>
       <main className="mx-auto max-w-conteudo px-page-margin py-section-sm lg:px-page-margin-lg">
         <Acompanhamento pedidoId={id} />
       </main>
-    </div>
+    </Casca>
   );
 }
