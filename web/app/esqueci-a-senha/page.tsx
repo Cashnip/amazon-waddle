@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Casca } from "@/components/casca";
 
 // Tela de solicitação da estória 2.3 (UX-DR20a). O estado de sucesso é neutro
 // e aparece SEMPRE: o servidor responde o mesmo 202 exista ou não a conta, e
@@ -49,15 +50,7 @@ export default function EsqueciASenha() {
   }
 
   return (
-    <div className="min-h-svh">
-      <header className="bg-chrome text-chrome-foreground">
-        <div className="mx-auto flex max-w-conteudo items-center px-page-margin py-4 lg:px-page-margin-lg">
-          <a className="wordmark" href="/">
-            azamon
-          </a>
-        </div>
-      </header>
-
+    <Casca>
       <main className="mx-auto max-w-md px-page-margin py-section-sm">
         <Card>
           <CardHeader>
@@ -121,6 +114,6 @@ export default function EsqueciASenha() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </Casca>
   );
 }

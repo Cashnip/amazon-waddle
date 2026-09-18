@@ -140,3 +140,34 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		Terminal:     pedido.EstadoTerminal(p.Status),
 	})
 }
+
+// listarPedidos é a tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1
+// substitui: sem filtro por Status, sem paginação, sem Skeleton. O dono entra
+// na consulta (AD-11), e não numa checagem depois.
+func (s *servidor) listarPedidos(w http.ResponseWriter, r *http.Request) {
+	semCache(w)
+
+	comprador, err := s.compradorDaRequisicao(r)
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	pedidos, err := pedido.Listar(r.Context(), s.pool, comprador.ID)
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	// Fatia vazia, e nunca `null`: o mesmo contrato de Meus Endereços (2.5) —
+	// o estado vazio é da tela.
+	saidas := make([]saidaPedido, 0, len(pedidos))
+	for _, p := range pedidos {
+		saidas = append(saidas, saidaPedido{
+			ID:            p.ID,
+			Numero:        p.Numero,
+			Status:        p.Status,
+			TotalCentavos: p.TotalCentavos,
+		})
+	}
+	escreverJSON(w, http.StatusOK, saidas)
+}

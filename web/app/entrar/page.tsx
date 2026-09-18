@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { destinoSeguro } from "@/lib/destino";
+import { Casca } from "@/components/casca";
 
 // Tela crua da estória 1.5: o que ela prova é que o cookie de Sessão sai do Go
 // e atravessa o rewrites() do Next íntegro. A composição de marca do login
@@ -60,15 +61,7 @@ export default function Entrar() {
   }
 
   return (
-    <div className="min-h-svh">
-      <header className="bg-chrome text-chrome-foreground">
-        <div className="mx-auto flex max-w-conteudo items-center px-page-margin py-4 lg:px-page-margin-lg">
-          <a className="wordmark" href="/">
-            azamon
-          </a>
-        </div>
-      </header>
-
+    <Casca>
       <main className="mx-auto max-w-md px-page-margin py-section-sm">
         <Card>
           <CardHeader>
@@ -113,8 +106,9 @@ export default function Entrar() {
               </Button>
             </form>
 
-            {/* Sem o menu da conta (2.6), estes dois links são as únicas portas
-                para o cadastro e para a recuperação de senha. */}
+            {/* O Menu da conta (2.6) não lista "Esqueci minha senha" nem
+                "Criar conta" — são portas de quem ainda não tem Sessão, e
+                continuam só aqui. */}
             <p className="mt-4 text-sm">
               <a className="text-link underline" href="/esqueci-a-senha">
                 Esqueci minha senha
@@ -129,6 +123,6 @@ export default function Entrar() {
           </CardContent>
         </Card>
       </main>
-    </div>
+    </Casca>
   );
 }

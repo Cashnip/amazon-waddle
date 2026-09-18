@@ -170,3 +170,31 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-5-enderecos-do-comprador.md`
   summary: O CEP e guardado em oito digitos sem faixa conhecida, e a Faixa de Frete da 5.3 vai compara-lo por intervalo de texto.
   evidence: A coluna tem `CHECK (cep ~ '^[0-9]{8}$')` e nada mais: nao existe tabela de faixas nem validacao de CEP existente (NFR-15 proibe consulta a servico pela rede). Um CEP sintaticamente valido mas inexistente entra hoje e cai na regiao padrao da FR-21 quando a 5.3 chegar, que e o comportamento declarado — registrado para que a 5.3 confirme, e nao redescubra, que a validacao e so de forma.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: A UJ-1 inteira (achar um Produto, comprar, ver o Pedido) não foi percorrida só pelo teclado com o `DropdownMenu` novo no caminho.
+  evidence: A extensão do Chrome não está conectada nesta máquina, o mesmo desfecho das estórias 2.1-2.3. Na fonte, o Trigger é o `<button>` que o Radix `DropdownMenuPrimitive.Trigger` renderiza por padrão (Enter/Espaço abre, setas navegam, Esc fecha — mecanismo do próprio shadcn, UX-DR1), e os dois links "Entrar"/"Criar conta" ganharam foco visível escrito à mão (`focus-visible:ring-2 focus-visible:ring-chrome-foreground`) porque o anel padrão do design system, pensado para superfície clara, não bate 3:1 sobre `bg-chrome`. Falta a metade visual: abrir e navegar o Menu só pelo teclado, e conferir o contraste do anel a olho nu de 360 a 1440 px. Settlement: uma passagem manual, ou a mesma superfície de teste de componente que fecharia as lacunas equivalentes das estórias 2.1-2.3.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: `meus-pedidos.tsx` e `perfil.tsx` não têm estado de carregamento antes da primeira resposta do servidor.
+  evidence: Mesmo buraco documentado para `meus-enderecos.tsx`/`acompanhamento.tsx` na 2.5 — `pedidos` fica `null` e a maior parte de `perfil.tsx` fica sem indicação até a primeira resposta, sem texto, spinner ou `Skeleton`. A 2.6 estende o mesmo padrão do repo para a terceira e a quarta tela, sem registrar as novas instâncias.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: `GET /api/v1/pedidos` (`pedido.Listar`) não tem `LIMIT` nem teto algum — devolve o histórico inteiro do Comprador.
+  evidence: Diferente de Endereço, onde `AZAMON_ENDERECO_POR_COMPRADOR_MAX` limita a 20 pela própria regra de negócio, Pedido não tem teto estrutural nenhum. A paginação é da 6.1 por decisão da espinha, mas nada impede hoje uma consulta e um payload sem tamanho declarado enquanto ela não chega.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: `casca.tsx`, `menu-da-conta.tsx`, `perfil.tsx` e `meus-pedidos.tsx` não têm verificação automatizada nenhuma.
+  evidence: Mesma lacuna estrutural das 2.1-2.3 (sem jsdom nem harness de componente em `web/`) — `npm test` roda só `web/scripts/*.test.mjs`, que não toca nenhum dos quatro arquivos novos desta estória. O branch autenticado/sem-Sessão de `MenuDaConta` e o uso de `paraLogin()` nas duas telas novas ficam sem cobertura nenhuma.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: `identidade.Conta.Email` passa a viajar para dentro de toda Sessão gravada no Redis (`CriarSessao`), não só na resposta HTTP.
+  evidence: A Design Notes da 2.6 justifica o campo só pelo custo de uma consulta a mais evitada; a espinha define Sessão como "dado com prazo de validade" mas não decide explicitamente se o e-mail pode viver lá pelos 7 dias de TTL. Antes desta estória, a Sessão carregava só id/nome/papel — é uma categoria nova de dado pessoal em repouso que ninguém decidiu por escrito.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: Uma Sessão do Redis criada antes desta estória subir, ainda válida dentro dos 7 dias, desserializa com `Conta.Email` vazio.
+  evidence: `identidade.Conta` ganhou o campo `Email`, mas Sessões antigas gravadas antes da mudança não têm essa chave — o zero-value ("") entra sem erro nenhum, e o Perfil mostraria o e-mail em branco, sem explicação, até a Sessão expirar ou o Comprador entrar de novo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-menu-da-conta-e-o-retorno-ao-ponto-de-partida.md`
+  summary: `MenuDaConta` pisca o estado "sem Sessão" (Entrar + Criar conta) antes de resolver para o `DropdownMenu`, mesmo para quem já está autenticado.
+  evidence: A `Saudacao` antiga tinha o mesmo lampejo com um único link "Entrar"; o `MenuDaConta` da 2.6 dobra para dois elementos interativos (Entrar e Criar conta) no mesmo instante, nas oito telas, enquanto `GET /api/v1/sessao` não responde — sem menção na spec nem registro anterior.

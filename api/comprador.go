@@ -58,7 +58,7 @@ func (s *servidor) criarComprador(w http.ResponseWriter, r *http.Request) {
 	if !s.abrirSessao(w, r, conta) {
 		return
 	}
-	escreverJSON(w, http.StatusCreated, saidaSessao{Nome: conta.Nome})
+	escreverJSON(w, http.StatusCreated, saidaSessao{Nome: conta.Nome, Email: conta.Email})
 }
 
 // validarComprador devolve o primeiro campo em falta e a mensagem que o

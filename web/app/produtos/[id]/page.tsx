@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
-import { Saudacao } from "./saudacao";
+import { Casca } from "@/components/casca";
 import { Comprar } from "./comprar";
 
 // Página de Produto crua da estória 1.5. A composição de marca — Estoque,
@@ -54,16 +54,7 @@ export default async function PaginaDeProduto({
   const produto: Produto = await resposta.json();
 
   return (
-    <div className="min-h-svh">
-      <header className="bg-chrome text-chrome-foreground">
-        <div className="mx-auto flex max-w-conteudo items-center justify-between px-page-margin py-4 lg:px-page-margin-lg">
-          <a className="wordmark" href="/">
-            azamon
-          </a>
-          <Saudacao />
-        </div>
-      </header>
-
+    <Casca>
       <main className="mx-auto grid max-w-conteudo gap-grid-gutter px-page-margin py-section-sm md:grid-cols-2 lg:px-page-margin-lg">
         <Card>
           <CardContent>
@@ -91,6 +82,6 @@ export default async function PaginaDeProduto({
           <Comprar produtoId={produto.id} />
         </div>
       </main>
-    </div>
+    </Casca>
   );
 }

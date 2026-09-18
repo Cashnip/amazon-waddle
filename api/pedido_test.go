@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -334,6 +335,70 @@ func ultimaTransicao(t *testing.T, pool *pgxpool.Pool, pedidoID string) time.Tim
 		t.Fatalf("ler a última transição: %v", err)
 	}
 	return quando.UTC()
+}
+
+// meusPedidosListaPorDono é a 2.6, no molde de enderecosDoComprador
+// (endereco_test.go): conta própria, para o vazio da matriz ser observável
+// antes de qualquer Pedido existir — cookieValido, reaproveitado pelos
+// subtestes acima, já chega aqui com Pedidos seus. O AD-11 entra na própria
+// consulta (ListarPedidosDoComprador), e a ordem é `id DESC`: a chave é
+// uuidv7(), ordenada no tempo por construção, então o Pedido criado por
+// último sai primeiro sem depender de relógio nenhum.
+func meusPedidosListaPorDono(t *testing.T, rotas http.Handler) {
+	cookie := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Nara Bastos","email":"nara-pedidos@exemplo.br","senha":"senha-da-nara-1"}`), http.StatusCreated)
+
+	// Listar sem nenhum: 200 com `[]`, e não `null` — o mesmo contrato de
+	// Meus Endereços (2.5): o estado vazio é da tela.
+	vazia := pegarPedidos(t, rotas, cookie)
+	if vazia.Code != http.StatusOK {
+		t.Fatalf("listar sem nenhum = %d (%s), quero 200", vazia.Code, vazia.Body.String())
+	}
+	if v := vazia.Header().Get("Cache-Control"); v != "no-store" {
+		t.Errorf("Cache-Control da listagem = %q, quero no-store", v)
+	}
+	if corpo := strings.TrimSpace(vazia.Body.String()); corpo != "[]" {
+		t.Errorf("lista vazia = %s, quero []", corpo)
+	}
+
+	primeiro := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie), http.StatusCreated)
+	segundo := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie), http.StatusCreated)
+
+	// Outro Comprador cria um terceiro Pedido: a lista de Nara não pode
+	// trazê-lo — o dono entra na própria consulta, e não numa checagem
+	// depois (AD-11).
+	outro := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Otelo Farias","email":"otelo-pedidos@exemplo.br","senha":"senha-do-otelo-1"}`), http.StatusCreated)
+	if resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, outro); resp.Code != http.StatusCreated {
+		t.Fatalf("Pedido do outro Comprador = %d (%s), quero 201", resp.Code, resp.Body.String())
+	}
+
+	lista := pegarPedidos(t, rotas, cookie)
+	if lista.Code != http.StatusOK {
+		t.Fatalf("listar com dois = %d (%s), quero 200", lista.Code, lista.Body.String())
+	}
+	var ids []string
+	for _, p := range decodificarLista(t, lista) {
+		ids = append(ids, fmt.Sprint(p["id"]))
+	}
+	if !slices.Equal(ids, []string{segundo, primeiro}) {
+		t.Errorf("ids = %v, quero [%s, %s] — mais recente primeiro, só os de Nara", ids, segundo, primeiro)
+	}
+
+	// Sem Sessão: 401 SESSAO_INVALIDA, a mesma guarda das outras rotas
+	// autenticadas do Comprador.
+	semCookie := pegarPedidos(t, rotas, nil)
+	if semCookie.Code != http.StatusUnauthorized {
+		t.Fatalf("sem cookie: status = %d, quero 401", semCookie.Code)
+	}
+	if codigo := decodificar(t, semCookie)["codigo"]; codigo != "SESSAO_INVALIDA" {
+		t.Errorf("sem cookie: codigo = %v, quero SESSAO_INVALIDA", codigo)
+	}
+}
+
+func pegarPedidos(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return pegarCom(t, rotas, "/api/v1/pedidos", cookie)
 }
 
 func pegarPedido(t *testing.T, rotas http.Handler, id string, cookie *http.Cookie) *httptest.ResponseRecorder {

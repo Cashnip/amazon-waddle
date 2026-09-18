@@ -51,9 +51,14 @@ const (
 // Conta é o que a Sessão carrega — o suficiente para a saudação da casca, para
 // o Pedido da 1.6 saber de quem ele é, e para a guarda de prefixo da API
 // decidir o papel sem voltar ao Postgres a cada requisição.
+//
+// Email entra aqui, e não numa consulta à parte (2.6): as duas linhas de
+// login já trazem `email` da tabela — só não estava mapeado —, e é o que a
+// tela de Perfil mostra em leitura sem pagar uma ida a mais ao Postgres.
 type Conta struct {
 	ID    string `json:"id"`
 	Nome  string `json:"nome"`
+	Email string `json:"email"`
 	Papel Papel  `json:"papel"`
 }
 
@@ -75,7 +80,7 @@ func Autenticar(ctx context.Context, bd gerado.DBTX, email, senha string) (Conta
 	if err := Verificar(linha.SenhaHash, senha); err != nil {
 		return Conta{}, err
 	}
-	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelComprador}, nil
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Email: linha.Email, Papel: PapelComprador}, nil
 }
 
 // AutenticarAdministrador consulta SÓ `identidade.administrador`. É uma função
@@ -98,6 +103,12 @@ func AutenticarAdministrador(ctx context.Context, bd gerado.DBTX, email, senha s
 	if err := Verificar(linha.SenhaHash, senha); err != nil {
 		return Conta{}, err
 	}
+	// Email fica de fora de propósito: nenhuma tela de Administrador desta
+	// estória o lê, e `saidaSessao.Email` não tem `omitempty` — preenchê-lo
+	// aqui faria `POST /api/v1/admin/sessoes` (que passa pelo `entrar()`
+	// compartilhado) devolver o e-mail, enquanto `GET /api/v1/admin/sessao`
+	// (api/admin.go, fora do escopo desta estória) continuaria sempre em
+	// `""` — duas rotas administrativas discordando do mesmo campo.
 	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelAdministrador}, nil
 }
 
@@ -126,7 +137,11 @@ func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (
 	if err != nil {
 		return Conta{}, err
 	}
-	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Papel: PapelComprador}, nil
+	// O e-mail não volta no RETURNING de CriarComprador (só id, nome): a forma
+	// gravada já é normalizarEmail(email), a mesma que acabou de entrar no
+	// INSERT — reconsultar por ela seria uma ida ao Postgres pelo dado que
+	// esta função já tem na mão.
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Email: normalizarEmail(email), Papel: PapelComprador}, nil
 }
 
 // normalizarEmail é a forma canônica do e-mail dentro do módulo: a coluna tem

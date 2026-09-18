@@ -139,6 +139,50 @@ func (q *Queries) CriarPedido(ctx context.Context, arg CriarPedidoParams) (Criar
 	return i, err
 }
 
+const listarPedidosDoComprador = `-- name: ListarPedidosDoComprador :many
+SELECT id, numero, status, total_centavos
+FROM pedido.pedido
+WHERE comprador_id = $1
+ORDER BY id DESC
+`
+
+type ListarPedidosDoCompradorRow struct {
+	ID            pgtype.UUID
+	Numero        string
+	Status        string
+	TotalCentavos int64
+}
+
+// A listagem da tela "Meus pedidos" (2.6). O dono entra no WHERE, e não numa
+// checagem depois (AD-11): a rota nunca lê Pedido de outro Comprador para
+// descartar depois. `id DESC` e não por data: a chave é uuidv7(), ordenada no
+// tempo por construção, então o mais recente já sai no topo sem JOIN em
+// transicao_status nem coluna nova — é o esboço que a Estória 6.1 substitui.
+func (q *Queries) ListarPedidosDoComprador(ctx context.Context, compradorID pgtype.UUID) ([]ListarPedidosDoCompradorRow, error) {
+	rows, err := q.db.Query(ctx, listarPedidosDoComprador, compradorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarPedidosDoCompradorRow
+	for rows.Next() {
+		var i ListarPedidosDoCompradorRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Numero,
+			&i.Status,
+			&i.TotalCentavos,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pedidosParaAvancar = `-- name: PedidosParaAvancar :many
 SELECT p.id
 FROM pedido.pedido p

@@ -206,6 +206,36 @@ func Buscar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string) (
 	}, nil
 }
 
+// Listar é a leitura da tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1
+// substitui (filtro por Status, ordenação e Skeleton ficam para ela). O dono
+// entra no WHERE, e não numa checagem depois (AD-11): a consulta nunca traz
+// Pedido de outro Comprador para descartar depois. A ordem é `id DESC`: a
+// chave é uuidv7(), ordenada no tempo por construção, e por isso o mais
+// recente já sai no topo sem somar um JOIN em transicao_status.
+func Listar(ctx context.Context, bd gerado.DBTX, compradorID string) ([]Pedido, error) {
+	var comprador pgtype.UUID
+	if err := comprador.Scan(compradorID); err != nil {
+		return nil, fmt.Errorf("identificador de Comprador inválido: %w", err)
+	}
+	linhas, err := gerado.New(bd).ListarPedidosDoComprador(ctx, comprador)
+	if err != nil {
+		return nil, err
+	}
+	// Fatia vazia, e não nil: a lista sem nenhum Pedido serializa em `[]`, e
+	// não em `null` — o estado vazio é da tela, e um `null` a obrigaria a
+	// defender-se do formato (o mesmo contrato de Meus Endereços, 2.5).
+	pedidos := make([]Pedido, 0, len(linhas))
+	for _, linha := range linhas {
+		pedidos = append(pedidos, Pedido{
+			ID:            linha.ID.String(),
+			Numero:        linha.Numero,
+			Status:        linha.Status,
+			TotalCentavos: linha.TotalCentavos,
+		})
+	}
+	return pedidos, nil
+}
+
 // Varrer é o passo "aplicar" do tique: lê a inbox de `pagamento` e aplica o
 // que chegou. Não tem relógio próprio — quem o chama é `cmd/azamon`, e esta
 // função não decide quando roda (AD-6).
