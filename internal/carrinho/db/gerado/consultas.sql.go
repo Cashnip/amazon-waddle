@@ -51,6 +51,68 @@ func (q *Queries) AdicionarItem(ctx context.Context, arg AdicionarItemParams) (A
 	return i, err
 }
 
+const alterarItem = `-- name: AlterarItem :one
+UPDATE carrinho.item_carrinho AS item
+SET quantidade = $1, preco_visto_centavos = $2
+FROM carrinho.carrinho AS c
+WHERE item.id = $3 AND item.carrinho_id = c.id AND c.comprador_id = $4
+RETURNING item.id, item.produto_id, item.quantidade
+`
+
+type AlterarItemParams struct {
+	Quantidade         int32
+	PrecoVistoCentavos int64
+	ID                 pgtype.UUID
+	CompradorID        pgtype.UUID
+}
+
+type AlterarItemRow struct {
+	ID         pgtype.UUID
+	ProdutoID  pgtype.UUID
+	Quantidade int32
+}
+
+// A quantidade é absoluta, e o preço visto é o da alteração (AD-2). A posse
+// volta ao WHERE: BuscarItem já a conferiu, mas a linha pode ter mudado de mãos
+// — ou sumido — entre as duas idas.
+func (q *Queries) AlterarItem(ctx context.Context, arg AlterarItemParams) (AlterarItemRow, error) {
+	row := q.db.QueryRow(ctx, alterarItem,
+		arg.Quantidade,
+		arg.PrecoVistoCentavos,
+		arg.ID,
+		arg.CompradorID,
+	)
+	var i AlterarItemRow
+	err := row.Scan(&i.ID, &i.ProdutoID, &i.Quantidade)
+	return i, err
+}
+
+const buscarItem = `-- name: BuscarItem :one
+SELECT item.produto_id, item.quantidade
+FROM carrinho.item_carrinho AS item
+JOIN carrinho.carrinho AS c ON c.id = item.carrinho_id
+WHERE item.id = $1 AND c.comprador_id = $2
+`
+
+type BuscarItemParams struct {
+	ID          pgtype.UUID
+	CompradorID pgtype.UUID
+}
+
+type BuscarItemRow struct {
+	ProdutoID  pgtype.UUID
+	Quantidade int32
+}
+
+// O Item do dono, para saber de que Produto ele é. Alheio e inexistente
+// voltam as mesmas zero linhas (AD-11).
+func (q *Queries) BuscarItem(ctx context.Context, arg BuscarItemParams) (BuscarItemRow, error) {
+	row := q.db.QueryRow(ctx, buscarItem, arg.ID, arg.CompradorID)
+	var i BuscarItemRow
+	err := row.Scan(&i.ProdutoID, &i.Quantidade)
+	return i, err
+}
+
 const garantirCarrinho = `-- name: GarantirCarrinho :one
 INSERT INTO carrinho.carrinho (comprador_id)
 VALUES ($1)
@@ -65,6 +127,77 @@ func (q *Queries) GarantirCarrinho(ctx context.Context, compradorID pgtype.UUID)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const limparItens = `-- name: LimparItens :exec
+DELETE FROM carrinho.item_carrinho AS item
+USING carrinho.carrinho AS c
+WHERE item.carrinho_id = c.id AND c.comprador_id = $1
+`
+
+// O esvaziar do Comprador (FR-18). O Carrinho em si fica: é um por Comprador e
+// não expira. Sem Item nenhum, zero linhas e nenhum erro.
+func (q *Queries) LimparItens(ctx context.Context, compradorID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, limparItens, compradorID)
+	return err
+}
+
+const listarItens = `-- name: ListarItens :many
+SELECT item.id, item.produto_id, item.quantidade
+FROM carrinho.item_carrinho AS item
+JOIN carrinho.carrinho AS c ON c.id = item.carrinho_id
+WHERE c.comprador_id = $1
+ORDER BY item.id
+`
+
+type ListarItensRow struct {
+	ID         pgtype.UUID
+	ProdutoID  pgtype.UUID
+	Quantidade int32
+}
+
+// Leitura pura (AD-17): não há UPDATE aqui, e o preço visto nem sai da consulta.
+// O id é uuidv7, então a ordem é a da adição.
+func (q *Queries) ListarItens(ctx context.Context, compradorID pgtype.UUID) ([]ListarItensRow, error) {
+	rows, err := q.db.Query(ctx, listarItens, compradorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarItensRow
+	for rows.Next() {
+		var i ListarItensRow
+		if err := rows.Scan(&i.ID, &i.ProdutoID, &i.Quantidade); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const quantidadeDoProduto = `-- name: QuantidadeDoProduto :one
+SELECT COALESCE(SUM(item.quantidade), 0)::int AS quantidade
+FROM carrinho.item_carrinho AS item
+JOIN carrinho.carrinho AS c ON c.id = item.carrinho_id
+WHERE c.comprador_id = $1 AND item.produto_id = $2
+`
+
+type QuantidadeDoProdutoParams struct {
+	CompradorID pgtype.UUID
+	ProdutoID   pgtype.UUID
+}
+
+// Quanto o dono já tem do Produto: a soma que o teto e o Estoque recusam. A
+// soma sobre nenhuma linha é o zero do COALESCE, e por isso a consulta não
+// cria o Carrinho de quem só tentou adicionar.
+func (q *Queries) QuantidadeDoProduto(ctx context.Context, arg QuantidadeDoProdutoParams) (int32, error) {
+	row := q.db.QueryRow(ctx, quantidadeDoProduto, arg.CompradorID, arg.ProdutoID)
+	var quantidade int32
+	err := row.Scan(&quantidade)
+	return quantidade, err
 }
 
 const removerItem = `-- name: RemoverItem :execrows

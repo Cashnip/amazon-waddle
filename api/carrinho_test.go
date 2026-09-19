@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,26 +37,40 @@ func carrinhoDoComprador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 		t.Fatalf("sem Sessão gravou: %d Itens", n)
 	}
 
+	// O Produto das adições tem Estoque de sobra: o disponível do semeado cai a
+	// cada Pedido dos subtestes acima, e a soma até 9 não caberia mais nele.
+	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)
+	vendedor := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja do Carrinho"}`, admin), http.StatusCreated)
+	categoria := idDe(t, categoriaCom(t, rotas, http.MethodPost, "", `{"nome":"Categoria do Carrinho"}`, admin), http.StatusCreated)
+	corpoDe := func(nome string, estoque int, ativo bool) string {
+		b, _ := json.Marshal(map[string]any{
+			"nome": nome, "descricao": "", "preco_centavos": 4990, "imagem_url": "",
+			"vendedor_id": vendedor, "categoria_id": categoria, "estoque_total": estoque, "ativo": ativo,
+		})
+		return string(b)
+	}
+	amplo := idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe("Chaleira Ampla", 20, true), admin), http.StatusCreated)
+
 	cookie := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Lia Carrinho","email":"lia.carrinho@exemplo.br","senha":"senha-da-lia-1"}`), http.StatusCreated)
 
 	// Primeira adição: o Carrinho e o Item nascem, com o preço atual visto.
-	primeira := postarItem(t, rotas, corpoItem(produtoSemeado, "3"), cookie)
+	primeira := postarItem(t, rotas, corpoItem(amplo, "3"), cookie)
 	item := idDe(t, primeira, http.StatusCreated)
-	if corpo := decodificar(t, primeira); corpo["quantidade"] != 3.0 || corpo["produto_id"] != produtoSemeado {
-		t.Errorf("primeira adição = %v, quero quantidade 3 do Produto semeado", corpo)
+	if corpo := decodificar(t, primeira); corpo["quantidade"] != 3.0 || corpo["produto_id"] != amplo {
+		t.Errorf("primeira adição = %v, quero quantidade 3 do Produto", corpo)
 	}
 	if v := primeira.Header().Get("Cache-Control"); v != "no-store" {
 		t.Errorf("Cache-Control = %q, quero no-store", v)
 	}
 	visto := textoDe(t, pool, `SELECT preco_visto_centavos::text FROM carrinho.item_carrinho WHERE id = $1`, item)
-	preco := textoDe(t, pool, `SELECT preco_centavos::text FROM catalogo.produto WHERE id = $1`, produtoSemeado)
+	preco := textoDe(t, pool, `SELECT preco_centavos::text FROM catalogo.produto WHERE id = $1`, amplo)
 	if len(visto) != 1 || visto[0] != preco[0] {
 		t.Errorf("preco_visto_centavos = %v, quero o preço atual %v", visto, preco)
 	}
 
 	// Repetida: soma ao mesmo Item, uma linha só.
-	repetida := postarItem(t, rotas, corpoItem(produtoSemeado, "2"), cookie)
+	repetida := postarItem(t, rotas, corpoItem(amplo, "2"), cookie)
 	if id := idDe(t, repetida, http.StatusCreated); id != item {
 		t.Errorf("a repetida criou outro Item: %s, quero %s", id, item)
 	}
@@ -67,8 +82,8 @@ func carrinhoDoComprador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	}
 
 	// Soma acima do teto: chega a 9, e +2 não grava.
-	idDe(t, postarItem(t, rotas, corpoItem(produtoSemeado, "4"), cookie), http.StatusCreated)
-	acima := postarItem(t, rotas, corpoItem(produtoSemeado, "2"), cookie)
+	idDe(t, postarItem(t, rotas, corpoItem(amplo, "4"), cookie), http.StatusCreated)
+	acima := postarItem(t, rotas, corpoItem(amplo, "2"), cookie)
 	querCampoQuantidade(t, "soma acima do teto", acima)
 	if q := quantidadeNoBanco(item); len(q) != 1 || q[0] != "9" {
 		t.Errorf("a soma recusada gravou: quantidade = %v, quero 9", q)
@@ -76,24 +91,14 @@ func carrinhoDoComprador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 
 	// Quantidade fora da faixa, ausente ou não inteira.
 	for _, q := range []string{"0", "11", "-1", "1.5", `"3"`, "null"} {
-		querCampoQuantidade(t, "quantidade "+q, postarItem(t, rotas, corpoItem(produtoSemeado, q), cookie))
+		querCampoQuantidade(t, "quantidade "+q, postarItem(t, rotas, corpoItem(amplo, q), cookie))
 	}
 	querCampoQuantidade(t, "quantidade ausente",
-		postarItem(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie))
+		postarItem(t, rotas, `{"produto_id":"`+amplo+`"}`, cookie))
 
 	// Produto invisível: desativado, inexistente e uuid malformado.
-	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)
-	vendedor := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja do Carrinho"}`, admin), http.StatusCreated)
-	categoria := idDe(t, categoriaCom(t, rotas, http.MethodPost, "", `{"nome":"Categoria do Carrinho"}`, admin), http.StatusCreated)
-	corpoDe := func(ativo bool) string {
-		b, _ := json.Marshal(map[string]any{
-			"nome": "Chaleira Recolhida", "descricao": "", "preco_centavos": 4990, "imagem_url": "",
-			"vendedor_id": vendedor, "categoria_id": categoria, "estoque_total": 3, "ativo": ativo,
-		})
-		return string(b)
-	}
-	desativado := idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe(true), admin), http.StatusCreated)
-	if resp := produtoCom(t, rotas, http.MethodPut, "/"+desativado, corpoDe(false), admin); resp.Code != http.StatusOK {
+	desativado := idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe("Chaleira Recolhida", 3, true), admin), http.StatusCreated)
+	if resp := produtoCom(t, rotas, http.MethodPut, "/"+desativado, corpoDe("Chaleira Recolhida", 3, false), admin); resp.Code != http.StatusOK {
 		t.Fatalf("desativar = %d (%s)", resp.Code, resp.Body.String())
 	}
 	for _, id := range []string{desativado, uuidNuncaUsado, "nao-e-uuid"} {
@@ -120,6 +125,216 @@ func carrinhoDoComprador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	}
 }
 
+// carrinhoNaTela é a matriz da 4.2 e da 4.3 num subteste só: a recusa por
+// Estoque informando o disponível, a alteração, a leitura pelos preços de agora
+// e o esvaziar. Os Produtos saem do admin, com o Estoque que cada linha pede, e
+// os Compradores do cadastro.
+func carrinhoNaTela(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
+	contar := func(tabela string) int {
+		n, _ := strconv.Atoi(textoDe(t, pool, `SELECT count(*)::text FROM carrinho.`+tabela)[0])
+		return n
+	}
+	quantidadeNoBanco := func(itemID string) []string {
+		return textoDe(t, pool, `SELECT quantidade::text FROM carrinho.item_carrinho WHERE id = $1`, itemID)
+	}
+	precoVistoNoBanco := func(itemID string) string {
+		return textoDe(t, pool, `SELECT preco_visto_centavos::text FROM carrinho.item_carrinho WHERE id = $1`, itemID)[0]
+	}
+
+	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)
+	vendedor := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja da Tela do Carrinho"}`, admin), http.StatusCreated)
+	categoria := idDe(t, categoriaCom(t, rotas, http.MethodPost, "", `{"nome":"Categoria da Tela do Carrinho"}`, admin), http.StatusCreated)
+	corpoDe := func(nome string, preco, estoque int, ativo bool) string {
+		b, _ := json.Marshal(map[string]any{
+			"nome": nome, "descricao": "", "preco_centavos": preco, "imagem_url": "",
+			"vendedor_id": vendedor, "categoria_id": categoria, "estoque_total": estoque, "ativo": ativo,
+		})
+		return string(b)
+	}
+	novoProduto := func(nome string, preco, estoque int) string {
+		return idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe(nome, preco, estoque, true), admin), http.StatusCreated)
+	}
+	chaleira := novoProduto("Chaleira de Quatro", 5000, 4)
+	bule := novoProduto("Bule de Três", 3000, 3)
+	vazio := novoProduto("Produto Sem Estoque", 1000, 0)
+
+	// Sem Sessão, as três rotas novas dão 401.
+	for nome, resp := range map[string]*httptest.ResponseRecorder{
+		"GET":           pegarCarrinho(t, rotas, nil),
+		"PATCH":         alterarItem(t, rotas, uuidNuncaUsado, `{"quantidade":1}`, nil),
+		"DELETE /itens": esvaziarCarrinho(t, rotas, nil),
+	} {
+		if resp.Code != http.StatusUnauthorized {
+			t.Errorf("%s sem Sessão = %d (%s), quero 401", nome, resp.Code, resp.Body.String())
+		} else if codigo := decodificar(t, resp)["codigo"]; codigo != "SESSAO_INVALIDA" {
+			t.Errorf("%s sem Sessão: codigo = %v, quero SESSAO_INVALIDA", nome, codigo)
+		}
+	}
+
+	lia := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Lia da Tela","email":"lia.tela@exemplo.br","senha":"senha-da-lia-1"}`), http.StatusCreated)
+	bia := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Bia da Tela","email":"bia.tela@exemplo.br","senha":"senha-da-bia-1"}`), http.StatusCreated)
+
+	// Sem Carrinho: a lista vazia sai `[]`, e não `null`, e ler não cria nada.
+	carrinhosAntes := contar("carrinho")
+	vazioLido := pegarCarrinho(t, rotas, lia)
+	if vazioLido.Code != http.StatusOK || !strings.Contains(vazioLido.Body.String(), `"itens":[]`) {
+		t.Errorf("Carrinho sem Itens = %d (%s), quero 200 com itens []", vazioLido.Code, vazioLido.Body.String())
+	}
+	if corpo := decodificar(t, vazioLido); corpo["unidades"] != 0.0 || corpo["subtotal_centavos"] != 0.0 {
+		t.Errorf("Carrinho sem Itens = %v, quero unidades e subtotal 0", corpo)
+	}
+	if v := vazioLido.Header().Get("Cache-Control"); v != "no-store" {
+		t.Errorf("Cache-Control = %q, quero no-store", v)
+	}
+
+	// Acima do Estoque na primeira adição: o 409 nomeia o disponível, e nada
+	// grava — nem o Carrinho.
+	querEstoqueInsuficiente(t, "acima do Estoque", postarItem(t, rotas, corpoItem(bule, "4"), lia),
+		"Restam 3 unidades de Bule de Três.", 3, 4)
+	if n := contar("carrinho"); n != carrinhosAntes {
+		t.Errorf("a recusa criou Carrinho: %d, quero %d", n, carrinhosAntes)
+	}
+	// Sem Estoque nenhum, o Produto está indisponível, e não "restam 0".
+	querEstoqueInsuficiente(t, "sem Estoque", postarItem(t, rotas, corpoItem(vazio, "1"), lia),
+		"Produto Sem Estoque está indisponível.", 0, 1)
+
+	// A soma, e não só o acréscimo: 3 no Item e +2 pediria 5 de 4.
+	itemChaleira := idDe(t, postarItem(t, rotas, corpoItem(chaleira, "3"), lia), http.StatusCreated)
+	querEstoqueInsuficiente(t, "soma acima do Estoque", postarItem(t, rotas, corpoItem(chaleira, "2"), lia),
+		"Restam 4 unidades de Chaleira de Quatro.", 4, 5)
+	if q := quantidadeNoBanco(itemChaleira); len(q) != 1 || q[0] != "3" {
+		t.Errorf("a soma recusada gravou: quantidade = %v, quero 3", q)
+	}
+
+	// O Carrinho não reserva: dois Compradores põem as 3 unidades do mesmo Produto.
+	itemBule := idDe(t, postarItem(t, rotas, corpoItem(bule, "3"), lia), http.StatusCreated)
+	idDe(t, postarItem(t, rotas, corpoItem(bule, "3"), bia), http.StatusCreated)
+	if d := textoDe(t, pool, `SELECT estoque_disponivel::text FROM catalogo.produto_visivel WHERE id = $1`, bule); len(d) != 1 || d[0] != "3" {
+		t.Errorf("disponível do Bule = %v, quero 3: o Carrinho não reserva", d)
+	}
+
+	// Ler: pelos preços de agora, e sem gravar o preço visto (AD-17).
+	corpoLido := decodificar(t, pegarCarrinho(t, rotas, lia))
+	itens, _ := corpoLido["itens"].([]any)
+	if len(itens) != 2 || corpoLido["unidades"] != 6.0 || corpoLido["subtotal_centavos"] != 24000.0 {
+		t.Fatalf("Carrinho da Lia = %v, quero 2 Itens, 6 unidades e subtotal 24000", corpoLido)
+	}
+	if primeiro, _ := itens[0].(map[string]any); primeiro["id"] != itemChaleira || primeiro["nome"] != "Chaleira de Quatro" ||
+		primeiro["visivel"] != true || primeiro["preco_centavos"] != 5000.0 || primeiro["quantidade"] != 3.0 {
+		t.Errorf("primeira linha = %v, quero a Chaleira, na ordem da adição", primeiro)
+	}
+	if resp := produtoCom(t, rotas, http.MethodPut, "/"+chaleira, corpoDe("Chaleira de Quatro", 6000, 4, true), admin); resp.Code != http.StatusOK {
+		t.Fatalf("mudar o preço = %d (%s)", resp.Code, resp.Body.String())
+	}
+	if corpo := decodificar(t, pegarCarrinho(t, rotas, lia)); corpo["subtotal_centavos"] != 27000.0 {
+		t.Errorf("subtotal com o preço novo = %v, quero 27000", corpo["subtotal_centavos"])
+	}
+	if visto := precoVistoNoBanco(itemChaleira); visto != "5000" {
+		t.Errorf("preco_visto_centavos depois de ler = %s, quero 5000: ler não grava", visto)
+	}
+
+	// Alterar: a quantidade é absoluta, e o preço visto passa a ser o de agora.
+	alterada := alterarItem(t, rotas, itemChaleira, `{"quantidade":2}`, lia)
+	if alterada.Code != http.StatusOK {
+		t.Fatalf("alterar = %d (%s), quero 200", alterada.Code, alterada.Body.String())
+	}
+	if corpo := decodificar(t, alterada); corpo["id"] != itemChaleira || corpo["quantidade"] != 2.0 {
+		t.Errorf("Item alterado = %v, quero o mesmo id com quantidade 2", corpo)
+	}
+	if visto := precoVistoNoBanco(itemChaleira); visto != "6000" {
+		t.Errorf("preco_visto_centavos depois de alterar = %s, quero 6000", visto)
+	}
+	if q := quantidadeNoBanco(itemChaleira); len(q) != 1 || q[0] != "2" {
+		t.Errorf("quantidade no banco = %v, quero 2", q)
+	}
+
+	// Recusas da alteração: a quantidade fora da faixa, e acima do disponível.
+	for _, q := range []string{"-1", "11", "1.5", `"2"`, "null"} {
+		querCampoQuantidade(t, "alterar para "+q, alterarItem(t, rotas, itemChaleira, `{"quantidade":`+q+`}`, lia))
+	}
+	querCampoQuantidade(t, "alterar sem quantidade", alterarItem(t, rotas, itemChaleira, `{}`, lia))
+	querEstoqueInsuficiente(t, "alterar acima do Estoque", alterarItem(t, rotas, itemChaleira, `{"quantidade":5}`, lia),
+		"Restam 4 unidades de Chaleira de Quatro.", 4, 5)
+	if q := quantidadeNoBanco(itemChaleira); len(q) != 1 || q[0] != "2" {
+		t.Errorf("a alteração recusada gravou: quantidade = %v, quero 2", q)
+	}
+
+	// Zero remove: 204, e a linha some.
+	if resp := alterarItem(t, rotas, itemBule, `{"quantidade":0}`, lia); resp.Code != http.StatusNoContent {
+		t.Fatalf("alterar para zero = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+	if q := quantidadeNoBanco(itemBule); len(q) != 0 {
+		t.Errorf("o Item zerado continua no banco: %v", q)
+	}
+	if resp := alterarItem(t, rotas, itemBule, `{"quantidade":0}`, lia); resp.Code != http.StatusNotFound {
+		t.Errorf("zerar de novo = %d (%s), quero 404", resp.Code, resp.Body.String())
+	}
+	// O uuid malformado é o mesmo 404 do inexistente, na alteração e no zero.
+	for _, corpo := range []string{`{"quantidade":2}`, `{"quantidade":0}`} {
+		if resp := alterarItem(t, rotas, "nao-e-uuid", corpo, lia); resp.Code != http.StatusNotFound {
+			t.Errorf("alterar com uuid malformado (%s) = %d (%s), quero 404", corpo, resp.Code, resp.Body.String())
+		} else if codigo := decodificar(t, resp)["codigo"]; codigo != "NAO_ENCONTRADO" {
+			t.Errorf("alterar com uuid malformado (%s): codigo = %v, quero NAO_ENCONTRADO", corpo, codigo)
+		}
+	}
+
+	// O Produto que saiu da visibilidade: a linha continua, sem nome nem preço e
+	// fora do subtotal, e só sai por remoção. Alterar a quantidade dele é 404.
+	if resp := produtoCom(t, rotas, http.MethodPut, "/"+chaleira, corpoDe("Chaleira de Quatro", 6000, 4, false), admin); resp.Code != http.StatusOK {
+		t.Fatalf("desativar = %d (%s)", resp.Code, resp.Body.String())
+	}
+	invisivel := decodificar(t, pegarCarrinho(t, rotas, lia))
+	linhas, _ := invisivel["itens"].([]any)
+	if len(linhas) != 1 || invisivel["unidades"] != 2.0 || invisivel["subtotal_centavos"] != 0.0 {
+		t.Fatalf("Carrinho com o Produto desativado = %v, quero 1 linha, 2 unidades e subtotal 0", invisivel)
+	}
+	if linha, _ := linhas[0].(map[string]any); linha["visivel"] != false || linha["nome"] != "" || linha["preco_centavos"] != 0.0 {
+		t.Errorf("linha do Produto desativado = %v, quero visivel falso e sem nome nem preço", linha)
+	}
+	if resp := alterarItem(t, rotas, itemChaleira, `{"quantidade":1}`, lia); resp.Code != http.StatusNotFound {
+		t.Errorf("alterar Produto desativado = %d (%s), quero 404", resp.Code, resp.Body.String())
+	} else if codigo := decodificar(t, resp)["codigo"]; codigo != "NAO_ENCONTRADO" {
+		t.Errorf("alterar Produto desativado: codigo = %v, quero NAO_ENCONTRADO", codigo)
+	}
+	if q := quantidadeNoBanco(itemChaleira); len(q) != 1 || q[0] != "2" {
+		t.Errorf("a alteração recusada gravou: quantidade = %v, quero 2", q)
+	}
+
+	// Esvaziar: só o Carrinho do dono, e Carrinho vazio também dá 204.
+	if resp := esvaziarCarrinho(t, rotas, lia); resp.Code != http.StatusNoContent {
+		t.Fatalf("esvaziar = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+	if corpo := decodificar(t, pegarCarrinho(t, rotas, lia)); corpo["unidades"] != 0.0 {
+		t.Errorf("Carrinho da Lia depois de esvaziar = %v, quero 0 unidades", corpo)
+	}
+	if corpo := decodificar(t, pegarCarrinho(t, rotas, bia)); corpo["unidades"] != 3.0 {
+		t.Errorf("Carrinho da Bia depois de a Lia esvaziar = %v, quero as 3 unidades dela", corpo)
+	}
+	if resp := esvaziarCarrinho(t, rotas, lia); resp.Code != http.StatusNoContent {
+		t.Errorf("esvaziar o vazio = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+}
+
+// querEstoqueInsuficiente confere o 409 do AD-14: a mensagem nomeia o Produto e
+// o disponível, e `dados` leva os dois números.
+func querEstoqueInsuficiente(t *testing.T, caso string, resp *httptest.ResponseRecorder, mensagem string, disponivel, solicitado float64) {
+	t.Helper()
+	if resp.Code != http.StatusConflict {
+		t.Errorf("%s = %d (%s), quero 409", caso, resp.Code, resp.Body.String())
+		return
+	}
+	corpo := decodificar(t, resp)
+	if corpo["codigo"] != "ESTOQUE_INSUFICIENTE" || corpo["mensagem"] != mensagem {
+		t.Errorf("%s: %v, quero ESTOQUE_INSUFICIENTE com %q", caso, corpo, mensagem)
+	}
+	dados, _ := corpo["dados"].(map[string]any)
+	if dados["disponivel"] != disponivel || dados["solicitado"] != solicitado || dados["produto_id"] == "" {
+		t.Errorf("%s: dados = %v, quero disponivel %v e solicitado %v", caso, dados, disponivel, solicitado)
+	}
+}
+
 func querCampoQuantidade(t *testing.T, caso string, resp *httptest.ResponseRecorder) {
 	t.Helper()
 	if resp.Code != http.StatusBadRequest {
@@ -139,6 +354,29 @@ func corpoItem(produtoID, quantidade string) string {
 func postarItem(t *testing.T, rotas http.Handler, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	return comCorpo(t, rotas, http.MethodPost, "/api/v1/carrinho/itens", corpo, "application/json", cookie)
+}
+
+func pegarCarrinho(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return comCorpo(t, rotas, http.MethodGet, "/api/v1/carrinho", "", "", cookie)
+}
+
+func alterarItem(t *testing.T, rotas http.Handler, id, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return comCorpo(t, rotas, http.MethodPatch, "/api/v1/carrinho/itens/"+id, corpo, "application/json", cookie)
+}
+
+// alterarItemPara5 tem a assinatura de pegarPedido, para entrar na tabela de
+// negacaoPorDono. O 5 cabe no teto, e nunca chega ao Estoque: o Item alheio é
+// 404 antes disso.
+func alterarItemPara5(t *testing.T, rotas http.Handler, id string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return alterarItem(t, rotas, id, `{"quantidade":5}`, cookie)
+}
+
+func esvaziarCarrinho(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	return comCorpo(t, rotas, http.MethodDelete, "/api/v1/carrinho/itens", "", "", cookie)
 }
 
 // deletarItem tem a assinatura de pegarPedido, para entrar na tabela de

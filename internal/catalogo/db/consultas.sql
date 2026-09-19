@@ -56,6 +56,13 @@ SELECT id, estoque_disponivel
 FROM catalogo.produto_visivel
 WHERE id = ANY(@ids::uuid[]);
 
+-- O que o Carrinho mostra de cada Produto (4.3), lido da mesma VIEW e em lote:
+-- um Carrinho de N Itens é uma ida, e não N. Invisível ou inexistente não volta.
+-- name: ResumosDosVisiveis :many
+SELECT id, nome, preco_centavos, imagem_url, estoque_disponivel
+FROM catalogo.produto_visivel
+WHERE id = ANY(@ids::uuid[]);
+
 -- A trava do ajuste do Administrador, primeiro dos dois comandos do AD-5.
 -- Sem a VIEW: o ajuste vale para Produto inativo, e travar pela VIEW faria do
 -- inativo um 404.

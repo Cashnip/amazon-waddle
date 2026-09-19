@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { avisarCarrinhoAlterado } from "@/lib/carrinho";
 import { paraLogin } from "@/lib/destino";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { quantidadeMaxima } from "@/lib/quantidade";
@@ -72,6 +73,9 @@ export function CaixaDeCompra({
         irAoLogin(q);
         return false;
       }
+      // A recusa por Estoque (4.2) chega com o disponível na própria mensagem:
+      // "Restam 3 unidades de …". O contador da barra só muda quando deu certo.
+      if (resposta.ok) avisarCarrinhoAlterado();
       setAviso(
         resposta.ok
           ? { texto: "Adicionado ao Carrinho.", erro: false }

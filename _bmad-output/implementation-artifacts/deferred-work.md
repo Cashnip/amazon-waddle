@@ -206,3 +206,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-10-chrome-da-loja.md`
   summary: A tela `/redefinir-senha/[token]` tem cabeçalho próprio e não usa a `Casca`, então fica sem a busca global, sem a Faixa de Categorias e sem o Menu da conta.
   evidence: `web/app/redefinir-senha/[token]/page.tsx:19` monta o `<header>` à mão desde a 2.3; a UX-DR9 pede a barra em toda tela pública. Não foi mudada na 3.10 porque a spec listou as telas que já usam a `Casca`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-4-3-adicionar-alterar-e-esvaziar-o-carrinho.md`
+  summary: A linha "Tela" da matriz (edição otimista com reversão, `Dialog` de esvaziar fechado por `Esc`, estado vazio, volta do Login) não tem teste automatizado, e a tela `/carrinho` não foi aberta num navegador.
+  evidence: o `web/` só roda `node --test` sobre `lib/`, sem bancada de componente; `comQuantidade` e `quantidadeDoCampo` estão cobertas em `web/scripts/carrinho.test.mjs`, mas o comportamento de `meu-carrinho.tsx` só foi verificado por `next build` e pelas duas rotas de API que ele chama.

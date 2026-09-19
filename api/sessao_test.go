@@ -493,6 +493,10 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o Carrinho: adição, soma, teto, Produto invisível e remoção", func(t *testing.T) {
 		carrinhoDoComprador(t, rotas, pool)
 	})
+	// A 4.2 e a 4.3, com contas e Produtos próprios.
+	t.Run("o Carrinho: recusa por Estoque, alteração, leitura e esvaziar", func(t *testing.T) {
+		carrinhoNaTela(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

@@ -129,6 +129,49 @@ func Visiveis(ctx context.Context, bd gerado.DBTX, ids []string) (map[string]boo
 	return saida, nil
 }
 
+// Resumo é o que o Carrinho mostra de um Produto: nome, imagem, preço atual e
+// Estoque disponível. É recorte de propósito — quem quer o detalhe da Página de
+// Produto usa BuscarProduto.
+type Resumo struct {
+	ID                string
+	Nome              string
+	ImagemURL         string
+	PrecoCentavos     int64
+	EstoqueDisponivel int32
+}
+
+// Resumos devolve o Resumo dos Produtos visíveis (AD-19) numa ida só, indexado
+// pelo id canônico — o que o Postgres guarda, e o que quem chama já tem quando
+// os ids vêm de uma coluna uuid. Produto invisível ou inexistente não volta, e
+// a chave ausente é como quem chama o reconhece.
+func Resumos(ctx context.Context, bd gerado.DBTX, ids []string) (map[string]Resumo, error) {
+	chaves := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		if chave, err := uuidDe(id); err == nil {
+			chaves = append(chaves, chave)
+		}
+	}
+	saida := make(map[string]Resumo, len(chaves))
+	if len(chaves) == 0 {
+		return saida, nil
+	}
+	linhas, err := gerado.New(bd).ResumosDosVisiveis(ctx, chaves)
+	if err != nil {
+		return nil, fmt.Errorf("ler os Produtos do Carrinho: %w", err)
+	}
+	for _, l := range linhas {
+		id := l.ID.String()
+		saida[id] = Resumo{
+			ID:                id,
+			Nome:              l.Nome,
+			ImagemURL:         l.ImagemUrl,
+			PrecoCentavos:     l.PrecoCentavos,
+			EstoqueDisponivel: l.EstoqueDisponivel,
+		}
+	}
+	return saida, nil
+}
+
 // disponivelDosVisiveis devolve o disponível só dos ids visíveis, indexado pela
 // grafia recebida — o Postgres aceita o uuid em maiúsculas, e a linha volta na
 // forma canônica.

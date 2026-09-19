@@ -2,11 +2,13 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { BuscaGlobal, BuscaGlobalDaUrl, type Categoria } from "@/components/busca-global";
+import { CarrinhoNaBarra } from "@/components/carrinho-na-barra";
 import { MenuDaConta } from "@/components/menu-da-conta";
 import { destinoDaCategoria } from "@/lib/busca";
 
 // A casca comum das telas públicas/Comprador (UX-DR9): a barra superior
-// (wordmark · busca global · Menu da conta) e, abaixo, a Faixa de Categorias.
+// (wordmark · busca global · Carrinho · Menu da conta) e, abaixo, a Faixa de
+// Categorias.
 //
 // As Categorias vêm do navegador, uma vez, no molde do Menu da conta: a Casca
 // serve a telas cliente e servidor, e buscar no servidor pediria as
@@ -46,7 +48,10 @@ export function Casca({ children }: { children: React.ReactNode }) {
               <BuscaGlobalDaUrl categorias={categorias} />
             </Suspense>
           </div>
-          <MenuDaConta />
+          <div className="flex items-center gap-4">
+            <CarrinhoNaBarra />
+            <MenuDaConta />
+          </div>
         </div>
       </header>
       <nav aria-label="Categorias" className="bg-chrome-muted text-chrome-foreground">

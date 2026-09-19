@@ -20,6 +20,23 @@ import (
 // Quem conhece o teto é quem chama, e é ele que o nomeia na mensagem.
 var ErrTetoPorItem = errors.New("a quantidade passaria do teto por Item")
 
+// AcimaDoEstoque recusa a quantidade que o Item passaria a pedir acima do
+// Estoque disponível (FR-17). Embrulha catalogo.ErrEstoqueInsuficiente, então
+// `erro` a traduz no mesmo 409 do Pedido; `api/` lê os números por errors.As e
+// os publica em `dados`. É a recusa de um conselho (AD-5): quem decide de
+// verdade é Reservar, sob bloqueio, na criação do Pedido.
+type AcimaDoEstoque struct {
+	ProdutoID  string
+	Nome       string
+	Disponivel int
+	// Solicitado é a quantidade que o Item passaria a ter — a soma, e não só o
+	// acréscimo.
+	Solicitado int
+}
+
+func (e AcimaDoEstoque) Error() string { return catalogo.ErrEstoqueInsuficiente.Error() }
+func (e AcimaDoEstoque) Unwrap() error { return catalogo.ErrEstoqueInsuficiente }
+
 // Item é o Item de Carrinho como a adição o devolve.
 type Item struct {
 	ID         string
@@ -27,13 +44,42 @@ type Item struct {
 	Quantidade int32
 }
 
+// ItemDoCarrinho é uma linha do Carrinho aberto. Um Produto que saiu da
+// visibilidade (AD-19) volta com Visivel falso e sem nome, imagem nem preço: a
+// tela o mostra como indisponível e o Comprador ainda pode removê-lo. O aviso
+// que bloqueia o avanço é da 4.4.
+type ItemDoCarrinho struct {
+	ID            string
+	ProdutoID     string
+	Quantidade    int32
+	Visivel       bool
+	Nome          string
+	ImagemURL     string
+	PrecoCentavos int64
+}
+
+// Conteudo é o Carrinho aberto. O subtotal soma só os Itens visíveis, pelos
+// preços de agora (FR-18); as unidades somam todos os Itens, porque todos
+// aparecem como linha.
+type Conteudo struct {
+	Itens            []ItemDoCarrinho
+	Unidades         int64
+	SubtotalCentavos int64
+}
+
 // Adicionar põe q unidades do Produto no Carrinho do Comprador, criando o
 // Carrinho na primeira vez. O Produto repetido soma ao Item existente.
 //
-// Visibilidade e preço vêm só de catalogo.BuscarProduto (AD-19): Produto
-// invisível, inexistente ou de uuid malformado sai como pgx.ErrNoRows. A soma
-// acima do teto sai como ErrTetoPorItem, sem gravar nada no Item. O teto da
+// Visibilidade, preço e Estoque disponível vêm só de catalogo.BuscarProduto
+// (AD-19): Produto invisível, inexistente ou de uuid malformado sai como
+// pgx.ErrNoRows. A soma acima do teto sai como ErrTetoPorItem, e acima do
+// Estoque disponível como AcimaDoEstoque — nessa ordem, porque o teto vale sem
+// olhar o Estoque. Nas duas recusas nada grava, nem o Carrinho. O teto da
 // entrada (1 ≤ q ≤ teto) é de quem chama, na fronteira (NFR-14).
+//
+// A soma é lida e depois gravada, em duas idas: o Estoque é conselho e a
+// divergência entre o lido e o aceito é projetada (AD-5), mas o teto continua
+// atômico, porque a consulta de gravação o confere de novo.
 //
 // Garantir o Carrinho e gravar o Item são duas idas sem transação: se a
 // segunda falhar, sobra um Carrinho vazio — que é o estado de todo Comprador
@@ -52,6 +98,19 @@ func Adicionar(ctx context.Context, bd gerado.DBTX, compradorID, produtoID strin
 		return Item{}, err
 	}
 	consultas := gerado.New(bd)
+	atual, err := consultas.QuantidadeDoProduto(ctx, gerado.QuantidadeDoProdutoParams{CompradorID: dono, ProdutoID: chave})
+	if err != nil {
+		return Item{}, err
+	}
+	soma := int(atual) + q
+	if soma > teto {
+		return Item{}, ErrTetoPorItem
+	}
+	if soma > int(produto.EstoqueDisponivel) {
+		return Item{}, AcimaDoEstoque{
+			ProdutoID: produto.ID, Nome: produto.Nome, Disponivel: int(produto.EstoqueDisponivel), Solicitado: soma,
+		}
+	}
 	carrinhoID, err := consultas.GarantirCarrinho(ctx, dono)
 	if err != nil {
 		return Item{}, err
@@ -70,6 +129,94 @@ func Adicionar(ctx context.Context, bd gerado.DBTX, compradorID, produtoID strin
 		return Item{}, err
 	}
 	return Item{ID: linha.ID.String(), ProdutoID: linha.ProdutoID.String(), Quantidade: linha.Quantidade}, nil
+}
+
+// AlterarQuantidade põe o Item do dono em q unidades, com q ≥ 1: zero remove, e
+// quem chama decide isso chamando RemoverItem. O teto de q é de quem chama, na
+// fronteira (NFR-14); o Estoque é conferido aqui, como em Adicionar, contra o
+// que o Item passaria a pedir. O preço visto passa a ser o de agora.
+//
+// A posse está nas duas consultas (AD-11). Item alheio, inexistente, de uuid
+// malformado ou de Produto que saiu da visibilidade saem como pgx.ErrNoRows.
+func AlterarQuantidade(ctx context.Context, bd gerado.DBTX, itemID, compradorID string, q int) (Item, error) {
+	chave, err := uuidDe(itemID)
+	if err != nil {
+		return Item{}, err
+	}
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return Item{}, err
+	}
+	consultas := gerado.New(bd)
+	do, err := consultas.BuscarItem(ctx, gerado.BuscarItemParams{ID: chave, CompradorID: dono})
+	if err != nil {
+		return Item{}, err
+	}
+	produto, err := catalogo.BuscarProduto(ctx, bd, do.ProdutoID.String())
+	if err != nil {
+		return Item{}, err
+	}
+	if q > int(produto.EstoqueDisponivel) {
+		return Item{}, AcimaDoEstoque{
+			ProdutoID: produto.ID, Nome: produto.Nome, Disponivel: int(produto.EstoqueDisponivel), Solicitado: q,
+		}
+	}
+	linha, err := consultas.AlterarItem(ctx, gerado.AlterarItemParams{
+		ID:                 chave,
+		CompradorID:        dono,
+		Quantidade:         int32(q),
+		PrecoVistoCentavos: produto.PrecoCentavos,
+	})
+	if err != nil {
+		return Item{}, err
+	}
+	return Item{ID: linha.ID.String(), ProdutoID: linha.ProdutoID.String(), Quantidade: linha.Quantidade}, nil
+}
+
+// Itens abre o Carrinho do Comprador: leitura pura (AD-17), que nunca grava
+// `preco_visto_centavos`. Comprador sem Carrinho, ou com o Carrinho vazio,
+// recebe Itens vazio — nunca nil, para o JSON sair `[]`.
+//
+// Preço e visibilidade vêm de catalogo.Resumos, em lote (AD-19).
+func Itens(ctx context.Context, bd gerado.DBTX, compradorID string) (Conteudo, error) {
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return Conteudo{}, err
+	}
+	linhas, err := gerado.New(bd).ListarItens(ctx, dono)
+	if err != nil {
+		return Conteudo{}, err
+	}
+	ids := make([]string, len(linhas))
+	for i, l := range linhas {
+		ids[i] = l.ProdutoID.String()
+	}
+	resumos, err := catalogo.Resumos(ctx, bd, ids)
+	if err != nil {
+		return Conteudo{}, err
+	}
+	conteudo := Conteudo{Itens: make([]ItemDoCarrinho, 0, len(linhas))}
+	for i, l := range linhas {
+		item := ItemDoCarrinho{ID: l.ID.String(), ProdutoID: ids[i], Quantidade: l.Quantidade}
+		if r, visivel := resumos[ids[i]]; visivel {
+			item.Visivel, item.Nome, item.ImagemURL, item.PrecoCentavos = true, r.Nome, r.ImagemURL, r.PrecoCentavos
+			conteudo.SubtotalCentavos += r.PrecoCentavos * int64(l.Quantidade)
+		}
+		conteudo.Unidades += int64(l.Quantidade)
+		conteudo.Itens = append(conteudo.Itens, item)
+	}
+	return conteudo, nil
+}
+
+// Limpar tira todos os Itens do Carrinho do Comprador: o esvaziar que ele pede
+// na tela (FR-18). Não é o Esvaziar da criação do Pedido, que recebe a
+// transação e os Itens (AD-3, Épica 5). Carrinho sem Itens é sucesso.
+func Limpar(ctx context.Context, bd gerado.DBTX, compradorID string) error {
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return err
+	}
+	return gerado.New(bd).LimparItens(ctx, dono)
 }
 
 // RemoverItem apaga o Item do dono. A posse está no WHERE (AD-11): Item

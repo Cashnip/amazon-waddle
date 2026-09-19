@@ -143,6 +143,39 @@ func TestBloqueioNomeiaOsMinutos(t *testing.T) {
 	}
 }
 
+// O 409 do Carrinho (4.2) nomeia o Produto e o disponível, e o zero não vira
+// "Restam 0": o Produto está indisponível. Os números viajam também em `dados`.
+func TestEstoqueInsuficienteNomeiaODisponivel(t *testing.T) {
+	casos := []struct {
+		disponivel int
+		mensagem   string
+	}{
+		{0, "Chaleira está indisponível."},
+		{1, "Resta 1 unidade de Chaleira."},
+		{3, "Restam 3 unidades de Chaleira."},
+		{1500, "Restam 1.500 unidades de Chaleira."},
+	}
+	for _, caso := range casos {
+		resp := httptest.NewRecorder()
+		EscreverEstoqueInsuficiente(plataforma.ComCorrelacao(context.Background(), "abc"), resp, "p-1", "Chaleira", caso.disponivel, 4000)
+
+		if resp.Code != http.StatusConflict {
+			t.Errorf("%d: status = %d, quero 409", caso.disponivel, resp.Code)
+		}
+		corpo := decodificar(t, resp)
+		if corpo["codigo"] != "ESTOQUE_INSUFICIENTE" {
+			t.Errorf("%d: codigo = %v", caso.disponivel, corpo["codigo"])
+		}
+		if corpo["mensagem"] != caso.mensagem {
+			t.Errorf("%d: mensagem = %v, quero %q", caso.disponivel, corpo["mensagem"], caso.mensagem)
+		}
+		dados, _ := corpo["dados"].(map[string]any)
+		if dados["produto_id"] != "p-1" || dados["disponivel"] != float64(caso.disponivel) || dados["solicitado"] != float64(4000) {
+			t.Errorf("%d: dados = %v", caso.disponivel, corpo["dados"])
+		}
+	}
+}
+
 func escrever(t *testing.T, err error, dados any) *httptest.ResponseRecorder {
 	t.Helper()
 	resp := httptest.NewRecorder()

@@ -560,6 +560,48 @@ func (q *Queries) RemoverVendedor(ctx context.Context, id pgtype.UUID) (int64, e
 	return result.RowsAffected(), nil
 }
 
+const resumosDosVisiveis = `-- name: ResumosDosVisiveis :many
+SELECT id, nome, preco_centavos, imagem_url, estoque_disponivel
+FROM catalogo.produto_visivel
+WHERE id = ANY($1::uuid[])
+`
+
+type ResumosDosVisiveisRow struct {
+	ID                pgtype.UUID
+	Nome              string
+	PrecoCentavos     int64
+	ImagemUrl         string
+	EstoqueDisponivel int32
+}
+
+// O que o Carrinho mostra de cada Produto (4.3), lido da mesma VIEW e em lote:
+// um Carrinho de N Itens é uma ida, e não N. Invisível ou inexistente não volta.
+func (q *Queries) ResumosDosVisiveis(ctx context.Context, ids []pgtype.UUID) ([]ResumosDosVisiveisRow, error) {
+	rows, err := q.db.Query(ctx, resumosDosVisiveis, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResumosDosVisiveisRow
+	for rows.Next() {
+		var i ResumosDosVisiveisRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Nome,
+			&i.PrecoCentavos,
+			&i.ImagemUrl,
+			&i.EstoqueDisponivel,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const somarReservasAtivas = `-- name: SomarReservasAtivas :many
 SELECT produto_id, sum(quantidade)::bigint AS reservado
 FROM catalogo.reserva_estoque

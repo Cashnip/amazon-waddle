@@ -64,6 +64,9 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 		{"Endereço por PUT", enderecoDoDono, putEnderecoValido},
 		// O DELETE por último: se ele apagasse, o PUT acima já teria rodado.
 		{"Endereço por DELETE", enderecoDoDono, deletarEndereco},
+		// O PATCH antes do DELETE, pelo mesmo motivo: se o DELETE apagasse, o
+		// PATCH já teria rodado.
+		{"Item de Carrinho por PATCH", itemDoDono, alterarItemPara5},
 		{"Item de Carrinho por DELETE", itemDoDono, deletarItem},
 	} {
 		alheio := recurso.bate(t, rotas, recurso.id, outro)
@@ -97,11 +100,18 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 			enderecoDoDono, lista.Body.String())
 	}
 
-	// E o Item de A sobreviveu ao DELETE de B: sem GET do Carrinho (4.3), a
-	// prova é a segunda adição cair no mesmo Item, somada.
+	// O esvaziar de B só alcança o Carrinho de B: a rota não tem identificador,
+	// e o dono é a Sessão.
+	if resp := esvaziarCarrinho(t, rotas, outro); resp.Code != http.StatusNoContent {
+		t.Fatalf("esvaziar o Carrinho do outro = %d (%s), quero 204", resp.Code, resp.Body.String())
+	}
+
+	// E o Item de A sobreviveu ao PATCH, ao DELETE e ao esvaziar de B, inteiro:
+	// a segunda adição cai no mesmo Item, somada, e a quantidade não é a 5 que
+	// o PATCH de B pediu.
 	segunda := postarItem(t, rotas, corpoItem(produtoSemeado, "1"), cookieDono)
 	if id := idDe(t, segunda, http.StatusCreated); id != itemDoDono {
-		t.Errorf("o Item %s do dono não sobreviveu ao DELETE de outro Comprador: a adição criou %s", itemDoDono, id)
+		t.Errorf("o Item %s do dono não sobreviveu ao PATCH, ao DELETE e ao esvaziar de outro Comprador: a adição criou %s", itemDoDono, id)
 	} else if q := decodificar(t, segunda)["quantidade"]; q != 2.0 {
 		t.Errorf("quantidade = %v, quero 2", q)
 	}

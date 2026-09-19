@@ -69,7 +69,13 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	mux.HandleFunc("DELETE /api/v1/enderecos/{id}", s.removerEndereco)
 	// O Carrinho do Comprador (FR-16): um por dono, resolvido pela Sessão, e por
 	// isso sem identificador na rota. O que tem identificador é o Item.
+	// "Esvaziar" do Comprador (FR-18) é `DELETE …/itens`, e não `DELETE
+	// /carrinho`: o AD-3 barra a rota que esvaziaria o Carrinho na criação do
+	// Pedido, e esta tem outro fim.
+	mux.HandleFunc("GET /api/v1/carrinho", s.lerCarrinho)
 	mux.HandleFunc("POST /api/v1/carrinho/itens", s.adicionarAoCarrinho)
+	mux.HandleFunc("PATCH /api/v1/carrinho/itens/{id}", s.alterarItemDoCarrinho)
+	mux.HandleFunc("DELETE /api/v1/carrinho/itens", s.esvaziarOCarrinho)
 	mux.HandleFunc("DELETE /api/v1/carrinho/itens/{id}", s.removerItemDoCarrinho)
 	// O webhook não é autenticado por Sessão: quem chama é o Provedor, e o que
 	// o autentica é o segredo compartilhado no cabeçalho. A chave de

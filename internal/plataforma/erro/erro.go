@@ -157,6 +157,29 @@ func EscreverEstoqueComprometido(ctx context.Context, w http.ResponseWriter, n i
 		map[string]any{"campo": "estoque_total", "comprometidas": n})
 }
 
+// EscreverEstoqueInsuficiente é o 409 do Carrinho que pede mais do que há (4.2),
+// no envelope do AD-14: a mensagem nomeia o Produto e o disponível, e `dados`
+// leva o Produto, o disponível e o solicitado. Fica fora do registro pelo mesmo
+// motivo dos outros: a mensagem nomeia números e nome que o sentinela
+// (catalogo.ErrEstoqueInsuficiente) não tem — o registro segue valendo para o
+// caminho do Pedido, que publica só o disponível.
+//
+// Zero disponível não diz "Restam 0": o Produto está indisponível, e é assim
+// que a tela o chama.
+func EscreverEstoqueInsuficiente(ctx context.Context, w http.ResponseWriter, produtoID, nome string, disponivel, solicitado int) {
+	var mensagem string
+	switch disponivel {
+	case 0:
+		mensagem = fmt.Sprintf("%s está indisponível.", nome)
+	case 1:
+		mensagem = fmt.Sprintf("Resta 1 unidade de %s.", nome)
+	default:
+		mensagem = fmt.Sprintf("Restam %s unidades de %s.", Milhar(int64(disponivel)), nome)
+	}
+	envelopar(ctx, w, http.StatusConflict, "ESTOQUE_INSUFICIENTE", mensagem,
+		map[string]any{"produto_id": produtoID, "disponivel": disponivel, "solicitado": solicitado})
+}
+
 // Milhar escreve o inteiro com o separador de milhar do português: 4000 vira
 // "4.000". É o formato de todo número que uma mensagem de erro nomeia.
 func Milhar(n int64) string {
