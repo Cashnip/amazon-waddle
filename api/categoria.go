@@ -19,7 +19,9 @@ type saidaCategoria struct {
 	Nome string `json:"nome"`
 }
 
-// As rotas daqui moram no mux `admin` e herdam a guarda do prefixo.
+// As rotas daqui moram no mux `admin` e herdam a guarda do prefixo — menos a
+// leitura: `GET /api/v1/categorias` é da loja (o painel de filtros), sem Sessão,
+// e usa este mesmo handler.
 
 func (s *servidor) listarCategorias(w http.ResponseWriter, r *http.Request) {
 	semCache(w)

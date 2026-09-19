@@ -49,6 +49,10 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// A listagem da loja é de `busca` (AD-16), e o detalhe é de `catalogo`.
 	mux.HandleFunc("GET /api/v1/produtos", s.listarProdutos)
 	mux.HandleFunc("GET /api/v1/produtos/{id}", s.detalheDoProduto)
+	// As Categorias da loja, para o filtro: de `catalogo`, sem Sessão. É o
+	// mesmo handler da listagem administrativa — a Categoria não tem nada que
+	// o visitante não possa ver.
+	mux.HandleFunc("GET /api/v1/categorias", s.listarCategorias)
 	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura
 	// é a tela do Pedido em processamento, consultada a cada 3 s.
 	mux.HandleFunc("POST /api/v1/pedidos", s.criarPedido)

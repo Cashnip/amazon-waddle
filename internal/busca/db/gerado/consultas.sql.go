@@ -12,11 +12,28 @@ import (
 )
 
 const contarVisiveis = `-- name: ContarVisiveis :one
-SELECT count(*) FROM catalogo.produto_visivel
+SELECT count(*)
+FROM catalogo.produto_visivel
+WHERE ($1::text IS NULL OR busca_normalizada LIKE '%' || $1::text || '%')
+  AND ($2::uuid IS NULL OR categoria_id = $2::uuid)
+  AND ($3::bigint IS NULL OR preco_centavos >= $3::bigint)
+  AND ($4::bigint IS NULL OR preco_centavos <= $4::bigint)
 `
 
-func (q *Queries) ContarVisiveis(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, contarVisiveis)
+type ContarVisiveisParams struct {
+	Termo       pgtype.Text
+	CategoriaID pgtype.UUID
+	PrecoMin    pgtype.Int8
+	PrecoMax    pgtype.Int8
+}
+
+func (q *Queries) ContarVisiveis(ctx context.Context, arg ContarVisiveisParams) (int64, error) {
+	row := q.db.QueryRow(ctx, contarVisiveis,
+		arg.Termo,
+		arg.CategoriaID,
+		arg.PrecoMin,
+		arg.PrecoMax,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -26,11 +43,24 @@ const listarVisiveis = `-- name: ListarVisiveis :many
 
 SELECT id, nome, preco_centavos, imagem_url, estoque_disponivel
 FROM catalogo.produto_visivel
-ORDER BY id
-LIMIT $2 OFFSET $1
+WHERE ($1::text IS NULL OR busca_normalizada LIKE '%' || $1::text || '%')
+  AND ($2::uuid IS NULL OR categoria_id = $2::uuid)
+  AND ($3::bigint IS NULL OR preco_centavos >= $3::bigint)
+  AND ($4::bigint IS NULL OR preco_centavos <= $4::bigint)
+ORDER BY
+  CASE WHEN $5::text = 'recentes' THEN criado_em END DESC,
+  CASE WHEN $5::text = 'preco_asc' THEN preco_centavos END ASC,
+  CASE WHEN $5::text = 'preco_desc' THEN preco_centavos END DESC,
+  id
+LIMIT $7 OFFSET $6
 `
 
 type ListarVisiveisParams struct {
+	Termo        pgtype.Text
+	CategoriaID  pgtype.UUID
+	PrecoMin     pgtype.Int8
+	PrecoMax     pgtype.Int8
+	Ordenacao    string
 	Deslocamento int32
 	Limite       int32
 }
@@ -45,10 +75,21 @@ type ListarVisiveisRow struct {
 
 // `busca` não tem tabelas: lê o Catálogo só pela VIEW produto_visivel (AD-2,
 // AD-16), que já aplica o predicado de visibilidade (AD-19). Nenhum `WHERE
-// ativo` aqui. O desempate final é sempre `id` (AD-18); a ordenação da 3.9
-// antepõe a sua chave.
+// ativo` aqui. Uma consulta só para termo, filtros e ordenação: cada filtro é
+// opcional por `IS NULL OR`, e a lista e a contagem repetem o mesmo WHERE.
+// O termo chega normalizado e com `\`, `%` e `_` já escapados.
+// Uma chave por ordenação; as que não valem viram NULL e empatam. O
+// desempate final é sempre `id` (AD-18).
 func (q *Queries) ListarVisiveis(ctx context.Context, arg ListarVisiveisParams) ([]ListarVisiveisRow, error) {
-	rows, err := q.db.Query(ctx, listarVisiveis, arg.Deslocamento, arg.Limite)
+	rows, err := q.db.Query(ctx, listarVisiveis,
+		arg.Termo,
+		arg.CategoriaID,
+		arg.PrecoMin,
+		arg.PrecoMax,
+		arg.Ordenacao,
+		arg.Deslocamento,
+		arg.Limite,
+	)
 	if err != nil {
 		return nil, err
 	}

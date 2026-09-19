@@ -25,6 +25,7 @@ type CatalogoProduto struct {
 	BuscaNormalizada string
 	EstoqueTotal     int32
 	Ativo            bool
+	CriadoEm         pgtype.Timestamptz
 }
 
 type CatalogoProdutoVisivel struct {
@@ -38,6 +39,7 @@ type CatalogoProdutoVisivel struct {
 	BuscaNormalizada  string
 	EstoqueDisponivel int32
 	VendedorNome      string
+	CriadoEm          pgtype.Timestamptz
 }
 
 type CatalogoReservaEstoque struct {
