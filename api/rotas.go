@@ -67,6 +67,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	mux.HandleFunc("POST /api/v1/enderecos", s.criarEndereco)
 	mux.HandleFunc("PUT /api/v1/enderecos/{id}", s.atualizarEndereco)
 	mux.HandleFunc("DELETE /api/v1/enderecos/{id}", s.removerEndereco)
+	// O Frete do Carrinho para um Endereço do dono (5.3): a Regra é de
+	// `pedido` (AD-17), e a Revisão pergunta a cada abertura.
+	mux.HandleFunc("GET /api/v1/frete", s.lerFrete)
 	// O Carrinho do Comprador (FR-16): um por dono, resolvido pela Sessão, e por
 	// isso sem identificador na rota. O que tem identificador é o Item.
 	// "Esvaziar" do Comprador (FR-18) é `DELETE …/itens`, e não `DELETE

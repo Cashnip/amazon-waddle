@@ -51,6 +51,13 @@ FROM identidade.endereco
 WHERE comprador_id = $1
 ORDER BY id;
 
+-- Um Endereço só, do dono: é o que o Frete da 5.3 lê para tirar o CEP, e o
+-- que a criação do Pedido (5.6) congela. O dono no WHERE, como nas outras.
+-- name: BuscarEndereco :one
+SELECT id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
+FROM identidade.endereco
+WHERE id = @id AND comprador_id = @comprador_id;
+
 -- O teto por Comprador entra no PRÓPRIO INSERT, e não num SELECT count antes:
 -- assim é uma ida ao banco só, e zero linhas devolvidas significa "o teto foi
 -- alcançado" — o mesmo idioma do compare-and-swap do Pedido.

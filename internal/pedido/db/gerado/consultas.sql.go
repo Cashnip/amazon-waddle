@@ -216,6 +216,49 @@ func (q *Queries) ItensParaReserva(ctx context.Context, pedidoID pgtype.UUID) ([
 	return items, nil
 }
 
+const listarFaixasDeFrete = `-- name: ListarFaixasDeFrete :many
+SELECT cep_inicio, cep_fim, regiao, valor_centavos, padrao
+FROM pedido.faixa_frete
+ORDER BY padrao, cep_inicio
+`
+
+type ListarFaixasDeFreteRow struct {
+	CepInicio     pgtype.Text
+	CepFim        pgtype.Text
+	Regiao        string
+	ValorCentavos int64
+	Padrao        bool
+}
+
+// A Regra de Frete inteira (AD-17): são nove linhas, e a função pura escolhe.
+// A padrão vem por último, e a ordem por `cep_inicio` torna a escolha
+// determinística mesmo que alguém acrescente uma faixa sobreposta.
+func (q *Queries) ListarFaixasDeFrete(ctx context.Context) ([]ListarFaixasDeFreteRow, error) {
+	rows, err := q.db.Query(ctx, listarFaixasDeFrete)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarFaixasDeFreteRow
+	for rows.Next() {
+		var i ListarFaixasDeFreteRow
+		if err := rows.Scan(
+			&i.CepInicio,
+			&i.CepFim,
+			&i.Regiao,
+			&i.ValorCentavos,
+			&i.Padrao,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listarPedidosDoComprador = `-- name: ListarPedidosDoComprador :many
 SELECT id, numero, status, total_centavos
 FROM pedido.pedido

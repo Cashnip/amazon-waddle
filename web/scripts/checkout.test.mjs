@@ -3,7 +3,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { CHAVE_DO_ENDERECO, enderecoEscolhido, enderecoMarcado, guardarEscolha, lerEscolha } = await import(
+const {
+  CHAVE_DO_ENDERECO,
+  enderecoEscolhido,
+  enderecoMarcado,
+  freteGratis,
+  guardarEscolha,
+  lerEscolha,
+  rotaDoFrete,
+} = await import(
   new URL("../lib/checkout.ts", import.meta.url).href
 );
 
@@ -101,4 +109,16 @@ test("Revisão: só o guardado, e só se está na lista — sem cair no primeiro
   assert.equal(enderecoEscolhido([casa, trabalho], null), null);
   assert.equal(enderecoEscolhido([casa, trabalho], "removido"), null);
   assert.equal(enderecoEscolhido([], "e1"), null);
+});
+
+// O Frete (5.3): a tela só monta a rota e escolhe a palavra. Região, valor e
+// isenção são do Go, e estão testados lá.
+test("a rota do Frete leva o Endereço escolhido, escapado", () => {
+  assert.equal(rotaDoFrete("e1"), "/api/v1/frete?endereco_id=e1");
+  assert.equal(rotaDoFrete("a b&c"), "/api/v1/frete?endereco_id=a%20b%26c");
+});
+
+test("Frete zero é Grátis; qualquer outro valor não", () => {
+  assert.equal(freteGratis({ frete_centavos: 0 }), true);
+  assert.equal(freteGratis({ frete_centavos: 1500 }), false);
 });

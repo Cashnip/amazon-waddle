@@ -148,6 +148,48 @@ func (q *Queries) BuscarCompradorPorEmail(ctx context.Context, email string) (Id
 	return i, err
 }
 
+const buscarEndereco = `-- name: BuscarEndereco :one
+SELECT id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
+FROM identidade.endereco
+WHERE id = $1 AND comprador_id = $2
+`
+
+type BuscarEnderecoParams struct {
+	ID          pgtype.UUID
+	CompradorID pgtype.UUID
+}
+
+type BuscarEnderecoRow struct {
+	ID           pgtype.UUID
+	Destinatario string
+	Cep          string
+	Logradouro   string
+	Numero       string
+	Complemento  string
+	Bairro       string
+	Cidade       string
+	Uf           string
+}
+
+// Um Endereço só, do dono: é o que o Frete da 5.3 lê para tirar o CEP, e o
+// que a criação do Pedido (5.6) congela. O dono no WHERE, como nas outras.
+func (q *Queries) BuscarEndereco(ctx context.Context, arg BuscarEnderecoParams) (BuscarEnderecoRow, error) {
+	row := q.db.QueryRow(ctx, buscarEndereco, arg.ID, arg.CompradorID)
+	var i BuscarEnderecoRow
+	err := row.Scan(
+		&i.ID,
+		&i.Destinatario,
+		&i.Cep,
+		&i.Logradouro,
+		&i.Numero,
+		&i.Complemento,
+		&i.Bairro,
+		&i.Cidade,
+		&i.Uf,
+	)
+	return i, err
+}
+
 const criarComprador = `-- name: CriarComprador :one
 INSERT INTO identidade.comprador (nome, email, senha_hash)
 VALUES ($1, $2, $3)

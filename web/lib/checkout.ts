@@ -60,3 +60,25 @@ export function enderecoEscolhido<T extends { id: string }>(lista: readonly T[],
   if (guardado === null) return null;
   return lista.find((e) => e.id === guardado) ?? null;
 }
+
+// A cotação do Frete (5.3), como o Go a devolve em `GET /api/v1/frete`. O
+// total vem somado: a tela mostra as três parcelas e não soma nada (NFR-13). A
+// Regra de Frete inteira é do Go (AD-17) — aqui não existe região nem valor.
+export type Cotacao = {
+  regiao: string;
+  subtotal_centavos: number;
+  frete_centavos: number;
+  total_centavos: number;
+};
+
+// A rota da cotação para o Endereço escolhido. Perguntada a cada abertura da
+// Revisão: é isso que faz a troca de Endereço recalcular o Frete (FR-20).
+export function rotaDoFrete(enderecoID: string): string {
+  return `/api/v1/frete?endereco_id=${encodeURIComponent(enderecoID)}`;
+}
+
+// Frete zero é isenção, e a tela diz "Grátis" em vez de "R$ 0,00". Quem
+// decide que é zero é o Go; a tela só escolhe a palavra.
+export function freteGratis(cotacao: Pick<Cotacao, "frete_centavos">): boolean {
+  return cotacao.frete_centavos === 0;
+}

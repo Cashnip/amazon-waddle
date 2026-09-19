@@ -58,6 +58,35 @@ func ListarEnderecos(ctx context.Context, bd gerado.DBTX, compradorID string) ([
 	return enderecos, nil
 }
 
+// BuscarEndereco lê um Endereço do dono. O dono entra no WHERE (AD-11):
+// Endereço de outro Comprador, Endereço inexistente e uuid malformado saem os
+// três como pgx.ErrNoRows, que `api/` traduz no mesmo 404.
+func BuscarEndereco(ctx context.Context, bd gerado.DBTX, enderecoID, compradorID string) (Endereco, error) {
+	chave, err := uuidDe(enderecoID)
+	if err != nil {
+		return Endereco{}, err
+	}
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return Endereco{}, err
+	}
+	l, err := gerado.New(bd).BuscarEndereco(ctx, gerado.BuscarEnderecoParams{ID: chave, CompradorID: dono})
+	if err != nil {
+		return Endereco{}, err
+	}
+	return Endereco{
+		ID:           uuidTexto(l.ID),
+		Destinatario: l.Destinatario,
+		CEP:          l.Cep,
+		Logradouro:   l.Logradouro,
+		Numero:       l.Numero,
+		Complemento:  l.Complemento,
+		Bairro:       l.Bairro,
+		Cidade:       l.Cidade,
+		UF:           l.Uf,
+	}, nil
+}
+
 // CriarEndereco grava o Endereço do dono, até o teto por Comprador.
 //
 // ALCANÇAR O TETO SAI COMO pgx.ErrNoRows, e é o único caminho desta função que

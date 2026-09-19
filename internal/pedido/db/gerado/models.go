@@ -13,6 +13,15 @@ type PedidoContadorNumero struct {
 	Ultimo int64
 }
 
+type PedidoFaixaFrete struct {
+	ID            pgtype.UUID
+	CepInicio     pgtype.Text
+	CepFim        pgtype.Text
+	Regiao        string
+	ValorCentavos int64
+	Padrao        bool
+}
+
 type PedidoItemPedido struct {
 	ID                     pgtype.UUID
 	PedidoID               pgtype.UUID

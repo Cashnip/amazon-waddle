@@ -2,8 +2,8 @@
 //
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
 // importa (AD-1), junto com maquina.go, que guarda a tabela de transições do
-// AD-3 e o Transicionar. Aqui moram o nascimento do Pedido em
-// AGUARDANDO_PAGAMENTO, as leituras e os dois passos da varredura — aplicar a
+// AD-3 e o Transicionar, e frete.go, que guarda a Regra de Frete (AD-17).
+// Aqui moram o nascimento do Pedido em AGUARDANDO_PAGAMENTO, as leituras e os dois passos da varredura — aplicar a
 // confirmação e simular a entrega até ENTREGUE.
 package pedido
 

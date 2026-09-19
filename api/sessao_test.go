@@ -506,6 +506,10 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a máquina de estados: efeitos, recusas, histórico e imutabilidade", func(t *testing.T) {
 		maquinaDeEstados(t, rotas, pool)
 	})
+	// A 5.3, com conta, Endereços e Produto próprios: a Regra de Frete da migração.
+	t.Run("o Frete: faixa, região padrão, isenção e Endereço alheio", func(t *testing.T) {
+		freteDoCarrinho(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

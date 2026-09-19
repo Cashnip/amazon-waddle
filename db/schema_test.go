@@ -44,7 +44,7 @@ func TestSchemaESemente(t *testing.T) {
 	}
 	conexao := conectar(t, ctx, dsn)
 
-	t.Run("existem só as treze tabelas do esqueleto", func(t *testing.T) {
+	t.Run("existem só as catorze tabelas do esqueleto", func(t *testing.T) {
 		tem := textos(t, ctx, conexao, `
 			SELECT table_schema || '.' || table_name
 			FROM information_schema.tables
@@ -54,7 +54,8 @@ func TestSchemaESemente(t *testing.T) {
 			"catalogo.categoria", "catalogo.produto", "catalogo.reserva_estoque", "catalogo.vendedor",
 			"identidade.administrador", "identidade.comprador", "identidade.endereco",
 			"pagamento.confirmacao_recebida", "pagamento.tentativa_pagamento",
-			"pedido.contador_numero", "pedido.item_pedido", "pedido.pedido", "pedido.transicao_status",
+			"pedido.contador_numero", "pedido.faixa_frete", "pedido.item_pedido", "pedido.pedido",
+			"pedido.transicao_status", // faixa_frete é a Regra de Frete (5.3, AD-17)
 		}
 		if !slices.Equal(tem, quer) {
 			t.Errorf("tabelas = %v, quero %v", tem, quer)
@@ -151,8 +152,8 @@ func TestSchemaESemente(t *testing.T) {
 			  ON c.table_schema = k.table_schema AND c.table_name = k.table_name AND c.column_name = k.column_name
 			WHERE r.constraint_type = 'PRIMARY KEY' AND r.table_schema = ANY($1)
 			ORDER BY 1`, schemasDeModulo)
-		if len(tem) != 13 {
-			t.Fatalf("%d chaves primárias, quero 13: %v", len(tem), tem)
+		if len(tem) != 14 {
+			t.Fatalf("%d chaves primárias, quero 14: %v", len(tem), tem)
 		}
 		for _, pk := range tem {
 			// O contador do número por ano é a exceção declarada: não é

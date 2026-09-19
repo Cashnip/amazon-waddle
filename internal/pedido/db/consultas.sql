@@ -10,6 +10,14 @@ INSERT INTO pedido.contador_numero (ano, ultimo) VALUES ($1, 1)
 ON CONFLICT (ano) DO UPDATE SET ultimo = contador_numero.ultimo + 1
 RETURNING ultimo;
 
+-- A Regra de Frete inteira (AD-17): são nove linhas, e a função pura escolhe.
+-- A padrão vem por último, e a ordem por `cep_inicio` torna a escolha
+-- determinística mesmo que alguém acrescente uma faixa sobreposta.
+-- name: ListarFaixasDeFrete :many
+SELECT cep_inicio, cep_fim, regiao, valor_centavos, padrao
+FROM pedido.faixa_frete
+ORDER BY padrao, cep_inicio;
+
 -- name: CriarPedido :one
 INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
 VALUES ($1, $2, $3, $4)

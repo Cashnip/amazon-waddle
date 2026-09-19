@@ -269,3 +269,8 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-selecao-de-endereco-no-checkout.md`
   summary: A escolha `azamon:checkout:endereco_id` no `sessionStorage` nunca é apagada — nem na criação do Pedido, nem ao encerrar a Sessão.
   evidence: Um segundo checkout na mesma aba volta com a escolha antiga marcada; outro Comprador na mesma aba herda a chave (inofensivo, porque `enderecoMarcado` cai no primeiro da própria lista). Apagar na confirmação é da 5.4/5.6.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-calculo-do-frete.md`
+  summary: Metade da consequência "trocar o Endereço recalcula o Frete" (FR-20/FR-22) está provada na 5.3; falta a tela, que é da 5.4.
+  evidence: `api/frete_test.go` pede `GET /api/v1/frete` para o mesmo Carrinho com um Endereço de SP, um da BA e de volta o de SP, e vê R$ 15,00, R$ 30,00 e R$ 15,00, com o total acompanhando. O esboço da Revisão já pergunta a cada abertura, mas não há teste de tela: a 5.4, ao substituir o esboço, precisa manter a pergunta a cada abertura e nunca guardar a cotação no navegador.
+
