@@ -238,3 +238,19 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
   summary: `pedido.item_pedido` ainda aceita `INSERT` depois da criação do Pedido, então "escrito uma vez" vale para alterar e apagar Item, mas não para acrescentar.
   evidence: os gatilhos da migração `20260919120000_pedido_maquina_de_estados` cobrem `UPDATE`, `DELETE` e `TRUNCATE`; recusar o `INSERT` tardio pede uma regra como "não existe linha de histórico para o Pedido", que depende da ordem Item → histórico dentro de `pedido.Criar` e deve ser decidida junto com a criação multi-Item da 5.6.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: O cancelamento repetido (duplo clique, o segundo chegando depois do commit do primeiro) sai como `FORA_DA_JANELA_DE_CANCELAMENTO`, e não como sucesso.
+  evidence: leitura humana da 5.1 (2026-09-19). `corridaPerdida` em `internal/pedido/maquina.go:249` relê `CANCELADO`, que está fora da janela, e a tela diria "Este Pedido não pode mais ser cancelado." de um cancelamento que deu certo. A 6.3 decide: tratar o código como sucesso quando o Status relido é `CANCELADO`, ou travar o botão enquanto a requisição está em voo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: A nova Tentativa de um Pedido cujo Produto ou Vendedor foi desativado depois da compra falha como `ESTOQUE_INSUFICIENTE` com `disponivel: 0`, e não como indisponível.
+  evidence: leitura humana da 5.1 (2026-09-19). `reservarDeNovo` (`internal/pedido/maquina.go:269`) chama `catalogo.Reservar`, que só trava Produtos da VIEW `produto_visivel` (`internal/catalogo/db/consultas.sql:27`). O Pedido fica corretamente em `PAGAMENTO_RECUSADO`; o que a 5.10 decide é a mensagem.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: `erro.Escrever` só acrescenta `dados.permitidas` quando `dados` é `nil` ou `map[string]any`, e muta o mapa de quem chamou.
+  evidence: leitura humana da 5.1 (2026-09-19), `internal/plataforma/erro/erro.go:117`. Um handler da 6.4 que passe struct em `dados` perde `permitidas` em silêncio e quebra o contrato "nunca ausente". Nenhum chamador passa `dados` com esse erro hoje.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: A imutabilidade de `pedido` no banco é proteção contra engano, não contra o próprio serviço: o `azamon` conecta como superusuário.
+  evidence: leitura humana da 5.1 (2026-09-19). `POSTGRES_USER: azamon` em `docker-compose.yml:34` cria superusuário, e qualquer sessão dele pode `SET session_replication_role = replica`, como faz `envelhecerHistorico`. Basta para o trabalho; não afirmar mais que isso na apresentação, ou criar um papel sem superusuário para o serviço.
