@@ -60,7 +60,7 @@ export function Comprar({ produtoId }: { produtoId: string }) {
         size="lg"
         onClick={confirmar}
         disabled={enviando}
-        className="bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong/90"
+        className="rounded-full bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong/90"
       >
         {enviando ? "Confirmando…" : "Confirmar compra"}
       </Button>

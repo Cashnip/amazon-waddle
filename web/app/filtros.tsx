@@ -72,7 +72,6 @@ function Formulario({
   const router = useRouter();
   const id = useId();
   const reais = (c: string) => (/^\d+$/.test(c) ? centavosParaReais(Number(c)) : "");
-  const [termo, setTermo] = useState(estado.termo);
   const [categoria, setCategoria] = useState(estado.categoria);
   const [minimo, setMinimo] = useState(reais(estado.preco_min));
   const [maximo, setMaximo] = useState(reais(estado.preco_max));
@@ -89,7 +88,8 @@ function Formulario({
     aoNavegar?.();
     router.push(
       destino({
-        termo: termo.trim(),
+        // O termo não se edita aqui (é da busca global), mas se mantém.
+        termo: estado.termo,
         categoria,
         preco_min: min === undefined ? "" : String(min),
         preco_max: max === undefined ? "" : String(max),
@@ -101,17 +101,6 @@ function Formulario({
   const idErro = `${id}-erro`;
   return (
     <form onSubmit={aplicar} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor={`${id}-termo`}>Buscar Produtos</Label>
-        <Input
-          id={`${id}-termo`}
-          type="search"
-          maxLength={100}
-          value={termo}
-          onChange={(e) => setTermo(e.target.value)}
-        />
-      </div>
-
       <fieldset className="space-y-2">
         <legend className="mb-2 text-sm font-medium">Categoria</legend>
         {[{ id: "", nome: "Todas" }, ...categorias].map((c) => (

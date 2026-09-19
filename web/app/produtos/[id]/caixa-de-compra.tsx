@@ -76,7 +76,7 @@ export function CaixaDeCompra({
               </Select>
             </div>
             <div className="space-y-2">
-              <Button size="lg" className="w-full" onClick={adicionar} disabled={comSessao !== false}>
+              <Button size="lg" className="w-full rounded-full" onClick={adicionar} disabled={comSessao !== false}>
                 Adicionar ao Carrinho
               </Button>
               {comSessao && <p className="text-muted-foreground text-sm">O Carrinho ainda não está disponível.</p>}

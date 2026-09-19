@@ -202,3 +202,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-5-a-vitrine-e-o-envelope-de-listagem.md`
   summary: O `web/` não tem `error.tsx`; a Vitrine (e as outras telas Server Component) cai na página de erro genérica do Next quando a API não responde 2xx.
   evidence: `web/app/page.tsx` lança em `!resposta.ok`, e não existe fronteira de erro em `web/app/`; a EXPERIENCE.md não define o texto desse estado.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-10-chrome-da-loja.md`
+  summary: A tela `/redefinir-senha/[token]` tem cabeçalho próprio e não usa a `Casca`, então fica sem a busca global, sem a Faixa de Categorias e sem o Menu da conta.
+  evidence: `web/app/redefinir-senha/[token]/page.tsx:19` monta o `<header>` à mão desde a 2.3; a UX-DR9 pede a barra em toda tela pública. Não foi mudada na 3.10 porque a spec listou as telas que já usam a `Casca`.
