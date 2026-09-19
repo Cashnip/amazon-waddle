@@ -48,6 +48,9 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 	// E o Endereço do dono, criado aqui: sem uma linha de A não há "alheio"
 	// para B tentar, e o subteste passaria provando só o inexistente.
 	enderecoDoDono := idDe(t, postarEndereco(t, rotas, corpoEnderecoValido, cookieDono), http.StatusCreated)
+	// O mesmo para o Item de Carrinho (4.1): o Carrinho é resolvido pela
+	// Sessão, e o identificador que se pode forjar é o do Item.
+	itemDoDono := idDe(t, postarItem(t, rotas, corpoItem(produtoSemeado, "1"), cookieDono), http.StatusCreated)
 
 	outro := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Helena Prado","email":"helena@exemplo.br","senha":"senha-da-helena-1"}`), http.StatusCreated)
@@ -61,6 +64,7 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 		{"Endereço por PUT", enderecoDoDono, putEnderecoValido},
 		// O DELETE por último: se ele apagasse, o PUT acima já teria rodado.
 		{"Endereço por DELETE", enderecoDoDono, deletarEndereco},
+		{"Item de Carrinho por DELETE", itemDoDono, deletarItem},
 	} {
 		alheio := recurso.bate(t, rotas, recurso.id, outro)
 		inexistente := recurso.bate(t, rotas, uuidNuncaUsado, outro)
@@ -91,6 +95,15 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 	if !strings.Contains(lista.Body.String(), enderecoDoDono) {
 		t.Errorf("o Endereço %s do dono não sobreviveu ao PUT e ao DELETE de outro Comprador: %s",
 			enderecoDoDono, lista.Body.String())
+	}
+
+	// E o Item de A sobreviveu ao DELETE de B: sem GET do Carrinho (4.3), a
+	// prova é a segunda adição cair no mesmo Item, somada.
+	segunda := postarItem(t, rotas, corpoItem(produtoSemeado, "1"), cookieDono)
+	if id := idDe(t, segunda, http.StatusCreated); id != itemDoDono {
+		t.Errorf("o Item %s do dono não sobreviveu ao DELETE de outro Comprador: a adição criou %s", itemDoDono, id)
+	} else if q := decodificar(t, segunda)["quantidade"]; q != 2.0 {
+		t.Errorf("quantidade = %v, quero 2", q)
 	}
 }
 

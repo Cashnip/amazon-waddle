@@ -1,30 +1,35 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { paraLogin } from "@/lib/destino";
+import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { quantidadeMaxima } from "@/lib/quantidade";
 
 // A Caixa de compra (3.6): selo, quantidade e "Adicionar ao Carrinho". O
 // número exibido é sempre o Estoque disponível, e a Reserva nunca aparece. A
 // Sessão é lida como no Menu da conta, por `GET /api/v1/sessao`.
 //
-// Sem Sessão, "Adicionar ao Carrinho" leva ao Login com o Produto e a
-// quantidade no `destino`; com Sessão, fica desabilitado até o Carrinho da
-// Épica 4. O "Confirmar compra" do esqueleto chega como `children`.
+// Com Sessão, "Adicionar ao Carrinho" grava direto (4.1), sem atualização
+// otimista. Sem Sessão, leva ao Login com o Produto, a quantidade e o marcador
+// `adicionar` no `destino`; a volta (`adicionarAoEntrar`) cria o Item uma vez e
+// tira o marcador da URL, para o recarregar não somar de novo. O "Confirmar
+// compra" do esqueleto chega como `children`.
 export function CaixaDeCompra({
   produtoId,
   disponivel,
   quantidadeInicial,
+  adicionarAoEntrar,
   children,
 }: {
   produtoId: string;
   disponivel: number;
   quantidadeInicial: number;
+  adicionarAoEntrar: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -33,6 +38,10 @@ export function CaixaDeCompra({
   // undefined enquanto a Sessão não foi lida: o botão espera, em vez de mandar
   // ao Login quem já entrou.
   const [comSessao, setComSessao] = useState<boolean | undefined>(undefined);
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
+  // Contra o efeito duplo do StrictMode: a volta do Login adiciona uma vez só.
+  const jaAdicionou = useRef(false);
 
   useEffect(() => {
     let vivo = true;
@@ -45,8 +54,52 @@ export function CaixaDeCompra({
     };
   }, []);
 
+  function irAoLogin(q: number) {
+    router.push(paraLogin(`/produtos/${produtoId}?quantidade=${q}&adicionar=1`));
+  }
+
+  // Devolve false quando levou ao Login: o botão continua desabilitado durante
+  // a navegação. A mensagem de recusa é sempre a do envelope.
+  async function enviar(q: number): Promise<boolean> {
+    setEnviando(true);
+    setAviso(null);
+    try {
+      const { resposta, json } = await pedir("/api/v1/carrinho/itens", "POST", {
+        produto_id: produtoId,
+        quantidade: q,
+      });
+      if (resposta.status === 401) {
+        irAoLogin(q);
+        return false;
+      }
+      setAviso(
+        resposta.ok
+          ? { texto: "Adicionado ao Carrinho.", erro: false }
+          : { texto: json?.erro?.mensagem ?? "Não foi possível adicionar ao Carrinho.", erro: true },
+      );
+    } catch {
+      setAviso({ texto: FALHA_DE_REDE, erro: true });
+    }
+    setEnviando(false);
+    return true;
+  }
+
+  useEffect(() => {
+    if (!adicionarAoEntrar || comSessao !== true || jaAdicionou.current) return;
+    jaAdicionou.current = true;
+    // Esgotado na volta: não cria Item nenhum — o ramo "Indisponível" não tem
+    // onde dizer que criou. Só tira o marcador da URL.
+    if (disponivel === 0) {
+      router.replace(`/produtos/${produtoId}`);
+      return;
+    }
+    enviar(quantidadeInicial).then((ficou) => ficou && router.replace(`/produtos/${produtoId}`));
+    // Só a Sessão lida dispara: a quantidade da volta é a da URL, e não a do seletor.
+  }, [adicionarAoEntrar, comSessao]);
+
   function adicionar() {
-    router.push(paraLogin(`/produtos/${produtoId}?quantidade=${quantidade}`));
+    if (comSessao === false) irAoLogin(quantidade);
+    else void enviar(quantidade);
   }
 
   return (
@@ -76,10 +129,22 @@ export function CaixaDeCompra({
               </Select>
             </div>
             <div className="space-y-2">
-              <Button size="lg" className="w-full rounded-full" onClick={adicionar} disabled={comSessao !== false}>
+              <Button
+                size="lg"
+                className="w-full rounded-full"
+                onClick={adicionar}
+                disabled={comSessao === undefined || enviando}
+              >
                 Adicionar ao Carrinho
               </Button>
-              {comSessao && <p className="text-muted-foreground text-sm">O Carrinho ainda não está disponível.</p>}
+              {aviso && (
+                <p
+                  className={aviso.erro ? "text-destructive text-sm" : "text-sm"}
+                  role={aviso.erro ? "alert" : "status"}
+                >
+                  {aviso.texto}
+                </p>
+              )}
             </div>
             {children}
           </>

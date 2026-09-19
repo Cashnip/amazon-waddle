@@ -167,6 +167,8 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		PaginaTamanho:           paginaTamanhoDeTeste,
 		PaginaTamanhoMax:        paginaTamanhoMaxDeTeste,
 		BuscaTermoMax:           buscaTermoMaxDeTeste,
+
+		CarrinhoUnidadesMax: carrinhoUnidadesMaxDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -486,6 +488,10 @@ func TestSessaoEProduto(t *testing.T) {
 	// A 3.7–3.9, com Produtos próprios de nome acentuado, `%` e `_`.
 	t.Run("a busca: termo, Categoria, faixa de preço e ordenação", func(t *testing.T) {
 		buscaFiltrosEOrdenacao(t, rotas, pool)
+	})
+	// A 4.1, com conta própria.
+	t.Run("o Carrinho: adição, soma, teto, Produto invisível e remoção", func(t *testing.T) {
+		carrinhoDoComprador(t, rotas, pool)
 	})
 }
 

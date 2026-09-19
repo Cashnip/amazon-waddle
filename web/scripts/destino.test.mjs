@@ -65,3 +65,12 @@ test("destino: ausente ou vazio vira /", () => {
   assert.equal(destinoSeguro("?outra=coisa"), "/");
   assert.equal(destinoSeguro("?destino="), "/");
 });
+
+// A volta do Login da 4.1: o marcador `adicionar` viaja dentro do `destino`, e o
+// `&` precisa chegar inteiro — sem o escape, ele viraria parâmetro de `/entrar`
+// e a volta cairia na Página de Produto sem criar o Item.
+test("destino: a volta da adição ao Carrinho preserva quantidade e adicionar", () => {
+  const origem = "/produtos/abc?quantidade=3&adicionar=1";
+  const link = paraLogin(origem);
+  assert.equal(destinoSeguro(link.slice(link.indexOf("?"))), origem);
+});

@@ -33,10 +33,10 @@ export default async function PaginaDeProduto({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ quantidade?: string | string[] }>;
+  searchParams: Promise<{ quantidade?: string | string[]; adicionar?: string | string[] }>;
 }) {
   const { id } = await params;
-  const { quantidade } = await searchParams;
+  const { quantidade, adicionar } = await searchParams;
   // `no-store`: preço e disponível não podem vir de cache de construção.
   // encodeURIComponent: o segmento vem da URL e vai para outra URL. Sem
   // escape, um `%2F` normaliza para outra rota do Go — a de mídia devolveria
@@ -91,6 +91,8 @@ export default async function PaginaDeProduto({
             produtoId={produto.id}
             disponivel={produto.estoque_disponivel}
             quantidadeInicial={quantidadeDaUrl(quantidade, produto.estoque_disponivel)}
+            // A volta do Login (4.1): o marcador que a Caixa de compra pôs no `destino`.
+            adicionarAoEntrar={adicionar === "1"}
           >
             {/* Da Página de Produto direto ao Pedido, 1 unidade, sem Carrinho (Épica 4). */}
             <Comprar produtoId={produto.id} />
