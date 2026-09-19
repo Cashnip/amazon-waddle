@@ -1,16 +1,20 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // As duas funções abaixo são chamadas por TestSessaoEProduto: Postgres e
 // Redis sobem uma vez só para api/, e não um par por arquivo de teste.
 
-func produtoSemeadoSai(t *testing.T, rotas http.Handler) {
+func produtoSemeadoSai(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	resp := pegar(t, rotas, "/api/v1/produtos/"+produtoSemeado)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s), quero 200", resp.Code, resp.Body.String())
@@ -55,6 +59,41 @@ func produtoSemeadoSai(t *testing.T, rotas http.Handler) {
 	// busca_normalizada é dado de índice e nunca vai no DTO.
 	if _, tem := corpo["busca_normalizada"]; tem {
 		t.Error("busca_normalizada vazou no DTO")
+	}
+
+	// A Categoria vem por JOIN (3.6), com o id que o breadcrumb usa.
+	if corpo["categoria"] != "Eletrônicos" || corpo["categoria_id"] != "cc9fbd39-f581-57bb-9a51-2b1047f864cc" {
+		t.Errorf("categoria = %v / %v", corpo["categoria"], corpo["categoria_id"])
+	}
+	// O número é o disponível da VIEW, nunca o total — e o total nem sai.
+	disponivel := func() string {
+		t.Helper()
+		return textoDe(t, pool, `SELECT estoque_disponivel::text FROM catalogo.produto_visivel WHERE id = $1::uuid`, produtoSemeado)[0]
+	}
+	if got, quero := corpo["estoque_disponivel"], disponivel(); got == nil || strconv.Itoa(int(got.(float64))) != quero {
+		t.Errorf("estoque_disponivel = %v, quero %s da VIEW", got, quero)
+	}
+	if _, tem := corpo["estoque_total"]; tem {
+		t.Error("estoque_total vazou no DTO")
+	}
+
+	// Com uma Reserva ATIVA de 2, o disponível cai 2. A Reserva sai no fim:
+	// os subtestes de Pedido contam com o disponível intacto.
+	antes := corpo["estoque_disponivel"].(float64)
+	ctx := context.Background()
+	var pedido string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
+		VALUES ($1::uuid, uuidv7(), 2, 'ATIVA') RETURNING pedido_id::text`, produtoSemeado).Scan(&pedido); err != nil {
+		t.Fatalf("reservar: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM catalogo.reserva_estoque WHERE pedido_id = $1::uuid`, pedido); err != nil {
+			t.Errorf("remover a Reserva: %v", err)
+		}
+	})
+	if got := decodificar(t, pegar(t, rotas, "/api/v1/produtos/"+produtoSemeado))["estoque_disponivel"]; got != antes-2 {
+		t.Errorf("com Reserva ativa de 2: estoque_disponivel = %v, quero %v", got, antes-2)
 	}
 }
 

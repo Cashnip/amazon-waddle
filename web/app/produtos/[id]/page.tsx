@@ -3,11 +3,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Casca } from "@/components/casca";
 import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import { Preco } from "@/components/preco";
+import { quantidadeDaUrl } from "@/lib/quantidade";
+import { CaixaDeCompra } from "./caixa-de-compra";
 import { Comprar } from "./comprar";
 
-// Página de Produto crua da estória 1.5. A composição de marca — Estoque,
-// Adicionar ao Carrinho, avaliações — é da Épica 3; aqui o que importa é o
-// dado atravessar: Go → Postgres → DTO → tela.
+// A Página de Produto (3.6): breadcrumb da Categoria, informação e a Caixa de
+// compra — à direita a partir de 1024 px, empilhada abaixo. A ordem do DOM é a
+// da tabulação: título e preço antes da Caixa.
 //
 // O Server Component não pode usar caminho relativo: `/api/...` só existe no
 // navegador, depois do rewrites(). No servidor do Next o destino é o mesmo que
@@ -21,44 +23,78 @@ type Produto = {
   preco_centavos: number;
   imagem_url: string;
   vendedor: string;
+  categoria_id: string;
+  categoria: string;
+  estoque_disponivel: number;
 };
 
 export default async function PaginaDeProduto({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ quantidade?: string | string[] }>;
 }) {
   const { id } = await params;
-  // `no-store`: o preço do Produto não pode vir de cache de construção, e a
-  // rota é dinâmica de propósito.
+  const { quantidade } = await searchParams;
+  // `no-store`: preço e disponível não podem vir de cache de construção.
   // encodeURIComponent: o segmento vem da URL e vai para outra URL. Sem
   // escape, um `%2F` normaliza para outra rota do Go — a de mídia devolveria
   // um SVG, e o resposta.json() estouraria em página de erro em vez de 404.
   const resposta = await fetch(`${api}/api/v1/produtos/${encodeURIComponent(id)}`, {
     cache: "no-store",
   });
-  if (!resposta.ok) notFound();
+  // Só o 404 vira "não disponível" (not-found.tsx): inexistente, desativado e
+  // de Vendedor desativado são o mesmo caso. Outro erro não é esse, e cai no
+  // erro genérico.
+  if (resposta.status === 404) notFound();
+  if (!resposta.ok) throw new Error(`GET /api/v1/produtos/${id} = ${resposta.status}`);
   const produto: Produto = await resposta.json();
 
   return (
     <Casca>
-      <main className="mx-auto grid max-w-conteudo gap-grid-gutter px-page-margin py-section-sm md:grid-cols-2 lg:px-page-margin-lg">
-        <Card>
-          <CardContent>
-            {/* Imagem ausente ou quebrada vira o bloco neutro com o nome. */}
-            <ImagemDoProduto src={produto.imagem_url} nome={produto.nome} />
-          </CardContent>
-        </Card>
+      <main className="mx-auto max-w-conteudo space-y-4 px-page-margin py-section-sm lg:px-page-margin-lg">
+        <nav aria-label="Trilha de navegação" className="text-sm">
+          <ol className="flex flex-wrap items-center gap-2">
+            <li>
+              <a className="text-link hover:underline" href="/">
+                Vitrine
+              </a>
+            </li>
+            <li aria-hidden="true">›</li>
+            <li>
+              <a className="text-link hover:underline" href={`/?categoria=${produto.categoria_id}`}>
+                {produto.categoria}
+              </a>
+            </li>
+          </ol>
+        </nav>
 
-        <div className="space-y-4">
-          <h1 className="text-2xl font-medium">{produto.nome}</h1>
-          <p className="text-muted-foreground text-sm">
-            Vendido por <span className="text-foreground">{produto.vendedor}</span>
-          </p>
-          <Preco centavos={produto.preco_centavos} />
-          <p className="text-sm">{produto.descricao}</p>
-          {/* Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). */}
-          <Comprar produtoId={produto.id} />
+        <div className="grid gap-grid-gutter lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,3fr)] lg:items-start">
+          <Card>
+            <CardContent>
+              {/* Imagem ausente ou quebrada vira o bloco neutro com o nome. */}
+              <ImagemDoProduto src={produto.imagem_url} nome={produto.nome} />
+            </CardContent>
+          </Card>
+
+          <div className="min-w-0 space-y-4">
+            <h1 className="text-2xl font-medium break-words">{produto.nome}</h1>
+            <p className="text-muted-foreground text-sm">
+              Vendido por <span className="text-foreground">{produto.vendedor}</span>
+            </p>
+            <Preco centavos={produto.preco_centavos} />
+            <p className="text-sm break-words">{produto.descricao}</p>
+          </div>
+
+          <CaixaDeCompra
+            produtoId={produto.id}
+            disponivel={produto.estoque_disponivel}
+            quantidadeInicial={quantidadeDaUrl(quantidade, produto.estoque_disponivel)}
+          >
+            {/* Da Página de Produto direto ao Pedido, 1 unidade, sem Carrinho (Épica 4). */}
+            <Comprar produtoId={produto.id} />
+          </CaixaDeCompra>
         </div>
       </main>
     </Casca>

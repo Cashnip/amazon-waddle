@@ -71,7 +71,12 @@ não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
 
    <http://localhost:3000/produtos/a0ae8ff1-da13-5591-9291-4a4f1ce15383> — Caixa de Som
    Portátil Maré, R$ 189,00.
-4. **Confirmar compra** leva a `/pedidos/<id>`, que se atualiza sozinha. Medido no mesmo
+4. A Página de Produto mostra a Categoria no breadcrumb e, na Caixa de compra (à direita a
+   partir de 1024 px), a disponibilidade, a quantidade e "Adicionar ao Carrinho". Sem
+   Sessão, esse botão leva ao Login e volta à mesma página com a quantidade escolhida; com
+   Sessão, fica desabilitado até o Carrinho da Épica 4. Um id inexistente ou de Produto
+   desativado mostra "Este Produto não está disponível."
+5. **Confirmar compra** (1 unidade, na Caixa de compra) leva a `/pedidos/<id>`, que se atualiza sozinha. Medido no mesmo
    ensaio: `AGUARDANDO_PAGAMENTO` → `PAGO` em 7 s (o Provedor Simulado confirma por
    webhook), e daí `EM_SEPARACAO` → `ENVIADO` → `ENTREGUE` de 30 em 30 s, **1 min 41 s**
    do clique ao fim. Nenhum passo é manual: quem move o tempo é a varredura do serviço Go.

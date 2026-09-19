@@ -341,7 +341,7 @@ func TestSessaoEProduto(t *testing.T) {
 		cadastroComCampoInvalido(t, rotas, pool)
 	})
 
-	t.Run("detalhe do Produto semeado", func(t *testing.T) { produtoSemeadoSai(t, rotas) })
+	t.Run("detalhe do Produto semeado", func(t *testing.T) { produtoSemeadoSai(t, rotas, pool) })
 	t.Run("Produto inexistente e identificador malformado", func(t *testing.T) { produtoAusenteDa404(t, rotas) })
 
 	// A partir daqui a ordem importa: a numeração é por ano e conta do

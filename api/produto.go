@@ -21,10 +21,14 @@ type saidaProduto struct {
 	PrecoCentavos int64  `json:"preco_centavos"`
 	ImagemURL     string `json:"imagem_url"`
 	Vendedor      string `json:"vendedor"`
+	CategoriaID   string `json:"categoria_id"`
+	Categoria     string `json:"categoria"`
+	// Sempre o disponível (AD-5), nunca o total: a Reserva não é da tela.
+	EstoqueDisponivel int32 `json:"estoque_disponivel"`
 }
 
 // detalheDoProduto serve só o detalhe. A listagem (GET /api/v1/produtos) é de
-// `busca` e chega na Épica 3.
+// `busca` (AD-16).
 func (s *servidor) detalheDoProduto(w http.ResponseWriter, r *http.Request) {
 	produto, err := catalogo.BuscarProduto(r.Context(), s.pool, r.PathValue("id"))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -44,5 +48,9 @@ func (s *servidor) detalheDoProduto(w http.ResponseWriter, r *http.Request) {
 		PrecoCentavos: produto.PrecoCentavos,
 		ImagemURL:     produto.ImagemURL,
 		Vendedor:      produto.VendedorNome,
+		CategoriaID:   produto.CategoriaID,
+		Categoria:     produto.CategoriaNome,
+
+		EstoqueDisponivel: produto.EstoqueDisponivel,
 	})
 }

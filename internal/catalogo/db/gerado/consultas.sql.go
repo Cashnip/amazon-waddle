@@ -179,23 +179,30 @@ func (q *Queries) BuscarProdutoAdmin(ctx context.Context, id pgtype.UUID) (Busca
 }
 
 const buscarProdutoComVendedor = `-- name: BuscarProdutoComVendedor :one
-SELECT id, nome, descricao, preco_centavos, imagem_url, vendedor_nome
-FROM catalogo.produto_visivel
-WHERE id = $1
+SELECT pv.id, pv.nome, pv.descricao, pv.preco_centavos, pv.imagem_url, pv.vendedor_nome,
+       pv.categoria_id, c.nome AS categoria_nome, pv.estoque_disponivel
+FROM catalogo.produto_visivel pv
+JOIN catalogo.categoria c ON c.id = pv.categoria_id
+WHERE pv.id = $1
 `
 
 type BuscarProdutoComVendedorRow struct {
-	ID            pgtype.UUID
-	Nome          string
-	Descricao     string
-	PrecoCentavos int64
-	ImagemUrl     string
-	VendedorNome  string
+	ID                pgtype.UUID
+	Nome              string
+	Descricao         string
+	PrecoCentavos     int64
+	ImagemUrl         string
+	VendedorNome      string
+	CategoriaID       pgtype.UUID
+	CategoriaNome     string
+	EstoqueDisponivel int32
 }
 
 // A consulta da Página de Produto (FR-9). Lê da VIEW do AD-19: Produto de
 // Vendedor desativado sai daqui como zero linhas, o mesmo 404 do inexistente.
-// `busca_normalizada` fica de fora: é dado de índice.
+// `busca_normalizada` fica de fora: é dado de índice. A Categoria entra por
+// JOIN (3.6), e não pela VIEW: o contrato que `busca` lê não muda por causa
+// de uma tela só. O número é sempre o disponível, nunca o total.
 func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) (BuscarProdutoComVendedorRow, error) {
 	row := q.db.QueryRow(ctx, buscarProdutoComVendedor, id)
 	var i BuscarProdutoComVendedorRow
@@ -206,6 +213,9 @@ func (q *Queries) BuscarProdutoComVendedor(ctx context.Context, id pgtype.UUID) 
 		&i.PrecoCentavos,
 		&i.ImagemUrl,
 		&i.VendedorNome,
+		&i.CategoriaID,
+		&i.CategoriaNome,
+		&i.EstoqueDisponivel,
 	)
 	return i, err
 }

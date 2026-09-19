@@ -49,9 +49,15 @@ type Produto struct {
 	PrecoCentavos int64
 	ImagemURL     string
 	VendedorNome  string
+	CategoriaID   string
+	CategoriaNome string
+	// EstoqueDisponivel é o total menos as Reservas ativas (AD-5), nunca o
+	// total: a Reserva não aparece para o Comprador.
+	EstoqueDisponivel int32
 }
 
-// BuscarProduto devolve o Produto com o nome do Vendedor. Identificador
+// BuscarProduto devolve o Produto com o nome do Vendedor, a Categoria e o
+// Estoque disponível. Identificador
 // malformado e Produto inexistente são a mesma coisa para quem chama:
 // pgx.ErrNoRows, que api/ traduz em 404 — nunca em 500.
 // bd é a DBTX do sqlc pelo mesmo motivo de identidade.Autenticar: `api/` passa
@@ -75,6 +81,10 @@ func BuscarProduto(ctx context.Context, bd gerado.DBTX, id string) (Produto, err
 		PrecoCentavos: linha.PrecoCentavos,
 		ImagemURL:     linha.ImagemUrl,
 		VendedorNome:  linha.VendedorNome,
+		CategoriaID:   linha.CategoriaID.String(),
+		CategoriaNome: linha.CategoriaNome,
+
+		EstoqueDisponivel: linha.EstoqueDisponivel,
 	}, nil
 }
 
