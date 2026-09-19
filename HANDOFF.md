@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está implementada:** as dez estórias estão em `main`, todas em `review` por falta do passeio no navegador. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está em três das cinco estórias:** a 4.1 a 4.3 estão em `main`, em `review`, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. Falta a revalidação na abertura (4.4, FR-19 🔒) e a camada de texto da 4.5.
+**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está implementada:** as dez estórias estão em `main`, todas em `review` por falta do passeio no navegador. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está em quatro das cinco estórias:** a 4.1 a 4.4 estão em `main`, em `review`, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. A 4.4 fechou a FR-19 🔒 na abertura: o `GET` revalida cada linha (`preco_mudou`, `bloqueio`), e a tela abre o `Alert` que bloqueia, com remover e ajustar dentro, e o de preço, com "de X para Y" e confirmação. Falta a camada de texto da 4.5.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,23 +59,34 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-**Primeiro, o passeio no navegador das Épicas 3 e 4**, que tira as dez estórias da Épica 3 e a 4.1 a 4.3 de
+**Primeiro, o passeio no navegador das Épicas 3 e 4**, que tira as dez estórias da Épica 3 e a 4.1 a 4.4 de
 `review` para `done`. As seções Verification das specs dizem o que olhar. Depois, `bmad-build` na **Estória
-4.4**, a revalidação do Carrinho na abertura (FR-19 🔒, que nunca se corta), com a 4.5 logo em seguida.
+4.5**, a camada de texto e composição da tela do Carrinho (UX-DR17), que fecha a Épica 4.
 `epic-3-retrospective` (opcional) e `epic-2-retrospective` continuam `optional`, sem dono.
 
-**O que a 4.1 a 4.3 deixaram pronto, e a 4.4 usa:**
+**O que a 4.4 deixou pronto, e a 4.5 e a Épica 5 usam:**
+- `GET /api/v1/carrinho` devolve, em cada linha, também `preco_visto_centavos`, `estoque_disponivel`,
+  `preco_mudou` e `bloqueio` (`""`, `indisponivel` ou `acima_do_estoque`). **Quem decide é o Go**
+  (`carrinho.bloqueioDe`, e `PrecoMudou` em `carrinho.Itens`); a tela só mostra. Produto desativado e de
+  Vendedor desativado saem iguais (FR-12). A 5.5 reaproveita a mesma regra na entrada do checkout;
+- a tela `web/app/carrinho/meu-carrinho.tsx` abre dois `Alert` acima da lista: o de bloqueio (destrutivo, com
+  **Ajustar para N** — o `PATCH` da 4.3 — e **Remover** dentro) e o de preço (com "Confirmar os novos
+  preços"). **Confirmar o preço não desbloqueia**, e a confirmação é estado da tela: não grava nada (AD-17),
+  então o `Alert` de preço volta quando o Carrinho é reaberto, até o checkout persistir a ciência por
+  `carrinho.ConfirmarPrecoVisto` (5.5, que ainda não existe);
+- **não há botão de avanço**: o checkout é da Épica 5. `revalidacaoDe` em `web/lib/carrinho.ts` já calcula
+  `podeAvancar` (sem bloqueio e sem mudança de preço pendente), testado, e a 5.1 o lê quando puser o botão;
+- ajustar pelo `Alert` chama o `PATCH`, que grava o preço visto de agora — então ajustar também dá ciência
+  do preço daquela linha. É o que a AC da 4.4 descreve ("o preço no momento da última alteração");
+- o Produto invisível deixou de ter botão na linha: o "Remover" mora só no `Alert`.
+
+**O que a 4.1 a 4.3 deixaram pronto:**
 - `GET /api/v1/carrinho` devolve `{itens, unidades, subtotal_centavos}`, e cada linha traz `id`,
   `produto_id`, `quantidade`, `visivel`, `nome`, `imagem_url` e `preco_centavos` — o preço **atual**. É leitura
-  pura (`carrinho.Itens`, AD-17): nunca grava `preco_visto_centavos`, e a 4.4 não pode mudar isso;
-- **a 4.4 precisa de dois dados que o `GET` ainda não devolve:** `preco_visto_centavos`, que a coluna já tem
-  mas `ListarItens` não seleciona, e o Estoque disponível, que `catalogo.Resumos` já lê e `ItemDoCarrinho` não
-  copia. Com eles a tela diz "de X para Y" e reconhece o Item acima do disponível;
+  pura (`carrinho.Itens`, AD-17): nunca grava `preco_visto_centavos`, e nenhuma estória pode mudar isso;
 - `preco_visto_centavos` é gravado pelo `POST` e pelo `PATCH`, com o preço do momento. Quem grava a ciência
   da mudança é o checkout, por `carrinho.ConfirmarPrecoVisto` (5.5), que ainda não existe;
-- **hoje o Produto que saiu da visibilidade aparece em `web/app/carrinho/meu-carrinho.tsx` (`Linha`) como
-  "Produto indisponível." com "Remover"**, sem `Alert` e sem bloquear nada. A 4.4 troca isso pelo `Alert` com as
-  duas ações. Para esse Produto só "remover" existe: o `PATCH` de um Item invisível devolve 404. O "ajustar" vale
+- para o Produto invisível só "remover" existe: o `PATCH` de um Item invisível devolve 404. O "ajustar" vale
   para o Produto visível cujo Estoque disponível ficou abaixo da quantidade, e o `PATCH` o aceita até o
   disponível;
 - a recusa por Estoque é `carrinho.AcimaDoEstoque`, que embrulha `catalogo.ErrEstoqueInsuficiente` e sai por
@@ -89,7 +100,7 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
   do AD-3 está no `.memlog.md` da arquitetura;
 - a tela mostra só "Subtotal", sem Frete nem total estimado. A 4.5 é a camada de texto e composição sobre ela.
   A **tela `/carrinho` nunca foi aberta num navegador**, e a linha "Tela" da matriz não tem teste automatizado
-  (`deferred-work.md`): o `web/` só roda `node --test` sobre `lib/`.
+  (`deferred-work.md`): o `web/` só roda `node --test` sobre `lib/`. Isso vale também para os dois `Alert` da 4.4.
 
 **O que a 3.10 deixou pronto e a Épica 4 não refaz:**
 - `web/components/casca.tsx` é client, e o Carrinho com contador já está nela, à esquerda do Menu da conta. Ela
@@ -139,9 +150,11 @@ clique na Faixa; a linha "Categorias falham" não tem teste automatizado. Por is
 "Produto Manual", este com imagem quebrada de propósito, para conferir o bloco neutro. `docker compose down -v`
 apaga os dois.
 
-**Também não verificado na 4.1 a 4.3:** o passeio a 360 e 1440 px — adicionar, estourar o Estoque, editar a
+**Também não verificado na 4.1 a 4.4:** o passeio a 360 e 1440 px — adicionar, estourar o Estoque, editar a
 quantidade na linha, remover, esvaziar com `Esc` e com confirmação, e o contador da barra sem recarregar — e a
-ida e volta pelo Login que cria o Item. `go test ./...` e o build Docker do `web/` estão verdes. Por isso as três
+ida e volta pelo Login que cria o Item. Da 4.4: mudar o preço no admin e abrir o Carrinho, baixar o Estoque
+abaixo da quantidade e ajustar, desativar o Produto e o Vendedor, confirmar o preço com o bloqueio de pé, e a
+cor dos botões `outline` dentro do `Alert`. `go test ./...` e o build Docker do `web/` estão verdes. Por isso as quatro
 estão em `review`.
 
 Os tetos de preço (R$ 1.000.000,00) e de Estoque (100.000) foram escolhidos na 3.3, porque nenhum documento os
@@ -251,8 +264,8 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épicas 1 e 2 fechadas; Épica 3 e estórias 4.1 a 4.3 em main, todas em review por falta do passeio no navegador.
-Próximo passo: Estória 4.4 (revalidação do Carrinho na abertura), depois a 4.5.
+Épicas 1 e 2 fechadas; Épica 3 e estórias 4.1 a 4.4 em main, todas em review por falta do passeio no navegador.
+Próximo passo: Estória 4.5 (a tela do Carrinho não promete o que o sistema não faz).
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
