@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está fechada:** as dez estórias estão em `main`. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está fechada:** as cinco estórias estão em `main`, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. A 4.4 fechou a FR-19 🔒 na abertura: o `GET` revalida cada linha (`preco_mudou`, `bloqueio`), e a tela abre o `Alert` que bloqueia, com remover e ajustar dentro, e o de preço, com "de X para Y" e confirmação. A 4.5 fechou a composição da tela: o `GET` passa `frete_isencao_centavos` da Config, a tela escreve "Faltam R$ X para o Frete grátis." em valor absoluto, sem barra de progresso e calando acima do limiar, e o botão provisório da Página de Produto passa a dizer "Confirmar o Pedido" — era a última violação do glossário. **A Épica 5 começou:** a 5.1 está em `main`, `done` depois da leitura humana de 2026-09-19, e a máquina de estados do Pedido está completa — a tabela de nove transições do AD-3 é dado em `internal/pedido/maquina.go`, `Transicionar` aplica o efeito sobre o Estoque dentro dele, as três recusas existem com códigos distintos, o Status passou a `SEPARANDO` (era `EM_SEPARACAO` no código), e conteúdo e histórico do Pedido são imutáveis por gatilho do banco. A 5.2 está em `main`, em `review` até a leitura humana: o checkout ganhou o passo Endereço (`/checkout/endereco`), com escolha entre os Endereços do Comprador, cadastro em `Dialog` e o formulário direto para quem não tem nenhum, e o Carrinho ganhou o botão "Fechar o Pedido". **A 5.3 está em `main`** (`dbcb2b8`), em `review` até a leitura humana: o Frete existe, é dado em `pedido.faixa_frete` semeada na própria migração, e a Revisão mostra Subtotal, Frete e total pedidos ao Go a cada abertura.
+**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está fechada:** as dez estórias estão em `main`. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está fechada:** as cinco estórias estão em `main`, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. A 4.4 fechou a FR-19 🔒 na abertura: o `GET` revalida cada linha (`preco_mudou`, `bloqueio`), e a tela abre o `Alert` que bloqueia, com remover e ajustar dentro, e o de preço, com "de X para Y" e confirmação. A 4.5 fechou a composição da tela: o `GET` passa `frete_isencao_centavos` da Config, a tela escreve "Faltam R$ X para o Frete grátis." em valor absoluto, sem barra de progresso e calando acima do limiar, e o botão provisório da Página de Produto passa a dizer "Confirmar o Pedido" — era a última violação do glossário. **A Épica 5 começou:** a 5.1 está em `main`, `done` depois da leitura humana de 2026-09-19, e a máquina de estados do Pedido está completa — a tabela de nove transições do AD-3 é dado em `internal/pedido/maquina.go`, `Transicionar` aplica o efeito sobre o Estoque dentro dele, as três recusas existem com códigos distintos, o Status passou a `SEPARANDO` (era `EM_SEPARACAO` no código), e conteúdo e histórico do Pedido são imutáveis por gatilho do banco. A 5.2 está em `main`, em `review` até a leitura humana: o checkout ganhou o passo Endereço (`/checkout/endereco`), com escolha entre os Endereços do Comprador, cadastro em `Dialog` e o formulário direto para quem não tem nenhum, e o Carrinho ganhou o botão "Fechar o Pedido". A 5.3 está em `main` (`dbcb2b8`), em `review` até a leitura humana: o Frete existe, é dado em `pedido.faixa_frete` semeada na própria migração, e a Revisão mostra Subtotal, Frete e total pedidos ao Go a cada abertura. **A 5.4 está em `main`** (`6e5984f`), também em `review`: a Revisão deixou de ser esboço — Itens de Carrinho com preço unitário e parcela, Endereço, os três valores do Go, a forma de pagamento declarada sem um campo de cartão, e o Confirmar Pedido no único laranja do fluxo, desabilitado até a 5.6 ligar a criação do Pedido. A `Idempotency-Key` nasce ao entrar na Revisão e fica em `sessionStorage`, para sobreviver ao recarregamento que ela existe para proteger.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,13 +59,47 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 5.4** (Revisão do Pedido). A 5.3 está em `main` (`dbcb2b8`) e a 5.2 em `main`
-(`400861b`), as duas em `review` no `sprint-status.yaml`: falta a leitura humana
-(`bmad-checkpoint-preview`) e o passeio da seção Verification das duas specs — 360 e 1440 px, só pelo
-teclado —, que ninguém fez. Da 5.3, o passeio é trocar um Endereço de SP por um da BA na Revisão e ver
-o Frete e o total mudarem, e encher o Carrinho acima de R$ 299,00 para ver "Grátis". A 5.1 está `done`
-desde 2026-09-19.
+`bmad-build` na **Estória 5.5** (Entrada no checkout — revalidação e confirmação do preço visto 🔒). A 5.4
+está em `main` (`6e5984f`), a 5.3 em `main` (`dbcb2b8`) e a 5.2 em `main` (`400861b`), as três em `review`
+no `sprint-status.yaml`: falta a leitura humana (`bmad-checkpoint-preview`) e o passeio da seção
+Verification das três specs — 360 e 1440 px, só pelo teclado —, que ninguém fez. **Nenhuma tela da Épica 5
+foi aberta num navegador.** Da 5.3 e da 5.4, o passeio é o mesmo: trocar um Endereço de SP por um da BA na
+Revisão e ver o Frete e o total mudarem, encher o Carrinho acima de R$ 299,00 para ver "Grátis", e
+recarregar a Revisão conferindo que `azamon:checkout:idempotency_key` não muda. A 5.1 está `done` desde
+2026-09-19.
 A retrospectiva da Épica 3 está `done` (`epic-3-retro-2026-09-19.md`); `epic-4-retrospective` e `epic-2-retrospective` continuam `optional`, sem dono.
+
+**O que a 5.4 deixou pronto, e a 5.5 e a 5.6 usam:**
+- **a Revisão é a tela de verdade** (`web/app/checkout/revisao/revisao-do-pedido.tsx`, que substituiu o
+  esboço): Itens de Carrinho com preço unitário e parcela, Endereço, o bloco Subtotal/Frete/Total vindo
+  pronto do Go, a forma de pagamento declarada numa frase — **sem um campo de cartão em lugar nenhum** — e o
+  Confirmar Pedido em `{colors.primary-strong}`, em pill;
+- **a `Idempotency-Key` existe, e nasce na *entrada* da Revisão**, nunca no clique: gerada no clique, o duplo
+  clique produziria duas chaves e dois Pedidos, e a idempotência do servidor estaria correta e inútil. Fica em
+  `sessionStorage` (`azamon:checkout:idempotency_key`), porque o recarregamento é o caso que ela existe para
+  proteger. `chaveDeIdempotencia`, `uuidNovo`, `pareceUUIDV4` e `limparCheckout` em `web/lib/checkout.ts`;
+- **`uuidNovo` cai de `crypto.randomUUID` para `crypto.getRandomValues`**: `randomUUID` só existe em contexto
+  seguro, e a apresentação pode rodar por IP da LAN, que não é `localhost` nem HTTPS. Sem rede e sem
+  biblioteca (NFR-15). O que estava guardado só é reaproveitado se casa com a forma do UUIDv4 — na 5.6 a
+  string vira cabeçalho HTTP, onde caractere fora do *token* quebra a requisição;
+- **`CRIACAO_DISPONIVEL` é a única linha que a 5.6 vira** para ligar a confirmação. O botão acumula razões
+  (`razoes`), e a guarda de armazenamento trava sozinha: ligar a criação **não** alcança nem apaga o
+  `comChave`. Quem envia a chave e chama `limparCheckout` é a 5.6;
+- **a Revisão pergunta o Frete a cada abertura e não guarda nada da cotação** — a 5.4 manteve as duas coisas
+  que a 5.3 deixou, e é isso que faz trocar o Endereço recalcular o Frete;
+- **a chave sobrevive a uma alteração do Carrinho entre duas passagens pela Revisão, e a 5.6 precisa decidir
+  o que fazer com isso.** Quem entra na Revisão, volta ao Carrinho, muda a quantidade e retorna confirma sob a
+  **mesma** chave descrevendo outro Carrinho — e, pela AC da 5.6, mesma chave com corpo diferente é `409`,
+  recusa para um Comprador legítimo. Está no `deferred-work.md`;
+- **um Carrinho só de Produtos invisíveis não é vazio e chega à Revisão**, com linhas "Produto indisponível."
+  sem quantidade nem parcela. Quem fecha o caminho é a **5.5**, com a revalidação na entrada do checkout
+  (FR-19) — a 5.4 tinha a revalidação em `Never`;
+- **o laranja aparece duas vezes no aplicativo** enquanto o "Confirmar o Pedido" do esqueleto continuar na
+  Página de Produto (`web/app/produtos/[id]/comprar.tsx:63`). Quem o remove é a 5.6, ao refazer o
+  `POST /api/v1/pedidos`: o caminho de um Produto e uma unidade some junto com o botão;
+- **a tela nunca foi aberta num navegador**, e as cinco linhas de tela da matriz da spec (Revisão completa,
+  Carrinho vazio, escolha inválida, 401, falha de rede) não têm teste automatizado — o `web/` não tem bancada
+  para montar componente, e `node --test` só alcança `lib/`. As linhas que são regra estão cobertas: 67 testes.
 
 **O que a 5.3 deixou pronto, e a 5.4 a 5.6 usam:**
 - **a Regra de Frete é dado**: `pedido.faixa_frete` (faixa de CEP → região → `valor_centavos`), mais a pura
@@ -341,8 +375,9 @@ Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
 Épicas 1 a 4 fechadas; Estórias 5.1 (máquina de estados, done), 5.2 (Endereço no
-checkout, review) e 5.3 (cálculo do Frete, review) em main. Próximo passo:
-Estória 5.4 (Revisão do Pedido).
+checkout), 5.3 (cálculo do Frete) e 5.4 (Revisão do Pedido) em main, as três
+últimas em review. Próximo passo: Estória 5.5 (entrada no checkout —
+revalidação e confirmação do preço visto).
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
