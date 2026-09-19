@@ -187,7 +187,7 @@ export function MeuCarrinho() {
     );
   }
 
-  const { bloqueios, mudancas } = revalidacaoDe(carrinho, confirmados);
+  const { bloqueios, mudancas, podeAvancar } = revalidacaoDe(carrinho, confirmados);
   const falta = faltaParaFreteGratis(carrinho.subtotal_centavos, carrinho.frete_isencao_centavos);
 
   return (
@@ -285,6 +285,13 @@ export function MeuCarrinho() {
               Faltam <span className="tabular-nums">{formatarPreco(falta)}</span> para o Frete grátis.
             </p>
           )}
+          {/* A entrada do checkout (5.2). Desabilitado enquanto há bloqueio ou
+              preço a confirmar — os dois `Alert` acima dizem o quê. Não é o
+              passo irreversível, por isso sem laranja: esse é o Confirmar
+              Pedido, na Revisão. */}
+          <Button className="mt-3" disabled={!podeAvancar} onClick={() => router.push("/checkout/endereco")}>
+            Fechar o Pedido
+          </Button>
         </div>
       </div>
 

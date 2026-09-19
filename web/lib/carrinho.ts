@@ -101,7 +101,7 @@ export type Revalidacao = {
   // As linhas de preço mudado que o Comprador ainda não confirmou.
   mudancas: LinhaDoCarrinho[];
   // Sem bloqueio e sem mudança pendente. Confirmar preço não desbloqueia: as
-  // duas listas são independentes. A 5.1 lê isto quando o checkout existir.
+  // duas listas são independentes. O botão "Fechar o Pedido" (5.2) lê isto.
   podeAvancar: boolean;
 };
 

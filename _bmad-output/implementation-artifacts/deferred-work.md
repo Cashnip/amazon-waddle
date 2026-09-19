@@ -254,3 +254,18 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
   summary: A imutabilidade de `pedido` no banco é proteção contra engano, não contra o próprio serviço: o `azamon` conecta como superusuário.
   evidence: leitura humana da 5.1 (2026-09-19). `POSTGRES_USER: azamon` em `docker-compose.yml:34` cria superusuário, e qualquer sessão dele pode `SET session_replication_role = replica`, como faz `envelhecerHistorico`. Basta para o trabalho; não afirmar mais que isso na apresentação, ou criar um papel sem superusuário para o serviço.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-selecao-de-endereco-no-checkout.md`
+  summary: A consequência "trocar o Endereço recalcula o Frete" (FR-22) ainda não tem teste que a prove: a 5.2 só garante a causa, que o navegador guarda o `endereco_id` e nada mais.
+  evidence: `web/lib/checkout.ts` guarda só o `id` em `sessionStorage`, e `web/scripts/checkout.test.mjs` prova que nenhum Frete, CEP ou total atravessa a ida ao Carrinho. O Frete não existe até a 5.3, e a Revisão que o pede ao Go é a 5.4 — é lá que um teste precisa trocar o Endereço e ver o Frete mudar.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-selecao-de-endereco-no-checkout.md`
+  summary: O `RadioGroupItem` do shadcn estiliza o marcado com `data-checked:`, mas o Radix instalado marca com `data-state="checked"`, então o fundo e a borda de marcado nunca aplicam — só o ponto do `Indicator` aparece.
+  evidence: `web/components/ui/radio-group.tsx` usa `data-checked:bg-primary` e `data-checked:border-primary`; `node_modules/@radix-ui/react-radio-group` só emite `data-state`. O checkout da 5.2 contorna no próprio cartão com `has-[[data-state=checked]]:border-foreground`, sem editar o componente. Quem decide é o dono da UX: o `DESIGN.md` manda usar o shadcn sem alteração.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-selecao-de-endereco-no-checkout.md`
+  summary: Quem digita `/checkout/endereco` direto chega ao passo com o Carrinho bloqueado ou com preço a confirmar — o passo só recusa o Carrinho vazio, e o `podeAvancar` vale só para o botão "Fechar o Pedido".
+  evidence: `escolha-de-endereco.tsx` confere só `itens.length === 0`; a confirmação de preço é estado da tela do Carrinho (AD-17) e se perde na navegação. A revalidação no servidor na entrada do checkout é da 5.5, que deve fechar este caminho.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-selecao-de-endereco-no-checkout.md`
+  summary: A escolha `azamon:checkout:endereco_id` no `sessionStorage` nunca é apagada — nem na criação do Pedido, nem ao encerrar a Sessão.
+  evidence: Um segundo checkout na mesma aba volta com a escolha antiga marcada; outro Comprador na mesma aba herda a chave (inofensivo, porque `enderecoMarcado` cai no primeiro da própria lista). Apagar na confirmação é da 5.4/5.6.
