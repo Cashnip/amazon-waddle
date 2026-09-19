@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-18 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está no meio:** da 3.1 à 3.9 estão em `main`; falta só a 3.10. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade.
+**Atualizado:** 2026-09-18 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está implementada:** as dez estórias estão em `main`, todas em `review` por falta do passeio no navegador. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,21 +59,29 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 3.10 — Chrome da loja: barra superior, busca global e Faixa de Categorias**,
-que fecha a Épica 3. Uma lente de revisão basta. `epic-2-retrospective` continua `optional`, sem dono.
+**Primeiro, o passeio no navegador da Épica 3**, que tira as dez estórias de `review` para `done`. As
+seções Verification das specs dizem o que olhar. Depois, `epic-3-retrospective` (opcional) ou `bmad-build` na
+**Estória 4.1**, que abre o Carrinho. `epic-2-retrospective` continua `optional`, sem dono.
 
-**O que a 3.6 deixou pronto e a 3.10 não refaz:**
+**O que a 3.10 deixou pronto e a Épica 4 não refaz:**
+- `web/components/casca.tsx` é client e é o lugar do Carrinho com contador, à direita do Menu da conta. Ela
+  carrega `GET /api/v1/categorias` no navegador a cada montagem;
+- a busca global (`web/components/busca-global.tsx`) é uma consulta nova: vai a `/?termo=…&categoria=…` e
+  descarta a faixa de preço e a ordenação. O painel de filtros não tem mais campo de termo, mas o preserva;
+- `rounded-full` tem exatamente os quatro usos do UX-DR5. O botão "Adicionar ao Carrinho" do Cartão de
+  Produto, quando nascer, entra como botão de ação, em pill;
+- `/redefinir-senha/[token]` ainda monta o próprio cabeçalho, sem a `Casca`. Está no `deferred-work.md`.
+
+**O que a 3.6 deixou pronto:**
 - `GET /api/v1/produtos/<id>` devolve `categoria_id`, `categoria` e `estoque_disponivel`;
-- o breadcrumb da Página de Produto já leva a `/?categoria=<id>`, o mesmo destino da Faixa;
-- a Caixa de compra consulta a Sessão por `GET /api/v1/sessao` e trata só o 401 como "sem Sessão";
-- `web/lib/quantidade.ts` guarda o teto de 10 por Item de Carrinho, que a Épica 4 reaproveita.
+- a Caixa de compra consulta a Sessão por `GET /api/v1/sessao` e trata só o 401 como "sem Sessão"; sem Sessão,
+  "Adicionar ao Carrinho" vai ao Login com `?quantidade=N` no destino, e a 4.x completa a volta criando o Item;
+- `web/lib/quantidade.ts` guarda o teto de 10 por Item de Carrinho.
 
-**O que a 3.7–3.9 deixou pronto e a 3.10 não refaz:**
+**O que a 3.7–3.9 deixou pronto:**
 - `GET /api/v1/produtos` aceita `termo`, `categoria`, `preco_min`, `preco_max` (centavos) e `ordenacao`
-  (`recentes`, o padrão, `preco_asc` e `preco_desc`). Clicar numa Categoria da Faixa é só `/?categoria=<id>`;
-- `GET /api/v1/categorias`, no mux raiz e sem Sessão, é a lista da Faixa de Categorias;
-- **o campo de termo mora provisoriamente no painel de filtros** (`web/app/filtros.tsx`), por decisão do humano.
-  A 3.10 o leva para a busca global da barra superior e o tira do painel;
+  (`recentes`, o padrão, `preco_asc` e `preco_desc`);
+- `GET /api/v1/categorias`, no mux raiz e sem Sessão;
 - `catalogo.produto.criado_em` existe e a VIEW o expõe. É o que "mais recentes" ordena.
 
 **A interface de Estoque que as Épicas 4 a 6 consomem já está fechada:**
@@ -91,13 +99,14 @@ que fecha a Épica 3. Uma lente de revisão basta. `epic-2-retrospective` contin
 O AD-16 foi emendado na 3.2/3.3: a proibição de listar Produto fora de `busca` vale para a **loja**, e a
 listagem administrativa é do `catalogo`.
 
-**Não verificado nas 3.1–3.9: nenhuma tela da Épica 3 foi aberta num navegador.** `go test ./...`
+**Não verificado nas 3.1–3.10: nenhuma tela da Épica 3 foi aberta num navegador.** `go test ./...`
 e `npm run build` estão verdes. Faltam o passeio manual das seções Verification das três specs, a troca da
 imagem quebrada pelo bloco neutro, o `Sheet` a 360 px e o "Ajustar Estoque" com a recusa em linha. Da 3.5, falta passear pela Vitrine a 360, 640, 1024 e 1440 px, e a linha "Catálogo
 vazio" da matriz não tem teste automatizado. Da 3.7–3.9, faltam o passeio da busca, dos filtros e da ordenação nas quatro larguras, e as duas linhas de tela da
 matriz, que também não têm teste automatizado. Da 3.6, faltam o passeio a 360 e 1440 px e a ida e volta pelo Login com
 quantidade 3; as linhas "Invisível" e "Esgotado" não têm teste automatizado, e a tela "não disponível" sai com HTTP 200,
-não 404, porque o `loading.tsx` começa o streaming antes do `notFound()`. Por isso as nove estórias estão em `review`, e não em `done`. O Postgres do `docker compose` guarda "Categoria Manual" e
+não 404, porque o `loading.tsx` começa o streaming antes do `notFound()`. Da 3.10, faltam o passeio a 360 e 1440 px, a busca com Enter a partir da Página de Produto e o
+clique na Faixa; a linha "Categorias falham" não tem teste automatizado. Por isso as dez estórias estão em `review`, e não em `done`. O Postgres do `docker compose` guarda "Categoria Manual" e
 "Produto Manual", este com imagem quebrada de propósito, para conferir o bloco neutro. `docker compose down -v`
 apaga os dois.
 
