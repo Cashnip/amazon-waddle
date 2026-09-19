@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 2026-09-19
+last_updated: 09-19-2026 14:34
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   3-8-filtros-de-categoria-e-faixa-de-preço: done
   3-9-ordenação: done
   3-10-chrome-da-loja-barra-superior-busca-global-e-faixa-de-catego: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   epic-4: done
   4-1-carrinho-exclusivo-de-comprador-autenticado: done
@@ -122,7 +122,7 @@ action_items:
     action: "Trocar o uuid de web/app/page.tsx:102 por um Produto de centavos ,00
       para que o unico caminho clicavel feche o ciclo ate ENTREGUE"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-3-fechar-o-furo-do-ad-1-acrescentar-media"
     epic: 1
@@ -136,7 +136,7 @@ action_items:
     action: "Acrescentar .agent/ .kiro/ .gemini/ .opencode/ .bmad/ .local/ ao .gitignore
       — o .agents/ atual nao casa com nenhum diretorio real"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-5-por-um-portao-automatizado-sobre-go-test"
     epic: 1
@@ -150,7 +150,7 @@ action_items:
     action: "Extrair Preco para web/components/preco.tsx com Intl.NumberFormat(pt-BR)
       como o AD-9 manda"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-7-limitar-o-dominio-de-azamon_provedor_-_a"
     epic: 1
@@ -190,7 +190,7 @@ action_items:
     action: "Passar a nomear a estoria no assunto do commit (feat(1.7): ...) para
       que a atribuicao nao dependa de git log -S"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-12-reconciliar-o-grafo-do-ad-1-na-espinha-c"
     epic: 1
@@ -199,3 +199,91 @@ action_items:
     owner: "Sung"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
+  - id: "epic-3-retro-item-13-apontar-a-sonda-do-nfr-4-db-medicao_nfr4"
+    epic: 3
+    action: "Apontar a sonda do NFR-4 (db/medicao_nfr4_test.go) para a consulta real
+      da busca: VIEW produto_visivel, ORDER BY CASE e a contagem ContarVisiveis, que
+      roda em toda requisicao. Baseline medido na retro: pior p95 8,47 ms"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-14-por-o-portao-automatizado-sobre-go-test"
+    epic: 3
+    action: "Por o portao automatizado sobre go test ./... e npm test — item 5 da
+      Epica 1, ainda aberto"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-15-acrescentar-uma-verificacao-de-largura-d"
+    epic: 3
+    action: "Acrescentar uma verificacao de largura de viewport ao laco do dev: o
+      defeito das quatro colunas da Vitrine era invisivel a go test e npm test por
+      construcao"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-16-reconciliar-epics-md-1041-o-verde-availa"
+    epic: 3
+    action: "Reconciliar epics.md:1041 — o verde available tem dois sentidos (Estoque
+      disponivel e selo ENTREGUE) conforme DESIGN.md:121, nao um"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-17-fechar-o-furo-do-ad-1-media-catalogo-na"
+    epic: 3
+    action: "Fechar o furo do AD-1: media->catalogo na tabela de internal/fronteira_test.go:35
+      e -tags no go list de :103 — as duas metades"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-18-reconciliar-o-grafo-do-ad-1-em-architect"
+    epic: 3
+    action: "Reconciliar o grafo do AD-1 em ARCHITECTURE-SPINE.md:51-68 com a tabela
+      real, ou parar de chama-lo de exaustivo — a Estoria 7.2 o le"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-19-reconciliar-em_separacao-architecture-sp"
+    epic: 3
+    action: "Reconciliar EM_SEPARACAO: ARCHITECTURE-SPINE.md:94,95,97 e addendum.md:48,49,52
+      dizem SEPARANDO, o CHECK da migracao diz EM_SEPARACAO — a Epica 6 implementa
+      essas transicoes"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-20-reescrever-o-item-9-da-retro-da-epica-1"
+    epic: 3
+    action: "Reescrever o item 9 da retro da Epica 1 para caber na politica append-only
+      do deferred-work.md, ou mudar a politica"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-21-decidir-sobre-a-triplicacao-dos-cruds-ad"
+    epic: 3
+    action: "Decidir sobre a triplicacao dos CRUDs administrativos: vendedores.tsx
+      e categorias.tsx sao 82% identicas em 611 linhas, produtos.tsx e a terceira
+      copia. Extrair ou aceitar explicitamente"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-22-remover-a-linha-redundante-da-tabela-de"
+    epic: 3
+    action: "Remover a linha redundante da tabela de posse do AD-16 em ARCHITECTURE-SPINE.md:234,
+      contida em :233"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-23-voltar-a-alimentar-o-deferred-work-md-e"
+    epic: 3
+    action: "Voltar a alimentar o deferred-work.md e escrever uma spec por estoria:
+      cinco das dez estorias da Epica 3 nao deixaram entrada nenhuma"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-3-retro-item-24-rodar-a-retrospectiva-da-epica-2-epic-2"
+    epic: 3
+    action: "Rodar a retrospectiva da Epica 2 — epic-2-retrospective segue optional
+      e sem documento, e e a epica com mais entradas no deferred-work.md (25)"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
