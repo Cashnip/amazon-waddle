@@ -22,9 +22,11 @@ INSERT INTO pedido.item_pedido
     (pedido_id, produto_id, nome, vendedor_nome, preco_praticado_centavos, quantidade)
 VALUES ($1, $2, $3, $4, $5, $6);
 
+-- O `motivo` é anulável: nem toda transição tem um. `sqlc.narg` o deixa
+-- chegar como NULL, e não como texto vazio, que seria um motivo sem conteúdo.
 -- name: RegistrarTransicao :exec
-INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, autor)
-VALUES ($1, $2, $3, $4);
+INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, ator, motivo)
+VALUES (@pedido_id, @status_anterior, @status_novo, @ator, sqlc.narg('motivo'));
 
 -- O único ponto de mutação do Status (AD-6), e é compare-and-swap: o estado de
 -- origem entra no WHERE, e zero linhas afetadas significa "o estado já
@@ -32,6 +34,28 @@ VALUES ($1, $2, $3, $4);
 -- esperado para quem chama.
 -- name: AvancarStatus :execrows
 UPDATE pedido.pedido SET status = @para WHERE id = @pedido_id AND status = @de;
+
+-- A releitura do Status depois de um compare-and-swap perdido: é ela que
+-- separa "outro ator avançou" de "o Pedido saiu da janela de cancelamento".
+-- Sem trava — quem ganhou já comitou, ou o UPDATE acima teria esperado por ele.
+-- name: StatusDoPedido :one
+SELECT status FROM pedido.pedido WHERE id = @pedido_id;
+
+-- Os Itens do próprio Pedido, que é o que a nova Tentativa reserva de novo
+-- (AD-3): nada é remontado a partir do Carrinho.
+-- name: ItensParaReserva :many
+SELECT produto_id, quantidade
+FROM pedido.item_pedido
+WHERE pedido_id = @pedido_id
+ORDER BY produto_id;
+
+-- O histórico em ordem de acontecimento. O `id` desempata duas transições no
+-- mesmo instante: é uuidv7(), ordenado no tempo por construção.
+-- name: HistoricoDoPedido :many
+SELECT status_anterior, status_novo, ator, motivo, ocorrido_em
+FROM pedido.transicao_status
+WHERE pedido_id = @pedido_id
+ORDER BY ocorrido_em, id;
 
 -- A leitura da tela de acompanhamento. O dono entra no WHERE, e não numa
 -- checagem depois: Pedido de outro Comprador e Pedido inexistente saem os dois
@@ -76,12 +100,10 @@ FOR UPDATE SKIP LOCKED;
 -- "está neste estado desde quando" —, nunca de estado em memória, e é por isso
 -- que reiniciar o contêiner retoma cada Pedido de onde parou.
 --
--- ponytail: varredura sequencial de pedido.pedido a cada tique, com um
--- max(ocorrido_em) correlacionado por linha — a tabela só tem
--- pedido_comprador_id_idx, e esta épica proíbe migração nova. Na demonstração
--- são dezenas de Pedidos e não se mede. Quando o volume justificar, os índices
--- que a levantam são `pedido (status, id)` e
--- `transicao_status (pedido_id, ocorrido_em DESC)`, sem tocar na consulta.
+-- ponytail: varredura sequencial de pedido.pedido a cada tique. O
+-- max(ocorrido_em) correlacionado já tem `transicao_status (pedido_id,
+-- ocorrido_em)`, da 5.1; quando o volume justificar, o índice que falta é
+-- `pedido (status, id)`, sem tocar na consulta.
 -- name: PedidosParaAvancar :many
 SELECT p.id
 FROM pedido.pedido p

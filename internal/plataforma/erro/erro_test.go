@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cashnip/amazon-waddle/internal/pedido"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
@@ -173,6 +174,62 @@ func TestEstoqueInsuficienteNomeiaODisponivel(t *testing.T) {
 		if dados["produto_id"] != "p-1" || dados["disponivel"] != float64(caso.disponivel) || dados["solicitado"] != float64(4000) {
 			t.Errorf("%d: dados = %v", caso.disponivel, corpo["dados"])
 		}
+	}
+}
+
+// As três recusas da máquina de estados saem com três códigos, nunca um só
+// (AD-3), e a transição inválida leva os destinos legais em
+// `dados.permitidas` sem que o handler precise extraí-los. Um Status sem saída
+// serializa em `[]`, e não em `null`.
+func TestRecusasDaMaquinaDeEstados(t *testing.T) {
+	casos := []struct {
+		err        error
+		codigo     string
+		permitidas []any
+	}{
+		{fmt.Errorf("avançar: %w", pedido.ErrEstadoJaAvancado), "ESTADO_JA_AVANCADO", nil},
+		{pedido.ErrForaDaJanelaDeCancelamento, "FORA_DA_JANELA_DE_CANCELAMENTO", nil},
+		{pedido.TransicaoInvalida{De: pedido.StatusPago, Para: pedido.StatusEntregue,
+			Permitidas: []pedido.Status{pedido.StatusSeparando}}, "TRANSICAO_INVALIDA", []any{"SEPARANDO"}},
+		{pedido.TransicaoInvalida{De: pedido.StatusCancelado, Para: pedido.StatusSeparando,
+			Permitidas: []pedido.Status{}}, "TRANSICAO_INVALIDA", []any{}},
+		// Montada à mão, sem Permitidas: sai `[]`, nunca `null`.
+		{pedido.TransicaoInvalida{De: pedido.StatusCancelado, Para: pedido.StatusSeparando}, "TRANSICAO_INVALIDA", []any{}},
+		// Embrulhada: as permitidas saem do mesmo jeito.
+		{fmt.Errorf("avançar: %w", pedido.TransicaoInvalida{De: pedido.StatusPago, Para: pedido.StatusEntregue,
+			Permitidas: []pedido.Status{pedido.StatusSeparando}}), "TRANSICAO_INVALIDA", []any{"SEPARANDO"}},
+	}
+	for _, caso := range casos {
+		resp := escrever(t, caso.err, nil)
+		if resp.Code != http.StatusConflict {
+			t.Errorf("%s: status = %d, quero 409", caso.codigo, resp.Code)
+		}
+		corpo := decodificar(t, resp)
+		if corpo["codigo"] != caso.codigo {
+			t.Errorf("codigo = %v, quero %s", corpo["codigo"], caso.codigo)
+		}
+		if caso.permitidas == nil {
+			if corpo["dados"] != nil {
+				t.Errorf("%s: dados = %v, quero null", caso.codigo, corpo["dados"])
+			}
+			continue
+		}
+		dados, _ := corpo["dados"].(map[string]any)
+		permitidas, ok := dados["permitidas"].([]any)
+		if !ok || fmt.Sprint(permitidas) != fmt.Sprint(caso.permitidas) {
+			t.Errorf("%s: dados = %v, quero permitidas %v", caso.codigo, corpo["dados"], caso.permitidas)
+		}
+	}
+}
+
+// Quem já passa `dados` não perde as permitidas: elas entram no mesmo mapa.
+func TestPermitidasSomamAosDadosDeQuemChama(t *testing.T) {
+	err := pedido.TransicaoInvalida{De: pedido.StatusPago, Para: pedido.StatusEntregue,
+		Permitidas: []pedido.Status{pedido.StatusSeparando}}
+	corpo := decodificar(t, escrever(t, err, map[string]any{"pedido": "AZ-2026-000001"}))
+	dados, _ := corpo["dados"].(map[string]any)
+	if dados["pedido"] != "AZ-2026-000001" || fmt.Sprint(dados["permitidas"]) != "[SEPARANDO]" {
+		t.Errorf("dados = %v; quero o campo de quem chamou e as permitidas", corpo["dados"])
 	}
 }
 

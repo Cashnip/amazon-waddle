@@ -502,6 +502,10 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o Carrinho: revalidação de preço, Estoque e visibilidade", func(t *testing.T) {
 		carrinhoRevalidado(t, rotas, pool)
 	})
+	// A 5.1, com conta e Produto próprios: a máquina de estados contra o banco.
+	t.Run("a máquina de estados: efeitos, recusas, histórico e imutabilidade", func(t *testing.T) {
+		maquinaDeEstados(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

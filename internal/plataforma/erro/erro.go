@@ -59,7 +59,13 @@ var registro = []traducao{
 	// 409 nos dois: a requisição está correta, o estado do mundo é que não
 	// comporta. O disponível viaja em `dados`, e não na mensagem.
 	{catalogo.ErrEstoqueInsuficiente, http.StatusConflict, "ESTOQUE_INSUFICIENTE"},
+	// As três recusas da máquina de estados (AD-3), nunca fundidas: a tela
+	// trata cada uma de um jeito. As três são 409 — o pedido de transição veio
+	// bem formado, o que não comporta é o Status do Pedido. A transição
+	// inválida leva `dados.permitidas`, preenchido em Escrever.
 	{pedido.ErrEstadoJaAvancado, http.StatusConflict, "ESTADO_JA_AVANCADO"},
+	{pedido.ErrTransicaoInvalida, http.StatusConflict, "TRANSICAO_INVALIDA"},
+	{pedido.ErrForaDaJanelaDeCancelamento, http.StatusConflict, "FORA_DA_JANELA_DE_CANCELAMENTO"},
 	// 409 nos dois: o nome duplicado e o Vendedor com Produtos são estado do
 	// mundo. O campo do duplicado viaja em `dados`, como no e-mail.
 	{catalogo.ErrVendedorJaCadastrado, http.StatusConflict, "VENDEDOR_JA_CADASTRADO"},
@@ -95,6 +101,23 @@ func Escrever(ctx context.Context, w http.ResponseWriter, err error, dados any) 
 			// desenvolvedor e não fala a Voice and Tone da UX.
 			status, codigo, mensagem, conhecido = t.status, t.codigo, t.sentinela.Error(), true
 			break
+		}
+	}
+	// A transição inválida carrega os destinos legais, e é daqui que eles
+	// saem para `dados.permitidas` — um ponto só, e não cada handler da 6.4
+	// lembrando de extraí-los.
+	var invalida pedido.TransicaoInvalida
+	if conhecido && errors.As(err, &invalida) {
+		// Nunca `null`: o contrato é a lista, vazia quando não há saída.
+		permitidas := invalida.Permitidas
+		if permitidas == nil {
+			permitidas = []pedido.Status{}
+		}
+		switch d := dados.(type) {
+		case nil:
+			dados = map[string]any{"permitidas": permitidas}
+		case map[string]any:
+			d["permitidas"] = permitidas
 		}
 	}
 	if !conhecido {

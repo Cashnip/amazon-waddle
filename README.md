@@ -78,7 +78,7 @@ não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
    desativado mostra "Este Produto não está disponível."
 5. **Confirmar compra** (1 unidade, na Caixa de compra) leva a `/pedidos/<id>`, que se atualiza sozinha. Medido no mesmo
    ensaio: `AGUARDANDO_PAGAMENTO` → `PAGO` em 7 s (o Provedor Simulado confirma por
-   webhook), e daí `EM_SEPARACAO` → `ENVIADO` → `ENTREGUE` de 30 em 30 s, **1 min 41 s**
+   webhook), e daí `SEPARANDO` → `ENVIADO` → `ENTREGUE` de 30 em 30 s, **1 min 41 s**
    do clique ao fim. Nenhum passo é manual: quem move o tempo é a varredura do serviço Go.
 
 Os intervalos são do `.env` (`AZAMON_CONFIRMACAO_ATRASO`, `AZAMON_ENTREGA_INTERVALO`) e

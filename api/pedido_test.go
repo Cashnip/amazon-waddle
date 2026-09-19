@@ -80,16 +80,16 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 	}
 
 	// A primeira linha do histórico (NFR-9): anterior vazio, porque não havia
-	// estado antes; autor e instante gravados.
+	// estado antes; o Comprador como ator, e o instante gravado.
 	transicoes := textoDe(t, pool, `
-		SELECT status_anterior || '|' || status_novo || '|' || autor || '|' ||
+		SELECT status_anterior || '|' || status_novo || '|' || ator || '|' ||
 		       (ocorrido_em IS NOT NULL)::text
 		FROM pedido.transicao_status WHERE pedido_id = $1::uuid`, primeiro)
 	if len(transicoes) != 1 {
 		t.Fatalf("%d linhas de transição, quero 1: %v", len(transicoes), transicoes)
 	}
-	if !strings.HasPrefix(transicoes[0], "|AGUARDANDO_PAGAMENTO|") || !strings.HasSuffix(transicoes[0], "|true") {
-		t.Errorf("transição = %q; quero anterior vazio, novo AGUARDANDO_PAGAMENTO, autor e instante", transicoes[0])
+	if transicoes[0] != "|AGUARDANDO_PAGAMENTO|COMPRADOR|true" {
+		t.Errorf("transição = %q; quero anterior vazio, novo AGUARDANDO_PAGAMENTO, ator COMPRADOR e instante", transicoes[0])
 	}
 
 	// O Item congela: nome, preço praticado e Vendedor são cópia, não
@@ -225,22 +225,22 @@ func transicaoRepetidaNaoAvanca(t *testing.T, pool *pgxpool.Pool, pedidoID strin
 	}
 	defer tx.Rollback(ctx)
 
-	if err := pedido.Transicionar(ctx, tx, pedidoID, "AGUARDANDO_PAGAMENTO", "PAGO", "teste"); err != nil {
+	if err := pedido.Transicionar(ctx, tx, pedidoID, pedido.StatusAguardandoPagamento, pedido.StatusPago, pedido.AtorProvedor, ""); err != nil {
 		t.Fatalf("primeira transição = %v; quero nil", err)
 	}
 	// O NFR-9 vale para todo avanço, e não só para o nascimento: a transição
 	// que aconteceu deixa a sua linha, na mesma transação.
 	historico := textoDe(t, tx, `
-		SELECT status_anterior || '|' || status_novo || '|' || autor
+		SELECT status_anterior || '|' || status_novo || '|' || ator
 		FROM pedido.transicao_status WHERE pedido_id = $1::uuid ORDER BY ocorrido_em`, pedidoID)
 	if len(historico) != 2 {
 		t.Fatalf("%d linhas de histórico depois do avanço, quero 2: %v", len(historico), historico)
 	}
-	if quer := "AGUARDANDO_PAGAMENTO|PAGO|teste"; historico[1] != quer {
+	if quer := "AGUARDANDO_PAGAMENTO|PAGO|PROVEDOR"; historico[1] != quer {
 		t.Errorf("segunda linha = %q, quero %q", historico[1], quer)
 	}
 
-	err = pedido.Transicionar(ctx, tx, pedidoID, "AGUARDANDO_PAGAMENTO", "PAGO", "teste")
+	err = pedido.Transicionar(ctx, tx, pedidoID, pedido.StatusAguardandoPagamento, pedido.StatusPago, pedido.AtorProvedor, "")
 	if !errors.Is(err, pedido.ErrEstadoJaAvancado) {
 		t.Errorf("segunda transição = %v; quero ErrEstadoJaAvancado", err)
 	}
@@ -507,11 +507,8 @@ func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, co
 	// que deixar o intervalo vencer — e prova que a decisão vem da tabela, e
 	// não de um relógio em memória que um reinício zeraria.
 	envelhecer := func() {
-		if _, err := pool.Exec(ctx, `
-			UPDATE pedido.transicao_status SET ocorrido_em = ocorrido_em - interval '1 hour'
-			WHERE pedido_id = $1::uuid`, pedidoID); err != nil {
-			t.Fatalf("envelhecer o histórico: %v", err)
-		}
+		t.Helper()
+		envelhecerHistorico(t, pool, pedidoID, time.Hour)
 	}
 	antes := estoque()
 
@@ -533,7 +530,7 @@ func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, co
 		t.Fatalf("abrir a transação: %v", err)
 	}
 	defer paraPago.Rollback(ctx)
-	if err := pedido.Transicionar(ctx, paraPago, pedidoID, "AGUARDANDO_PAGAMENTO", "PAGO", "teste"); err != nil {
+	if err := pedido.Transicionar(ctx, paraPago, pedidoID, pedido.StatusAguardandoPagamento, pedido.StatusPago, pedido.AtorProvedor, ""); err != nil {
 		t.Fatalf("pôr o Pedido em PAGO: %v", err)
 	}
 	if err := paraPago.Commit(ctx); err != nil {
@@ -579,7 +576,7 @@ func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, co
 		}
 	}
 
-	for _, quero := range []string{"EM_SEPARACAO", "ENVIADO", "ENTREGUE"} {
+	for _, quero := range []string{"SEPARANDO", "ENVIADO", "ENTREGUE"} {
 		conferirEstoque("antes de "+quero, quero == "ENTREGUE")
 		envelhecer()
 		if err := pedido.SimularEntrega(ctx, pool, intervaloLargo); err != nil {
@@ -588,7 +585,7 @@ func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, co
 		if s := statusDo(); s != quero {
 			t.Fatalf("status = %s, quero %s", s, quero)
 		}
-		conferirEstoque("em "+quero, quero != "EM_SEPARACAO")
+		conferirEstoque("em "+quero, quero != "SEPARANDO")
 	}
 
 	if corpo := decodificar(t, pegarPedido(t, rotas, pedidoID, cookie)); corpo["terminal"] != true {

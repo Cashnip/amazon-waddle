@@ -131,11 +131,11 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	if s := statusDe(t, pool, pedidoID); s != "PAGO" {
 		t.Errorf("status = %s, quero PAGO", s)
 	}
-	// NFR-9: o avanço deixa a sua linha, com o Provedor como autor.
+	// NFR-9: o avanço deixa a sua linha, com o Provedor como ator.
 	historico := textoDe(t, pool, `
-		SELECT status_anterior || '|' || status_novo || '|' || autor
+		SELECT status_anterior || '|' || status_novo || '|' || ator
 		FROM pedido.transicao_status WHERE pedido_id = $1::uuid ORDER BY ocorrido_em`, pedidoID)
-	if len(historico) != 2 || !strings.HasPrefix(historico[1], "AGUARDANDO_PAGAMENTO|PAGO|") {
+	if len(historico) != 2 || historico[1] != "AGUARDANDO_PAGAMENTO|PAGO|PROVEDOR" {
 		t.Errorf("histórico = %v; quero o nascimento e o avanço para PAGO", historico)
 	}
 

@@ -223,3 +223,18 @@ Append-only: não edite nem remova entradas existentes.
   summary: A passada de largura do passeio no navegador foi feita a 500 px, e não a 360, porque o Chrome no Windows não reduz a janela abaixo de ~500 px de viewport.
   evidence: `resize_window` para 380x950 devolve `innerWidth` 500; a faixa abaixo do breakpoint `sm:` (640) é a mesma nas duas larguras, então o ramo de layout exercitado é o correto — o que fica sem verificação é truncamento e transbordo específicos de 360 px. Um passeio a 360 exige emulação de dispositivo no DevTools.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: `pedido.transicao_status` ainda não grava a `correlacao` da requisição que o AD-15 pede em cada transição.
+  evidence: a correlação vive no `context` por `plataforma.CorrelacaoDe`, e `pedido` não importa `plataforma` (`internal/fronteira_test.go`, AD-1). As saídas — `api/` passar a correlação como parâmetro de `Transicionar`, ou a chave do `context` descer para um pacote que os módulos possam importar — mudam a assinatura do AD-3 ou a tabela do AD-1. A coluna, quando vier, é anulável e não pede preenchimento retroativo; o registro está no `addendum.md` §10, entrada da 5.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: Nenhum teste confere que os dois mapas de rótulo de Status do `web/` cobrem exatamente os sete Status do Go.
+  evidence: `rotulo` em `web/app/pedidos/meus-pedidos.tsx:23` e em `web/app/pedidos/[id]/acompanhamento.tsx:33` são cópias à mão, e o `?? pedido.status` mostraria o enum cru se um deles ficasse para trás numa renomeação como a de `EM_SEPARACAO` → `SEPARANDO`; o `web/` só testa `lib/` com `node --test`. A 6.7 (forma de exibição dos sete Status) é o lugar natural para extrair os mapas para `lib/` e testá-los.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: O compare-and-swap de `pedido.Transicionar` não tem teste com duas transações concorrendo de verdade pelo mesmo Pedido.
+  evidence: `api/maquina_test.go` prova a corrida perdida e a reclassificação em sequência (o segundo chamador chega depois do commit do primeiro); a espera do `UPDATE` pela linha travada por outra transação em andamento — Comprador cancelando contra a simulação consolidando — só é afirmada, não exercitada. É o par do teste do NFR-7 (5.7) para a máquina de estados.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-a-maquina-de-estados-do-pedido-completa-e-com-testes.md`
+  summary: `pedido.item_pedido` ainda aceita `INSERT` depois da criação do Pedido, então "escrito uma vez" vale para alterar e apagar Item, mas não para acrescentar.
+  evidence: os gatilhos da migração `20260919120000_pedido_maquina_de_estados` cobrem `UPDATE`, `DELETE` e `TRUNCATE`; recusar o `INSERT` tardio pede uma regra como "não existe linha de histórico para o Pedido", que depende da ordem Item → histórico dentro de `pedido.Criar` e deve ser decidida junto com a criação multi-Item da 5.6.

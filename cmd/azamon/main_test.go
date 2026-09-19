@@ -150,8 +150,8 @@ func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pg
 		t.Fatalf("criar o Pedido: %v", err)
 	}
 	if _, err := conexao.Exec(ctx, `
-		INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, autor, ocorrido_em)
-		VALUES ($1::uuid, 'AGUARDANDO_PAGAMENTO', 'PAGO', 'teste', now() - interval '1 hour')`,
+		INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, ator, ocorrido_em)
+		VALUES ($1::uuid, 'AGUARDANDO_PAGAMENTO', 'PAGO', 'PROVEDOR', now() - interval '1 hour')`,
 		pedidoID); err != nil {
 		t.Fatalf("registrar a transição: %v", err)
 	}
@@ -193,7 +193,7 @@ func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pg
 // O Pedido, a Tentativa e a Reserva entram direto no banco — o que se exercita
 // aqui é o relógio e o transporte, não a compra, que api/ já cobre. O total tem
 // centavos em `,00`, que é a faixa que o Simulado aprova. A Reserva existe para
-// a continuação: é ela que a simulação consolida em EM_SEPARACAO → ENVIADO.
+// a continuação: é ela que a simulação consolida em SEPARANDO → ENVIADO.
 func varreduraLevaOPedidoAPago(t *testing.T, ctx context.Context, conexao *pgx.Conn) (string, string, int32) {
 	t.Helper()
 	var pedidoID string
@@ -287,12 +287,12 @@ func simulacaoLevaOPedidoAEntregue(t *testing.T, ctx context.Context, conexao *p
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Uma linha de histórico por avanço, com o autor da simulação: PAGO →
-	// EM_SEPARACAO → ENVIADO → ENTREGUE são três, e nenhuma etapa foi pulada.
+	// Uma linha de histórico por avanço, com a simulação como ator: PAGO →
+	// SEPARANDO → ENVIADO → ENTREGUE são três, e nenhuma etapa foi pulada.
 	var avancos int
 	if err := conexao.QueryRow(ctx, `
 		SELECT count(*) FROM pedido.transicao_status
-		WHERE pedido_id = $1::uuid AND autor = 'simulacao-entrega'`, pedidoID).Scan(&avancos); err != nil {
+		WHERE pedido_id = $1::uuid AND ator = 'SIMULACAO'`, pedidoID).Scan(&avancos); err != nil {
 		t.Fatalf("contar as transições: %v", err)
 	}
 	if avancos != 3 {

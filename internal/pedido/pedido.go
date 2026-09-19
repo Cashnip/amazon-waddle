@@ -1,11 +1,10 @@
 // Package pedido é dono de Pedido, Item de Pedido, máquina de estados, Frete e varredura.
 //
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). O que mora aqui na Épica 1 é o nascimento do Pedido em
-// AGUARDANDO_PAGAMENTO, o compare-and-swap que é o único ponto de mutação do
-// Status e os dois passos da varredura — aplicar a confirmação e simular a
-// entrega até ENTREGUE. As nove transições nomeadas, as recusas e a expiração
-// da Tentativa são da Épica 5.
+// importa (AD-1), junto com maquina.go, que guarda a tabela de transições do
+// AD-3 e o Transicionar. Aqui moram o nascimento do Pedido em
+// AGUARDANDO_PAGAMENTO, as leituras e os dois passos da varredura — aplicar a
+// confirmação e simular a entrega até ENTREGUE.
 package pedido
 
 import (
@@ -14,7 +13,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,59 +24,21 @@ import (
 	"github.com/Cashnip/amazon-waddle/internal/pedido/db/gerado"
 )
 
-// ErrEstadoJaAvancado é o desfecho de toda transição que chega tarde: o
-// compare-and-swap afetou zero linhas porque outro caminho já moveu o Pedido.
-// Não é falha do sistema — a varredura conta com ele como resultado normal.
-var ErrEstadoJaAvancado = errors.New("O Pedido já avançou de estado.")
-
-// StatusInicial é onde todo Pedido nasce. Os outros seis chegam na Épica 5,
-// mas o CHECK da migração já os conhece.
-const StatusInicial = "AGUARDANDO_PAGAMENTO"
-
-// StatusPago é onde a confirmação do Provedor deixa o Pedido, e de onde a
-// simulação de entrega parte. A Reserva de Estoque continua ATIVA aqui: quem a
-// consolida é a passagem EM_SEPARACAO → ENVIADO.
-const StatusPago = "PAGO"
-
-// Os três Status que a simulação de entrega percorre, mais o CANCELADO que ela
-// nunca alcança e que EstadoTerminal precisa nomear. Os sete do CHECK da
-// migração estão declarados desde a 1.6 — usá-los não pede migração nova.
-const (
-	StatusEmSeparacao = "EM_SEPARACAO"
-	StatusEnviado     = "ENVIADO"
-	StatusEntregue    = "ENTREGUE"
-	StatusCancelado   = "CANCELADO"
-)
-
-// Os dois autores não-humanos do histórico. O Comprador é autor do nascimento;
-// o Provedor, da confirmação; a simulação, dos três avanços da entrega.
-const (
-	autorDoProvedor  = "provedor-pagamento"
-	autorDaSimulacao = "simulacao-entrega"
-)
-
 // simulacao é a lista inteira de avanços que a entrega simulada conhece, e é
 // uma só: dela saem tanto o próximo Status quanto os candidatos que a consulta
 // procura. Duas listas seriam duas oportunidades de divergirem.
-var simulacao = map[string]string{
-	StatusPago:        StatusEmSeparacao,
-	StatusEmSeparacao: StatusEnviado,
-	StatusEnviado:     StatusEntregue,
+var simulacao = map[Status]Status{
+	StatusPago:      StatusSeparando,
+	StatusSeparando: StatusEnviado,
+	StatusEnviado:   StatusEntregue,
 }
 
 // proximoDaSimulacao devolve para onde a simulação leva este Status, e false
 // para todo Status que ela não move — AGUARDANDO_PAGAMENTO, PAGAMENTO_RECUSADO,
 // CANCELADO e o próprio ENTREGUE, independentemente do tempo decorrido.
-func proximoDaSimulacao(status string) (string, bool) {
+func proximoDaSimulacao(status Status) (Status, bool) {
 	proximo, ok := simulacao[status]
 	return proximo, ok
-}
-
-// EstadoTerminal é a única declaração de "acabou" do sistema (AD-18): terminal
-// é ENTREGUE ou CANCELADO, e mais nada. A resposta do Pedido carrega o
-// resultado dela para que a tela não redeclare a regra em JavaScript.
-func EstadoTerminal(status string) bool {
-	return status == StatusEntregue || status == StatusCancelado
 }
 
 // unidade: a estória compra uma unidade por Pedido. Escolha de quantidade e
@@ -91,7 +51,7 @@ const unidade = 1
 type Pedido struct {
 	ID            string
 	Numero        string
-	Status        string
+	Status        Status
 	TotalCentavos int64
 	// AtualizadoEm é o instante da última transição, e só a leitura o
 	// preenche: é ele que a tela de acompanhamento exibe, absoluto e vindo do
@@ -129,7 +89,7 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedid
 	linha, err := q.CriarPedido(ctx, gerado.CriarPedidoParams{
 		Numero:        fmt.Sprintf("AZ-%d-%06d", ano, sequencial),
 		CompradorID:   comprador,
-		Status:        StatusInicial,
+		Status:        string(StatusAguardandoPagamento),
 		TotalCentavos: produto.PrecoCentavos * unidade,
 	})
 	if err != nil {
@@ -149,13 +109,14 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedid
 		return Pedido{}, fmt.Errorf("criar o Item do Pedido: %w", err)
 	}
 
-	// A primeira linha do histórico (NFR-9). O estado anterior é vazio porque
-	// não havia estado antes — é o nascimento, e não um avanço.
+	// A primeira linha do histórico (NFR-9), que é a primeira linha da tabela
+	// do AD-3. O estado anterior é vazio porque não havia estado antes — é o
+	// nascimento, e não um avanço, e por isso não passa pelo CAS.
 	if err := q.RegistrarTransicao(ctx, gerado.RegistrarTransicaoParams{
 		PedidoID:       linha.ID,
 		StatusAnterior: "",
-		StatusNovo:     StatusInicial,
-		Autor:          compradorID,
+		StatusNovo:     string(StatusAguardandoPagamento),
+		Ator:           string(AtorComprador),
 	}); err != nil {
 		return Pedido{}, fmt.Errorf("registrar a transição: %w", err)
 	}
@@ -163,7 +124,7 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedid
 	pedido := Pedido{
 		ID:            linha.ID.String(),
 		Numero:        linha.Numero,
-		Status:        linha.Status,
+		Status:        Status(linha.Status),
 		TotalCentavos: linha.TotalCentavos,
 	}
 	if err := catalogo.Reservar(ctx, tx, pedido.ID, []catalogo.ItemReserva{{ProdutoID: produto.ID, Quantidade: unidade}}); err != nil {
@@ -200,7 +161,7 @@ func Buscar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string) (
 	return Pedido{
 		ID:            linha.ID.String(),
 		Numero:        linha.Numero,
-		Status:        linha.Status,
+		Status:        Status(linha.Status),
 		TotalCentavos: linha.TotalCentavos,
 		AtualizadoEm:  linha.AtualizadoEm.Time.UTC(),
 	}, nil
@@ -229,7 +190,7 @@ func Listar(ctx context.Context, bd gerado.DBTX, compradorID string) ([]Pedido, 
 		pedidos = append(pedidos, Pedido{
 			ID:            linha.ID.String(),
 			Numero:        linha.Numero,
-			Status:        linha.Status,
+			Status:        Status(linha.Status),
 			TotalCentavos: linha.TotalCentavos,
 		})
 	}
@@ -286,8 +247,8 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	// aprovada e cujo Pedido ainda aguarda pagamento. Todo o resto é sinalizado
 	// e sai da fila — recusa e expiração são da Épica 5.
 	estado := pagamento.NaoAplicavelSinalizada
-	if c.Corrente && c.Resultado == pagamento.Aprovado && travado.Status == StatusInicial {
-		err := Transicionar(ctx, tx, c.PedidoID, StatusInicial, StatusPago, autorDoProvedor)
+	if c.Corrente && c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusAguardandoPagamento {
+		err := Transicionar(ctx, tx, c.PedidoID, StatusAguardandoPagamento, StatusPago, AtorProvedor, "")
 		switch {
 		case err == nil:
 			estado = pagamento.Aplicada
@@ -321,8 +282,12 @@ func SimularEntrega(ctx context.Context, pool *pgxpool.Pool, intervalo time.Dura
 	if err := ate.Scan(time.Now().Add(-intervalo)); err != nil {
 		return fmt.Errorf("calcular o corte do intervalo de entrega: %w", err)
 	}
+	var origens []string
+	for de := range maps.Keys(simulacao) {
+		origens = append(origens, string(de))
+	}
 	candidatos, err := gerado.New(pool).PedidosParaAvancar(ctx, gerado.PedidosParaAvancarParams{
-		Status: slices.Collect(maps.Keys(simulacao)),
+		Status: origens,
 		Ate:    ate,
 	})
 	if err != nil {
@@ -355,7 +320,8 @@ func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate
 	if err != nil {
 		return fmt.Errorf("travar o Pedido: %w", err)
 	}
-	proximo, ok := proximoDaSimulacao(travado.Status)
+	atual := Status(travado.Status)
+	proximo, ok := proximoDaSimulacao(atual)
 	// A decisão é reconferida com a trava na mão, e não só na seleção: entre a
 	// leitura dos candidatos e esta linha, outro caminho pode ter avançado o
 	// Pedido — e aí o intervalo recomeça a contar do Status novo.
@@ -368,57 +334,17 @@ func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate
 		return nil
 	}
 
-	switch err := Transicionar(ctx, tx, id.String(), travado.Status, proximo, autorDaSimulacao); {
+	// O efeito sobre o Estoque — a consolidação em SEPARANDO → ENVIADO — é
+	// do próprio Transicionar, que o aplica depois do CAS e na mesma
+	// transação (AD-3): a simulação não tem como esquecê-lo.
+	switch err := Transicionar(ctx, tx, id.String(), atual, proximo, AtorSimulacao, ""); {
 	case errors.Is(err, ErrEstadoJaAvancado):
 		// Desfecho esperado, e não erro: alguém chegou primeiro.
 		slog.InfoContext(ctx, "a simulação chegou depois do avanço",
-			"pedido", id.String(), "de", travado.Status)
+			"pedido", id.String(), "de", string(atual))
 		return nil
 	case err != nil:
 		return err
 	}
-
-	// A transição vem antes do efeito sobre o Estoque, na mesma transação
-	// (AD-6). EM_SEPARACAO → ENVIADO é a única passagem que altera o Estoque
-	// total: é nela que o cancelamento deixa de ser possível e a Reserva não
-	// tem mais o que segurar.
-	if proximo == StatusEnviado {
-		if err := catalogo.Consolidar(ctx, tx, id.String()); err != nil {
-			return err
-		}
-	}
 	return tx.Commit(context.WithoutCancel(ctx))
-}
-
-// Transicionar é o único ponto de mutação do Status (AD-6), e é
-// compare-and-swap: o estado de origem entra no WHERE. Zero linhas afetadas
-// devolve ErrEstadoJaAvancado — outro caminho chegou primeiro, e insistir é
-// que seria o defeito.
-func Transicionar(ctx context.Context, tx pgx.Tx, pedidoID, de, para, autor string) error {
-	var chave pgtype.UUID
-	if err := chave.Scan(pedidoID); err != nil {
-		// Não é ErrEstadoJaAvancado: a varredura da 1.8 trata esse sentinela
-		// como desfecho normal e engoliria em silêncio um identificador que
-		// quem chamou montou errado.
-		return fmt.Errorf("identificador de Pedido inválido: %w", err)
-	}
-	q := gerado.New(tx)
-	linhas, err := q.AvancarStatus(ctx, gerado.AvancarStatusParams{PedidoID: chave, De: de, Para: para})
-	if err != nil {
-		return fmt.Errorf("avançar o Status: %w", err)
-	}
-	if linhas == 0 {
-		return ErrEstadoJaAvancado
-	}
-	// O histórico vem depois do avanço, e na mesma transação: o que não
-	// aconteceu não é registrado, e o que aconteceu não fica sem linha.
-	if err := q.RegistrarTransicao(ctx, gerado.RegistrarTransicaoParams{
-		PedidoID:       chave,
-		StatusAnterior: de,
-		StatusNovo:     para,
-		Autor:          autor,
-	}); err != nil {
-		return fmt.Errorf("registrar a transição: %w", err)
-	}
-	return nil
 }

@@ -324,7 +324,7 @@ func Liberar(ctx context.Context, tx pgx.Tx, pedidoID string) error {
 }
 
 // Consolidar encerra a Reserva do Pedido e baixa o Estoque total na mesma
-// quantidade. É o efeito da transição EM_SEPARACAO → ENVIADO, e a única
+// quantidade. É o efeito da transição SEPARANDO → ENVIADO, e a única
 // passagem do sistema em que `estoque_total` muda — daí em diante o
 // cancelamento não é mais possível, e a Reserva não tem mais o que segurar.
 //

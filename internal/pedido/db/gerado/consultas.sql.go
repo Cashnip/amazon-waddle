@@ -139,6 +139,83 @@ func (q *Queries) CriarPedido(ctx context.Context, arg CriarPedidoParams) (Criar
 	return i, err
 }
 
+const historicoDoPedido = `-- name: HistoricoDoPedido :many
+SELECT status_anterior, status_novo, ator, motivo, ocorrido_em
+FROM pedido.transicao_status
+WHERE pedido_id = $1
+ORDER BY ocorrido_em, id
+`
+
+type HistoricoDoPedidoRow struct {
+	StatusAnterior string
+	StatusNovo     string
+	Ator           string
+	Motivo         pgtype.Text
+	OcorridoEm     pgtype.Timestamptz
+}
+
+// O histórico em ordem de acontecimento. O `id` desempata duas transições no
+// mesmo instante: é uuidv7(), ordenado no tempo por construção.
+func (q *Queries) HistoricoDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]HistoricoDoPedidoRow, error) {
+	rows, err := q.db.Query(ctx, historicoDoPedido, pedidoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HistoricoDoPedidoRow
+	for rows.Next() {
+		var i HistoricoDoPedidoRow
+		if err := rows.Scan(
+			&i.StatusAnterior,
+			&i.StatusNovo,
+			&i.Ator,
+			&i.Motivo,
+			&i.OcorridoEm,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const itensParaReserva = `-- name: ItensParaReserva :many
+SELECT produto_id, quantidade
+FROM pedido.item_pedido
+WHERE pedido_id = $1
+ORDER BY produto_id
+`
+
+type ItensParaReservaRow struct {
+	ProdutoID  pgtype.UUID
+	Quantidade int32
+}
+
+// Os Itens do próprio Pedido, que é o que a nova Tentativa reserva de novo
+// (AD-3): nada é remontado a partir do Carrinho.
+func (q *Queries) ItensParaReserva(ctx context.Context, pedidoID pgtype.UUID) ([]ItensParaReservaRow, error) {
+	rows, err := q.db.Query(ctx, itensParaReserva, pedidoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItensParaReservaRow
+	for rows.Next() {
+		var i ItensParaReservaRow
+		if err := rows.Scan(&i.ProdutoID, &i.Quantidade); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listarPedidosDoComprador = `-- name: ListarPedidosDoComprador :many
 SELECT id, numero, status, total_centavos
 FROM pedido.pedido
@@ -202,12 +279,10 @@ type PedidosParaAvancarParams struct {
 // "está neste estado desde quando" —, nunca de estado em memória, e é por isso
 // que reiniciar o contêiner retoma cada Pedido de onde parou.
 //
-// ponytail: varredura sequencial de pedido.pedido a cada tique, com um
-// max(ocorrido_em) correlacionado por linha — a tabela só tem
-// pedido_comprador_id_idx, e esta épica proíbe migração nova. Na demonstração
-// são dezenas de Pedidos e não se mede. Quando o volume justificar, os índices
-// que a levantam são `pedido (status, id)` e
-// `transicao_status (pedido_id, ocorrido_em DESC)`, sem tocar na consulta.
+// ponytail: varredura sequencial de pedido.pedido a cada tique. O
+// max(ocorrido_em) correlacionado já tem `transicao_status (pedido_id,
+// ocorrido_em)`, da 5.1; quando o volume justificar, o índice que falta é
+// `pedido (status, id)`, sem tocar na consulta.
 func (q *Queries) PedidosParaAvancar(ctx context.Context, arg PedidosParaAvancarParams) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, pedidosParaAvancar, arg.Status, arg.Ate)
 	if err != nil {
@@ -249,25 +324,43 @@ func (q *Queries) ProximoNumeroDoAno(ctx context.Context, ano int32) (int64, err
 }
 
 const registrarTransicao = `-- name: RegistrarTransicao :exec
-INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, autor)
-VALUES ($1, $2, $3, $4)
+INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, ator, motivo)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type RegistrarTransicaoParams struct {
 	PedidoID       pgtype.UUID
 	StatusAnterior string
 	StatusNovo     string
-	Autor          string
+	Ator           string
+	Motivo         pgtype.Text
 }
 
+// O `motivo` é anulável: nem toda transição tem um. `sqlc.narg` o deixa
+// chegar como NULL, e não como texto vazio, que seria um motivo sem conteúdo.
 func (q *Queries) RegistrarTransicao(ctx context.Context, arg RegistrarTransicaoParams) error {
 	_, err := q.db.Exec(ctx, registrarTransicao,
 		arg.PedidoID,
 		arg.StatusAnterior,
 		arg.StatusNovo,
-		arg.Autor,
+		arg.Ator,
+		arg.Motivo,
 	)
 	return err
+}
+
+const statusDoPedido = `-- name: StatusDoPedido :one
+SELECT status FROM pedido.pedido WHERE id = $1
+`
+
+// A releitura do Status depois de um compare-and-swap perdido: é ela que
+// separa "outro ator avançou" de "o Pedido saiu da janela de cancelamento".
+// Sem trava — quem ganhou já comitou, ou o UPDATE acima teria esperado por ele.
+func (q *Queries) StatusDoPedido(ctx context.Context, pedidoID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, statusDoPedido, pedidoID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const travarPedido = `-- name: TravarPedido :one

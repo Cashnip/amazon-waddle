@@ -2,12 +2,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"os"
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -246,6 +249,115 @@ func TestSchemaESemente(t *testing.T) {
 
 	// A partir daqui a ordem importa: a semente de verdade entra uma vez e os
 	// casos seguintes observam o banco já semeado.
+	// A 5.1 reescreve o que a Épica 1 gravou: um volume antigo de `docker
+	// compose` chega com EM_SEPARACAO no Status e no histórico, e com o autor
+	// em texto livre. O banco à parte começa na migração anterior à da 5.1,
+	// recebe esse dado velho, e só então sobe até o fim — é o caminho de quem
+	// atualiza sem `down -v`. Depois desce uma, para provar o Down.
+	t.Run("a 5.1 reescreve EM_SEPARACAO e o autor gravados antes dela", func(t *testing.T) {
+		const maquina = "pedido_maquina_de_estados"
+		if _, err := conexao.Exec(ctx, `CREATE DATABASE antes_da_maquina`); err != nil {
+			t.Fatalf("criar o banco: %v", err)
+		}
+		dsnAntigo := strings.Replace(dsn, "/azamon?", "/antes_da_maquina?", 1)
+		if dsnAntigo == dsn {
+			t.Fatalf("DSN sem o nome do banco onde se esperava: %s", dsn)
+		}
+
+		// Só as anteriores à da 5.1, pela versão e não pelo nome: uma migração
+		// posterior entrando aqui seria aplicada antes dela.
+		anteriores := fstest.MapFS{}
+		nomes, err := fs.Glob(Migracoes, DirMigracoes+"/*.sql")
+		if err != nil {
+			t.Fatalf("listar migrações: %v", err)
+		}
+		versaoDe := func(nome string) string {
+			v, _, _ := strings.Cut(path.Base(nome), "_")
+			return v
+		}
+		versaoMaquina, versaoAnterior := "", ""
+		for _, nome := range nomes {
+			if strings.Contains(nome, maquina) {
+				versaoMaquina = versaoDe(nome)
+			}
+		}
+		if versaoMaquina == "" {
+			t.Fatalf("nenhuma migração %s em %s", maquina, DirMigracoes)
+		}
+		for _, nome := range nomes {
+			if versaoDe(nome) >= versaoMaquina {
+				continue
+			}
+			versaoAnterior = max(versaoAnterior, versaoDe(nome))
+			dado, err := fs.ReadFile(Migracoes, nome)
+			if err != nil {
+				t.Fatalf("ler %s: %v", nome, err)
+			}
+			anteriores[nome] = &fstest.MapFile{Data: dado}
+		}
+		if err := plataforma.Migrar(ctx, dsnAntigo, anteriores, DirMigracoes); err != nil {
+			t.Fatalf("migrar até antes da 5.1: %v", err)
+		}
+
+		antigo := conectar(t, ctx, dsnAntigo)
+		var pedidoID string
+		if err := antigo.QueryRow(ctx, `
+			INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
+			VALUES ('AZ-ANTIGO-000001', uuidv7(), 'EM_SEPARACAO', 32900)
+			RETURNING id::text`).Scan(&pedidoID); err != nil {
+			t.Fatalf("gravar o Pedido antigo: %v", err)
+		}
+		if _, err := antigo.Exec(ctx, `
+			INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, autor, ocorrido_em) VALUES
+			($1::uuid, '', 'AGUARDANDO_PAGAMENTO', uuidv7()::text, now() - interval '3 minutes'),
+			($1::uuid, 'AGUARDANDO_PAGAMENTO', 'PAGO', 'provedor-pagamento', now() - interval '2 minutes'),
+			($1::uuid, 'PAGO', 'EM_SEPARACAO', 'simulacao-entrega', now() - interval '1 minute')`,
+			pedidoID); err != nil {
+			t.Fatalf("gravar o histórico antigo: %v", err)
+		}
+
+		if err := plataforma.Migrar(ctx, dsnAntigo, Migracoes, DirMigracoes); err != nil {
+			t.Fatalf("migrar até o fim: %v", err)
+		}
+		if tem := textos(t, ctx, antigo, `SELECT status FROM pedido.pedido WHERE id = $1::uuid`, pedidoID); !slices.Equal(tem, []string{"SEPARANDO"}) {
+			t.Errorf("Status = %v, quero SEPARANDO", tem)
+		}
+		quer := []string{"|AGUARDANDO_PAGAMENTO|COMPRADOR", "AGUARDANDO_PAGAMENTO|PAGO|PROVEDOR", "PAGO|SEPARANDO|SIMULACAO"}
+		tem := textos(t, ctx, antigo, `
+			SELECT status_anterior || '|' || status_novo || '|' || ator
+			FROM pedido.transicao_status WHERE pedido_id = $1::uuid ORDER BY ocorrido_em`, pedidoID)
+		if !slices.Equal(tem, quer) {
+			t.Errorf("histórico = %v, quero %v", tem, quer)
+		}
+
+		// O Down volta o Status à grafia antiga, a coluna ao nome antigo e o
+		// autor da simulação ao texto que o código anterior lia. Até a versão
+		// anterior à 5.1, e não "a última": uma migração posterior seria
+		// desfeita em vez dela.
+		bd, err := sql.Open("pgx", dsnAntigo)
+		if err != nil {
+			t.Fatalf("abrir conexão para o Down: %v", err)
+		}
+		defer bd.Close()
+		goose.SetBaseFS(Migracoes)
+		if err := goose.SetDialect("postgres"); err != nil {
+			t.Fatalf("dialeto do goose: %v", err)
+		}
+		anterior, err := strconv.ParseInt(versaoAnterior, 10, 64)
+		if err != nil {
+			t.Fatalf("versão anterior %q: %v", versaoAnterior, err)
+		}
+		if err := goose.DownToContext(ctx, bd, DirMigracoes, anterior); err != nil {
+			t.Fatalf("desfazer até antes da 5.1: %v", err)
+		}
+		if tem := textos(t, ctx, antigo, `
+			SELECT p.status || '|' || t.status_novo || '|' || t.autor
+			FROM pedido.pedido p JOIN pedido.transicao_status t ON t.pedido_id = p.id
+			WHERE p.id = $1::uuid AND t.status_anterior = 'PAGO'`, pedidoID); !slices.Equal(tem, []string{"EM_SEPARACAO|EM_SEPARACAO|simulacao-entrega"}) {
+			t.Errorf("depois do Down = %v, quero EM_SEPARACAO|EM_SEPARACAO|simulacao-entrega", tem)
+		}
+	})
+
 	t.Run("a semente entra uma vez e o segundo arranque a pula", func(t *testing.T) {
 		aplicada, err := plataforma.Semear(ctx, dsn, Semente, DirSemente, VersaoSemente)
 		if err != nil || !aplicada {

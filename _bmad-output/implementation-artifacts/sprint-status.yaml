@@ -77,8 +77,8 @@ development_status:
   4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: done
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-a-máquina-de-estados-do-pedido-completa-e-com-testes: backlog
+  epic-5: in-progress
+  5-1-a-máquina-de-estados-do-pedido-completa-e-com-testes: review
   5-2-seleção-de-endereço-no-checkout: backlog
   5-3-cálculo-do-frete: backlog
   5-4-revisão-do-pedido: backlog
@@ -113,7 +113,9 @@ action_items:
     action: "Reconciliar o Status para EM_SEPARACAO em addendum.md:48,49,52, ARCHITECTURE-SPINE.md:94,95,97,
       prd.md:123 e EXPERIENCE.md:78 — o CHECK da migracao e o codigo sao a realidade"
     owner: "Sung"
-    status: open
+    status: done
+    resolution: "Resolvido na direcao inversa em 2026-09-19 (estoria 5.1): o codigo passou a SEPARANDO,
+      que e o termo do glossario; a migracao 20260919120000_pedido_maquina_de_estados reescreve os dados antigos"
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-2-trocar-o-uuid-de-web-app-page-tsx-102-po"
     epic: 1
@@ -162,7 +164,9 @@ action_items:
       com a tabela vazia, ou registrar o adiamento no addendum 10 nomeando a estoria
       que paga a migracao"
     owner: "Sung"
-    status: open
+    status: done
+    resolution: "Estoria 5.1: motivo entrou agora; correlacao adiada e registrada no addendum 10 e no
+      deferred-work.md, porque pedido nao importa plataforma (AD-1)"
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-9-marcar-resolvido-na-primeira-entrada-de"
     epic: 1

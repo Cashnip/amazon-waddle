@@ -99,7 +99,7 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 	escreverJSON(w, http.StatusCreated, saidaPedido{
 		ID:            novo.ID,
 		Numero:        novo.Numero,
-		Status:        novo.Status,
+		Status:        string(novo.Status),
 		TotalCentavos: novo.TotalCentavos,
 	})
 }
@@ -130,7 +130,7 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		saidaPedido: saidaPedido{
 			ID:            p.ID,
 			Numero:        p.Numero,
-			Status:        p.Status,
+			Status:        string(p.Status),
 			TotalCentavos: p.TotalCentavos,
 		},
 		// Nano, e não segundos: duas transições do mesmo Pedido cabem no mesmo
@@ -165,7 +165,7 @@ func (s *servidor) listarPedidos(w http.ResponseWriter, r *http.Request) {
 		saidas = append(saidas, saidaPedido{
 			ID:            p.ID,
 			Numero:        p.Numero,
-			Status:        p.Status,
+			Status:        string(p.Status),
 			TotalCentavos: p.TotalCentavos,
 		})
 	}

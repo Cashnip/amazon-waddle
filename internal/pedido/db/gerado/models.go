@@ -36,6 +36,7 @@ type PedidoTransicaoStatus struct {
 	PedidoID       pgtype.UUID
 	StatusAnterior string
 	StatusNovo     string
-	Autor          string
+	Ator           string
 	OcorridoEm     pgtype.Timestamptz
+	Motivo         pgtype.Text
 }

@@ -20,7 +20,7 @@ const rotulo: Record<string, string> = {
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
   PAGAMENTO_RECUSADO: "Pagamento recusado",
   PAGO: "Pago",
-  EM_SEPARACAO: "Em separação",
+  SEPARANDO: "Separando",
   ENVIADO: "Enviado",
   ENTREGUE: "Entregue",
   CANCELADO: "Cancelado",
