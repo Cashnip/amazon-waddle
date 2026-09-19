@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está implementada:** as dez estórias estão em `main`, todas em `review` por falta do passeio no navegador. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está implementada:** as cinco estórias estão em `main`, em `review` por falta do passeio no navegador, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. A 4.4 fechou a FR-19 🔒 na abertura: o `GET` revalida cada linha (`preco_mudou`, `bloqueio`), e a tela abre o `Alert` que bloqueia, com remover e ajustar dentro, e o de preço, com "de X para Y" e confirmação. A 4.5 fechou a composição da tela: o `GET` passa `frete_isencao_centavos` da Config, a tela escreve "Faltam R$ X para o Frete grátis." em valor absoluto, sem barra de progresso e calando acima do limiar, e o botão provisório da Página de Produto passa a dizer "Confirmar o Pedido" — era a última violação do glossário.
+**Atualizado:** 2026-09-19 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 está fechada:** as dez estórias estão em `main`. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine. A 3.7–3.9 fez da mesma rota a busca: termo sem acento nem caixa, Categoria, faixa de preço e as três ordenações, combináveis e com o estado inteiro na URL. A 3.6 completou a Página de Produto: breadcrumb com a Categoria, Caixa de compra à direita a partir de 1024 px, a tela única "Este Produto não está disponível.", e o visitante sem Sessão vai ao Login guardando o Produto e a quantidade. A 3.10 pôs a busca global e a Faixa de Categorias na `Casca`, em toda tela pública e de Comprador. **A Épica 4 está fechada:** as cinco estórias estão em `main`, e o Comprador autenticado já tem Carrinho — adiciona pela Caixa de compra (com a volta do Login criando o Item), vê a recusa por Estoque com o disponível na mensagem, altera a quantidade na própria linha, remove, esvazia com confirmação, e acompanha o contador de unidades na barra superior. A 4.4 fechou a FR-19 🔒 na abertura: o `GET` revalida cada linha (`preco_mudou`, `bloqueio`), e a tela abre o `Alert` que bloqueia, com remover e ajustar dentro, e o de preço, com "de X para Y" e confirmação. A 4.5 fechou a composição da tela: o `GET` passa `frete_isencao_centavos` da Config, a tela escreve "Faltam R$ X para o Frete grátis." em valor absoluto, sem barra de progresso e calando acima do limiar, e o botão provisório da Página de Produto passa a dizer "Confirmar o Pedido" — era a última violação do glossário. **A Épica 5 começou:** a 5.1 está em `main`, em `review`, e a máquina de estados do Pedido está completa — a tabela de nove transições do AD-3 é dado em `internal/pedido/maquina.go`, `Transicionar` aplica o efeito sobre o Estoque dentro dele, as três recusas existem com códigos distintos, o Status passou a `SEPARANDO` (era `EM_SEPARACAO` no código), e conteúdo e histórico do Pedido são imutáveis por gatilho do banco.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,11 +59,33 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-**Primeiro, o passeio no navegador das Épicas 3 e 4**, que tira as dez estórias da Épica 3 e as cinco da
-Épica 4 de `review` para `done`. As seções Verification das specs dizem o que olhar. Depois, `bmad-build` na
-**Estória 5.1** (a máquina de estados do Pedido completa e com testes), que abre a Épica 5 — e o
-`epic-4-retrospective` está disponível, opcional.
-`epic-3-retrospective` (opcional) e `epic-2-retrospective` continuam `optional`, sem dono.
+`bmad-build` na **Estória 5.2** (seleção de Endereço no checkout). A 5.1 está em `review`: o código não tem tela,
+então o que falta é a leitura humana do commit `a454444` — a spec tem uma *Suggested Review Order*.
+`epic-4-retrospective`, `epic-3-retrospective` e `epic-2-retrospective` continuam `optional`, sem dono.
+
+**O que a 5.1 deixou pronto, e o resto da Épica 5 e a Épica 6 usam:**
+- **toda mudança de Status passa por `pedido.Transicionar(ctx, tx, pedidoID, esperado, novo, ator, motivo)`**, com
+  `pedido.Status` e `pedido.Ator` tipados. A tabela diz quem pode o quê: `COMPRADOR` (nova Tentativa e cancelamento),
+  `PROVEDOR` (aprovação e recusa), `VARREDURA` (expiração, só com `pedido.MotivoTempoEsgotado`), `ADMINISTRADOR` e
+  `SIMULACAO` (as três etapas da entrega). `TEMPO_ESGOTADO` é motivo reservado: a recusa do Provedor não o aceita;
+- **o efeito é do `Transicionar`, e quem chama não repete:** recusa e cancelamento chamam `catalogo.Liberar`, a nova
+  Tentativa chama `catalogo.Reservar` com os Itens do próprio Pedido (e falha com `EstoqueInsuficiente` — quem abriu
+  a transação reverte), `SEPARANDO → ENVIADO` chama `catalogo.Consolidar`. A 5.10, a 5.11, a 6.3 e a 6.4 só
+  chamam `Transicionar` na sua transação;
+- **as três recusas:** `ErrEstadoJaAvancado`, `pedido.TransicaoInvalida` (casa com `ErrTransicaoInvalida` e traz
+  `Permitidas` para aquele ator) e `ErrForaDaJanelaDeCancelamento` — este também quando o cancelamento perdeu a
+  corrida para quem tirou o Pedido da janela. As três saem em 409 com códigos próprios, e `erro.Escrever` põe
+  `dados.permitidas` sozinho (nunca `null`). `pedido.Permitidas(de, ator)` é o que a 6.4 usa para os botões;
+- `pedido.Historico(ctx, bd, pedidoID)` devolve a linha do tempo com ator, motivo e instante UTC; Pedido
+  inexistente sai como `pgx.ErrNoRows`. Nenhuma rota o expõe ainda — é da 6.2;
+- **`pedido.pedido` só aceita `UPDATE` de `status`, e `item_pedido`/`transicao_status` não aceitam `UPDATE`,
+  `DELETE` nem `TRUNCATE`** (erro 23001). Migração que precise preencher coluna nova dessas tabelas desliga o gatilho
+  dentro dela mesma. Teste que precise envelhecer o histórico usa `envelhecerHistorico` em `api/maquina_test.go`;
+- **a criação ainda é a do esqueleto** (uma unidade, um Produto, sem Endereço nem Frete): a 5.6 a refaz, com
+  `carrinho.Esvaziar`. Ela registra o nascimento com ator `COMPRADOR`, e é a primeira linha da tabela;
+- adiados no `deferred-work.md`: a `correlacao` no histórico (o AD-1 não deixa `pedido` importar `plataforma`), o
+  teste do CAS sob concorrência real, o `INSERT` tardio de Item (decidir na 5.6) e o teste dos mapas de rótulo do
+  `web/` (natural na 6.7).
 
 **O que a 4.4 deixou pronto, e a 4.5 e a Épica 5 usam:**
 - `GET /api/v1/carrinho` devolve, em cada linha, também `preco_visto_centavos`, `estoque_disponivel`,
@@ -132,7 +154,7 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 - `Reservar(ctx, tx, pedidoID, []ItemReserva)`: trava em ordem de id, depois soma; lista vazia não faz nada;
   Produto invisível sai como `EstoqueInsuficiente{ProdutoID, Disponivel: 0}`;
 - `Liberar(ctx, tx, pedidoID)`: `ATIVA → LIBERADA`, nunca escreve `estoque_total`, e sem Reserva ativa devolve `nil`.
-  **Ninguém o chama ainda:** ligá-lo à expiração (5.x) e ao cancelamento (6.3) é dessas estórias;
+  Quem o chama é `pedido.Transicionar`, em toda recusa, expiração e cancelamento (5.1);
 - o ajuste do Estoque total tem rota própria, `PUT /api/v1/admin/produtos/{id}/estoque`, e não está no `PUT`
   do Produto: a tela reenvia a linha lida ao desativar, e isso regravaria um total velho por cima de uma
   consolidação.
@@ -150,7 +172,7 @@ vazio" da matriz não tem teste automatizado. Da 3.7–3.9, faltam o passeio da 
 matriz, que também não têm teste automatizado. Da 3.6, faltam o passeio a 360 e 1440 px e a ida e volta pelo Login com
 quantidade 3; as linhas "Invisível" e "Esgotado" não têm teste automatizado, e a tela "não disponível" sai com HTTP 200,
 não 404, porque o `loading.tsx` começa o streaming antes do `notFound()`. Da 3.10, faltam o passeio a 360 e 1440 px, a busca com Enter a partir da Página de Produto e o
-clique na Faixa; a linha "Categorias falham" não tem teste automatizado. Por isso as dez estórias estão em `review`, e não em `done`. O Postgres do `docker compose` guarda "Categoria Manual" e
+clique na Faixa; a linha "Categorias falham" não tem teste automatizado. As dez estórias foram fechadas em `done` no `sprint-status.yaml` mesmo assim; o que está listado aqui é o que ninguém registrou ter visto. O Postgres do `docker compose` guarda "Categoria Manual" e
 "Produto Manual", este com imagem quebrada de propósito, para conferir o bloco neutro. `docker compose down -v`
 apaga os dois.
 
@@ -158,8 +180,8 @@ apaga os dois.
 quantidade na linha, remover, esvaziar com `Esc` e com confirmação, e o contador da barra sem recarregar — e a
 ida e volta pelo Login que cria o Item. Da 4.4: mudar o preço no admin e abrir o Carrinho, baixar o Estoque
 abaixo da quantidade e ajustar, desativar o Produto e o Vendedor, confirmar o preço com o bloqueio de pé, e a
-cor dos botões `outline` dentro do `Alert`. `go test ./...` e o build Docker do `web/` estão verdes. Por isso as quatro
-estão em `review`.
+cor dos botões `outline` dentro do `Alert`. `go test ./...` e o build Docker do `web/` estão verdes. As quatro
+foram fechadas em `done` no `sprint-status.yaml`; o que está listado aqui é o que ninguém registrou ter visto.
 
 Os tetos de preço (R$ 1.000.000,00) e de Estoque (100.000) foram escolhidos na 3.3, porque nenhum documento os
 definia. Estão em `AZAMON_PRODUTO_PRECO_MAX_CENTAVOS` e `AZAMON_PRODUTO_ESTOQUE_MAX`.
@@ -268,8 +290,8 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épicas 1 e 2 fechadas; Épicas 3 e 4 em main, todas em review por falta do passeio no navegador.
-Próximo passo: Estória 5.1 (a máquina de estados do Pedido completa e com testes).
+Épicas 1 a 4 fechadas; Estória 5.1 (máquina de estados do Pedido) em main, em review.
+Próximo passo: Estória 5.2 (seleção de Endereço no checkout).
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
