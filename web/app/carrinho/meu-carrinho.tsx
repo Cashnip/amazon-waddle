@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,11 +18,16 @@ import { Separator } from "@/components/ui/separator";
 import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import {
   avisarCarrinhoAlterado,
+  comPrecosConfirmados,
   comQuantidade,
   parcelaDe,
   quantidadeDoCampo,
+  revalidacaoDe,
+  textoDoBloqueio,
+  unidadesTexto,
   type Carrinho,
   type LinhaDoCarrinho,
+  type PrecosConfirmados,
 } from "@/lib/carrinho";
 import { paraLogin } from "@/lib/destino";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
@@ -36,6 +41,11 @@ import { formatarPreco } from "@/lib/preco";
 // subtotal mudam na hora, e a resposta do servidor ou confirma — a tela
 // recarrega o Carrinho e passa a valer o número dele — ou reverte, com a
 // mensagem na própria linha. Zero e "Remover" esperam o servidor.
+//
+// A revalidação da FR-19 acontece na abertura: o `GET` já diz, por linha, se o
+// preço mudou e o que bloqueia (decidido no Go). Os dois `Alert` só mostram. O
+// que o Comprador confirma fica aqui, na tela — nada é gravado (AD-17), e por
+// isso o aviso de preço volta quando o Carrinho é reaberto.
 
 export function MeuCarrinho() {
   const router = useRouter();
@@ -43,6 +53,7 @@ export function MeuCarrinho() {
   const [erroDaLista, setErroDaLista] = useState<string | null>(null);
   // A mensagem de uma edição ou remoção que falhou, por linha.
   const [avisos, setAvisos] = useState<Record<string, string>>({});
+  const [confirmados, setConfirmados] = useState<PrecosConfirmados>({});
   const [confirmando, setConfirmando] = useState(false);
   const [esvaziando, setEsvaziando] = useState(false);
   const [erroDoDialog, setErroDoDialog] = useState<string | null>(null);
@@ -175,12 +186,74 @@ export function MeuCarrinho() {
     );
   }
 
+  const { bloqueios, mudancas } = revalidacaoDe(carrinho, confirmados);
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-medium">Carrinho</h1>
       {erroDaLista && (
         <Alert variant="destructive">
           <AlertDescription>{erroDaLista}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Bloqueia o Pedido até o Produto ser removido ou a quantidade ajustada,
+          com as duas ações aqui dentro (FR-19). Confirmar o preço não o tira. */}
+      {bloqueios.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTitle>Ajuste o Carrinho antes de fazer o Pedido.</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-3">
+              {bloqueios.map((linha) => (
+                <li key={linha.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>{textoDoBloqueio(linha)}</span>
+                  <span className="flex flex-wrap gap-2">
+                    {linha.bloqueio === "acima_do_estoque" && (
+                      <Button size="sm" variant="outline" onClick={() => alterar(linha, linha.estoque_disponivel)}>
+                        Ajustar para {unidadesTexto(linha.estoque_disponivel)}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => remover(linha)}
+                      aria-label={linha.visivel ? `Remover ${linha.nome} do Carrinho` : "Remover o Produto indisponível do Carrinho"}
+                    >
+                      Remover
+                    </Button>
+                  </span>
+                  {avisos[linha.id] && <span className="w-full text-sm">{avisos[linha.id]}</span>}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* O preço anterior e o atual de cada Produto, com confirmação. A ciência
+          só fica na tela: quem a grava é o checkout (AD-17). */}
+      {mudancas.length > 0 && (
+        <Alert>
+          <AlertTitle>{mudancas.length === 1 ? "O preço mudou." : "Os preços mudaram."}</AlertTitle>
+          <AlertDescription>
+            <ul className="space-y-1">
+              {mudancas.map((linha) => (
+                <li key={linha.id}>
+                  {linha.nome}: de{" "}
+                  <span className="tabular-nums">{formatarPreco(linha.preco_visto_centavos)}</span> para{" "}
+                  <span className="font-medium tabular-nums">{formatarPreco(linha.preco_centavos)}</span>.
+                </li>
+              ))}
+            </ul>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setConfirmados((atuais) => comPrecosConfirmados(atuais, mudancas))}
+            >
+              {mudancas.length === 1 ? "Confirmar o novo preço" : "Confirmar os novos preços"}
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -238,8 +311,9 @@ export function MeuCarrinho() {
 
 // Uma linha de Item de Carrinho (UX-DR8): `Input` e `Button`, separada por
 // `Separator` pelo pai, sem `Card` aninhado. O Produto que saiu da
-// visibilidade não tem nome nem preço: a linha diz que está indisponível e só
-// oferece remover. O aviso que bloqueia o avanço é da 4.4.
+// visibilidade não tem nome nem preço: a linha só diz que está indisponível, e
+// o remover está no `Alert` de bloqueio (4.4). A mensagem de uma ação que falhou
+// numa linha bloqueada também aparece lá, e não repetida aqui.
 function Linha({
   linha,
   aviso,
@@ -255,20 +329,9 @@ function Linha({
   const idAviso = `${id}-aviso`;
 
   if (!linha.visivel) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-muted-foreground">Produto indisponível.</p>
-        <Button variant="outline" onClick={() => aoRemover(linha)} aria-label="Remover o Produto indisponível do Carrinho">
-          Remover
-        </Button>
-        {aviso && (
-          <p className="text-destructive w-full text-sm" role="alert">
-            {aviso}
-          </p>
-        )}
-      </div>
-    );
+    return <p className="text-muted-foreground">Produto indisponível.</p>;
   }
+  const avisoNaLinha = linha.bloqueio === "" ? aviso : undefined;
 
   return (
     <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
@@ -290,7 +353,7 @@ function Linha({
             className="w-16 tabular-nums"
             inputMode="numeric"
             defaultValue={linha.quantidade}
-            aria-describedby={aviso ? idAviso : undefined}
+            aria-describedby={avisoNaLinha ? idAviso : undefined}
             aria-invalid={aviso ? true : undefined}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
@@ -308,9 +371,9 @@ function Linha({
             Remover
           </Button>
         </div>
-        {aviso && (
+        {avisoNaLinha && (
           <p id={idAviso} className="text-destructive text-sm" role="alert">
-            {aviso}
+            {avisoNaLinha}
           </p>
         )}
       </div>

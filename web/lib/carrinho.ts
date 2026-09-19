@@ -4,16 +4,26 @@
 // centavos inteiros que a edição otimista da quantidade precisa no intervalo
 // entre o clique e a resposta.
 
+// O que impede a linha de seguir para o Pedido (FR-19). Quem decide é o Go, e a
+// tela só mostra: vazio, `indisponivel` (só remover resolve) ou
+// `acima_do_estoque` (remover, ou ajustar para o disponível).
+export type Bloqueio = "" | "indisponivel" | "acima_do_estoque";
+
 export type LinhaDoCarrinho = {
   id: string;
   produto_id: string;
   quantidade: number;
-  // Falso quando o Produto saiu da visibilidade: nome, imagem e preço vêm
-  // vazios, e a linha só serve para ser removida.
+  // Falso quando o Produto saiu da visibilidade: nome, imagem, preço e Estoque
+  // vêm vazios, e a linha só serve para ser removida.
   visivel: boolean;
   nome: string;
   imagem_url: string;
   preco_centavos: number;
+  // O preço da última alteração da linha: o "de" do "de X para Y".
+  preco_visto_centavos: number;
+  estoque_disponivel: number;
+  preco_mudou: boolean;
+  bloqueio: Bloqueio;
 };
 
 export type Carrinho = {
@@ -60,4 +70,53 @@ export function quantidadeDoCampo(texto: string): number | null {
   if (!/^\d+$/.test(limpo)) return null;
   const n = Number(limpo);
   return Number.isSafeInteger(n) ? n : null;
+}
+
+// A revalidação da FR-19 na abertura do Carrinho (4.4). Nada aqui vai ao
+// servidor: confirmar um preço é estado da tela, e quem grava a ciência é o
+// checkout (AD-17, 5.5) — por isso o aviso volta quando a tela é reaberta.
+
+// O preço, em centavos, que o Comprador confirmou em cada linha. Se o preço
+// mudar de novo, o valor guardado deixa de ser o atual e o aviso volta.
+export type PrecosConfirmados = Record<string, number>;
+
+export type Revalidacao = {
+  // As linhas que impedem o Pedido, na ordem do Carrinho.
+  bloqueios: LinhaDoCarrinho[];
+  // As linhas de preço mudado que o Comprador ainda não confirmou.
+  mudancas: LinhaDoCarrinho[];
+  // Sem bloqueio e sem mudança pendente. Confirmar preço não desbloqueia: as
+  // duas listas são independentes. A 5.1 lê isto quando o checkout existir.
+  podeAvancar: boolean;
+};
+
+export function revalidacaoDe(carrinho: Carrinho, confirmados: PrecosConfirmados): Revalidacao {
+  const bloqueios = carrinho.itens.filter((i) => i.bloqueio !== "");
+  const mudancas = carrinho.itens.filter(
+    (i) => i.visivel && i.preco_mudou && confirmados[i.id] !== i.preco_centavos,
+  );
+  return { bloqueios, mudancas, podeAvancar: bloqueios.length === 0 && mudancas.length === 0 };
+}
+
+export function comPrecosConfirmados(confirmados: PrecosConfirmados, linhas: LinhaDoCarrinho[]): PrecosConfirmados {
+  const proximos = { ...confirmados };
+  for (const l of linhas) proximos[l.id] = l.preco_centavos;
+  return proximos;
+}
+
+// "1 unidade" e "2 unidades".
+export function unidadesTexto(n: number): string {
+  return `${n} ${n === 1 ? "unidade" : "unidades"}`;
+}
+
+// A frase do bloqueio. O Produto invisível não tem nome — desativado e de
+// Vendedor desativado são o mesmo (FR-12) —, e o visível sem Estoque não diz
+// "restam 0". O número é o Estoque disponível, e nunca o total (UX-DR17).
+export function textoDoBloqueio(linha: LinhaDoCarrinho): string {
+  if (!linha.visivel) return "Produto indisponível.";
+  if (linha.bloqueio === "acima_do_estoque") {
+    const d = linha.estoque_disponivel;
+    return `${d === 1 ? "Resta" : "Restam"} ${unidadesTexto(d)} de ${linha.nome}; o Carrinho pede ${linha.quantidade}.`;
+  }
+  return `${linha.nome} está indisponível.`;
 }

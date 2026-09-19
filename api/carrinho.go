@@ -33,15 +33,21 @@ type saidaItemCarrinho struct {
 }
 
 // saidaLinhaCarrinho é a linha do Carrinho aberto. Produto que saiu da
-// visibilidade vai com `visivel` falso e nome, imagem e preço vazios.
+// visibilidade vai com `visivel` falso e nome, imagem, preço e Estoque vazios.
+// `preco_mudou` e `bloqueio` são a revalidação da FR-19, decidida em `carrinho`:
+// `bloqueio` vem vazio, `indisponivel` ou `acima_do_estoque`.
 type saidaLinhaCarrinho struct {
-	ID            string `json:"id"`
-	ProdutoID     string `json:"produto_id"`
-	Quantidade    int32  `json:"quantidade"`
-	Visivel       bool   `json:"visivel"`
-	Nome          string `json:"nome"`
-	ImagemURL     string `json:"imagem_url"`
-	PrecoCentavos int64  `json:"preco_centavos"`
+	ID                 string `json:"id"`
+	ProdutoID          string `json:"produto_id"`
+	Quantidade         int32  `json:"quantidade"`
+	Visivel            bool   `json:"visivel"`
+	Nome               string `json:"nome"`
+	ImagemURL          string `json:"imagem_url"`
+	PrecoCentavos      int64  `json:"preco_centavos"`
+	PrecoVistoCentavos int64  `json:"preco_visto_centavos"`
+	EstoqueDisponivel  int32  `json:"estoque_disponivel"`
+	PrecoMudou         bool   `json:"preco_mudou"`
+	Bloqueio           string `json:"bloqueio"`
 }
 
 type saidaCarrinho struct {
@@ -147,7 +153,8 @@ func (s *servidor) alterarItemDoCarrinho(w http.ResponseWriter, r *http.Request)
 }
 
 // lerCarrinho abre o Carrinho do dono: os Itens, as unidades e o subtotal pelos
-// preços de agora (FR-18). Leitura pura (AD-17): nada é gravado.
+// preços de agora (FR-18), com a revalidação da FR-19 em cada linha. Leitura
+// pura (AD-17): nada é gravado.
 func (s *servidor) lerCarrinho(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
@@ -170,6 +177,8 @@ func (s *servidor) lerCarrinho(w http.ResponseWriter, r *http.Request) {
 		saida.Itens[i] = saidaLinhaCarrinho{
 			ID: it.ID, ProdutoID: it.ProdutoID, Quantidade: it.Quantidade, Visivel: it.Visivel,
 			Nome: it.Nome, ImagemURL: it.ImagemURL, PrecoCentavos: it.PrecoCentavos,
+			PrecoVistoCentavos: it.PrecoVistoCentavos, EstoqueDisponivel: it.EstoqueDisponivel,
+			PrecoMudou: it.PrecoMudou, Bloqueio: it.Bloqueio,
 		}
 	}
 	escreverJSON(w, http.StatusOK, saida)

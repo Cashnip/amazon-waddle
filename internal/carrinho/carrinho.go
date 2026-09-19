@@ -44,10 +44,21 @@ type Item struct {
 	Quantidade int32
 }
 
+// O que impede o Item de seguir para o Pedido (FR-19). É o Go que decide, e a
+// tela só mostra: a 5.5 reaproveita a mesma regra na entrada do checkout.
+const (
+	// BloqueioIndisponivel: o Produto saiu da visibilidade (AD-19) — desativado,
+	// ou de Vendedor desativado, que a interface não distingue (FR-12) — ou não
+	// tem nenhuma unidade disponível. Só remover resolve.
+	BloqueioIndisponivel = "indisponivel"
+	// BloqueioAcimaDoEstoque: há disponível, mas menos que a quantidade do Item.
+	// Remover ou ajustar para o disponível resolve.
+	BloqueioAcimaDoEstoque = "acima_do_estoque"
+)
+
 // ItemDoCarrinho é uma linha do Carrinho aberto. Um Produto que saiu da
-// visibilidade (AD-19) volta com Visivel falso e sem nome, imagem nem preço: a
-// tela o mostra como indisponível e o Comprador ainda pode removê-lo. O aviso
-// que bloqueia o avanço é da 4.4.
+// visibilidade (AD-19) volta com Visivel falso e sem nome, imagem, preço nem
+// Estoque: a tela o mostra como indisponível e o Comprador ainda pode removê-lo.
 type ItemDoCarrinho struct {
 	ID            string
 	ProdutoID     string
@@ -56,6 +67,27 @@ type ItemDoCarrinho struct {
 	Nome          string
 	ImagemURL     string
 	PrecoCentavos int64
+	// PrecoVistoCentavos é o preço da última alteração do Item: o "de" do "de X
+	// para Y". Só se lê aqui (AD-17).
+	PrecoVistoCentavos int64
+	// EstoqueDisponivel é conselho (AD-5), o mesmo que a Caixa de compra mostra.
+	EstoqueDisponivel int32
+	// PrecoMudou: o preço de agora difere do visto. Exige confirmação (FR-19).
+	PrecoMudou bool
+	// Bloqueio vem vazio quando nada impede o Item; senão, um dos Bloqueio*.
+	Bloqueio string
+}
+
+// bloqueioDe é a regra da FR-19: Produto invisível ou sem nenhuma unidade é
+// indisponível, e o disponível abaixo da quantidade é acima do Estoque.
+func bloqueioDe(visivel bool, disponivel, quantidade int32) string {
+	switch {
+	case !visivel || disponivel <= 0:
+		return BloqueioIndisponivel
+	case disponivel < quantidade:
+		return BloqueioAcimaDoEstoque
+	}
+	return ""
 }
 
 // Conteudo é o Carrinho aberto. O subtotal soma só os Itens visíveis, pelos
@@ -173,11 +205,12 @@ func AlterarQuantidade(ctx context.Context, bd gerado.DBTX, itemID, compradorID 
 	return Item{ID: linha.ID.String(), ProdutoID: linha.ProdutoID.String(), Quantidade: linha.Quantidade}, nil
 }
 
-// Itens abre o Carrinho do Comprador: leitura pura (AD-17), que nunca grava
-// `preco_visto_centavos`. Comprador sem Carrinho, ou com o Carrinho vazio,
-// recebe Itens vazio — nunca nil, para o JSON sair `[]`.
+// Itens abre o Carrinho do Comprador e o revalida (FR-19): leitura pura
+// (AD-17), que nunca grava `preco_visto_centavos`. Comprador sem Carrinho, ou
+// com o Carrinho vazio, recebe Itens vazio — nunca nil, para o JSON sair `[]`.
 //
-// Preço e visibilidade vêm de catalogo.Resumos, em lote (AD-19).
+// Preço, Estoque e visibilidade vêm de catalogo.Resumos, em lote (AD-19). Cada
+// linha sai com o que mudou (PrecoMudou) e o que a impede (Bloqueio).
 func Itens(ctx context.Context, bd gerado.DBTX, compradorID string) (Conteudo, error) {
 	dono, err := uuidDe(compradorID)
 	if err != nil {
@@ -198,10 +231,14 @@ func Itens(ctx context.Context, bd gerado.DBTX, compradorID string) (Conteudo, e
 	conteudo := Conteudo{Itens: make([]ItemDoCarrinho, 0, len(linhas))}
 	for i, l := range linhas {
 		item := ItemDoCarrinho{ID: l.ID.String(), ProdutoID: ids[i], Quantidade: l.Quantidade}
-		if r, visivel := resumos[ids[i]]; visivel {
+		r, visivel := resumos[ids[i]]
+		if visivel {
 			item.Visivel, item.Nome, item.ImagemURL, item.PrecoCentavos = true, r.Nome, r.ImagemURL, r.PrecoCentavos
+			item.PrecoVistoCentavos, item.EstoqueDisponivel = l.PrecoVistoCentavos, r.EstoqueDisponivel
+			item.PrecoMudou = r.PrecoCentavos != l.PrecoVistoCentavos
 			conteudo.SubtotalCentavos += r.PrecoCentavos * int64(l.Quantidade)
 		}
+		item.Bloqueio = bloqueioDe(visivel, r.EstoqueDisponivel, l.Quantidade)
 		conteudo.Unidades += int64(l.Quantidade)
 		conteudo.Itens = append(conteudo.Itens, item)
 	}

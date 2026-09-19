@@ -210,3 +210,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-2-4-3-adicionar-alterar-e-esvaziar-o-carrinho.md`
   summary: A linha "Tela" da matriz (edição otimista com reversão, `Dialog` de esvaziar fechado por `Esc`, estado vazio, volta do Login) não tem teste automatizado, e a tela `/carrinho` não foi aberta num navegador.
   evidence: o `web/` só roda `node --test` sobre `lib/`, sem bancada de componente; `comQuantidade` e `quantidadeDoCampo` estão cobertas em `web/scripts/carrinho.test.mjs`, mas o comportamento de `meu-carrinho.tsx` só foi verificado por `next build` e pelas duas rotas de API que ele chama.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-4-revalidacao-do-carrinho-na-abertura.md`
+  summary: Os dois `Alert` da revalidação (bloqueio com Ajustar/Remover dentro, e preço com confirmação) não têm teste automatizado, e nunca foram abertos num navegador.
+  evidence: `meu-carrinho.tsx` só passou por `next build`; `revalidacaoDe`, `textoDoBloqueio` e os campos `bloqueio`/`preco_mudou` da API têm teste, mas a renderização condicional, a cor dos botões `outline` dentro do `Alert` e o desaparecer do `Alert` de preço ao confirmar só se veem no passeio a 360 e 1440 px.

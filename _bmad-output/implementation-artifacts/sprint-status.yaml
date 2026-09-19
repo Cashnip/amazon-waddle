@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 2026-09-18
+last_updated: 2026-09-19
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -73,7 +73,7 @@ development_status:
   4-1-carrinho-exclusivo-de-comprador-autenticado: review
   4-2-adicionar-produto-ao-carrinho: review
   4-3-alterar-quantidade-remover-item-e-esvaziar-o-carrinho: review
-  4-4-revalidação-do-carrinho-na-abertura: backlog
+  4-4-revalidação-do-carrinho-na-abertura: review
   4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: backlog
   epic-4-retrospective: optional
 

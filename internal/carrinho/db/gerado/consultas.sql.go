@@ -143,7 +143,7 @@ func (q *Queries) LimparItens(ctx context.Context, compradorID pgtype.UUID) erro
 }
 
 const listarItens = `-- name: ListarItens :many
-SELECT item.id, item.produto_id, item.quantidade
+SELECT item.id, item.produto_id, item.quantidade, item.preco_visto_centavos
 FROM carrinho.item_carrinho AS item
 JOIN carrinho.carrinho AS c ON c.id = item.carrinho_id
 WHERE c.comprador_id = $1
@@ -151,12 +151,14 @@ ORDER BY item.id
 `
 
 type ListarItensRow struct {
-	ID         pgtype.UUID
-	ProdutoID  pgtype.UUID
-	Quantidade int32
+	ID                 pgtype.UUID
+	ProdutoID          pgtype.UUID
+	Quantidade         int32
+	PrecoVistoCentavos int64
 }
 
-// Leitura pura (AD-17): não há UPDATE aqui, e o preço visto nem sai da consulta.
+// Leitura pura (AD-17): não há UPDATE aqui. O preço visto sai da consulta para
+// a revalidação dizer "de X para Y" (4.4), mas quem o grava não é esta.
 // O id é uuidv7, então a ordem é a da adição.
 func (q *Queries) ListarItens(ctx context.Context, compradorID pgtype.UUID) ([]ListarItensRow, error) {
 	rows, err := q.db.Query(ctx, listarItens, compradorID)
@@ -167,7 +169,12 @@ func (q *Queries) ListarItens(ctx context.Context, compradorID pgtype.UUID) ([]L
 	var items []ListarItensRow
 	for rows.Next() {
 		var i ListarItensRow
-		if err := rows.Scan(&i.ID, &i.ProdutoID, &i.Quantidade); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProdutoID,
+			&i.Quantidade,
+			&i.PrecoVistoCentavos,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

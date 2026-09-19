@@ -385,3 +385,155 @@ func deletarItem(t *testing.T, rotas http.Handler, id string, cookie *http.Cooki
 	t.Helper()
 	return comCorpo(t, rotas, http.MethodDelete, "/api/v1/carrinho/itens/"+id, "", "", cookie)
 }
+
+// carrinhoRevalidado é a matriz da 4.4 num subteste só: cada linha do Carrinho
+// aberto sai com o que mudou (`preco_mudou`) e o que a impede (`bloqueio`), e
+// ler nunca grava o preço visto (AD-17, FR-19).
+func carrinhoRevalidado(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
+	precoVistoNoBanco := func(itemID string) string {
+		return textoDe(t, pool, `SELECT preco_visto_centavos::text FROM carrinho.item_carrinho WHERE id = $1`, itemID)[0]
+	}
+
+	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)
+	lojaA := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja A da Revalidação"}`, admin), http.StatusCreated)
+	lojaB := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja B da Revalidação"}`, admin), http.StatusCreated)
+	categoria := idDe(t, categoriaCom(t, rotas, http.MethodPost, "", `{"nome":"Categoria da Revalidação"}`, admin), http.StatusCreated)
+	corpoDe := func(nome, vendedor string, preco, estoque int, ativo bool) string {
+		b, _ := json.Marshal(map[string]any{
+			"nome": nome, "descricao": "", "preco_centavos": preco, "imagem_url": "",
+			"vendedor_id": vendedor, "categoria_id": categoria, "estoque_total": estoque, "ativo": ativo,
+		})
+		return string(b)
+	}
+	novoProduto := func(nome, vendedor string, preco, estoque int) string {
+		return idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe(nome, vendedor, preco, estoque, true), admin), http.StatusCreated)
+	}
+	mudarPreco := func(id, nome string, preco int) {
+		t.Helper()
+		if resp := produtoCom(t, rotas, http.MethodPut, "/"+id, corpoDe(nome, lojaA, preco, 10, true), admin); resp.Code != http.StatusOK {
+			t.Fatalf("mudar o preço de %s = %d (%s)", nome, resp.Code, resp.Body.String())
+		}
+	}
+	ajustarEstoque := func(id string, total int) {
+		t.Helper()
+		corpo := `{"estoque_total":` + strconv.Itoa(total) + `}`
+		if resp := produtoCom(t, rotas, http.MethodPut, "/"+id+"/estoque", corpo, admin); resp.Code != http.StatusOK {
+			t.Fatalf("ajustar o Estoque de %s = %d (%s)", id, resp.Code, resp.Body.String())
+		}
+	}
+
+	chaleira := novoProduto("Chaleira Revalidada", lojaA, 5000, 10)
+	bule := novoProduto("Bule Revalidado", lojaA, 3000, 10)
+	caneca := novoProduto("Caneca Revalidada", lojaA, 800, 10)
+	panela := novoProduto("Panela Revalidada", lojaA, 9000, 10)
+	garrafa := novoProduto("Garrafa Revalidada", lojaB, 2000, 10)
+
+	duda := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Duda da Revalidação","email":"duda.revalidacao@exemplo.br","senha":"senha-da-duda-1"}`), http.StatusCreated)
+	itemChaleira := idDe(t, postarItem(t, rotas, corpoItem(chaleira, "2"), duda), http.StatusCreated)
+	itemBule := idDe(t, postarItem(t, rotas, corpoItem(bule, "4"), duda), http.StatusCreated)
+	idDe(t, postarItem(t, rotas, corpoItem(caneca, "1"), duda), http.StatusCreated)
+	idDe(t, postarItem(t, rotas, corpoItem(panela, "1"), duda), http.StatusCreated)
+	idDe(t, postarItem(t, rotas, corpoItem(garrafa, "1"), duda), http.StatusCreated)
+
+	// A linha de cada Produto, lida do Carrinho aberto agora.
+	linhas := func() map[string]map[string]any {
+		t.Helper()
+		resp := pegarCarrinho(t, rotas, duda)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("abrir o Carrinho = %d (%s)", resp.Code, resp.Body.String())
+		}
+		saida := map[string]map[string]any{}
+		itens, _ := decodificar(t, resp)["itens"].([]any)
+		for _, bruto := range itens {
+			linha, _ := bruto.(map[string]any)
+			saida[linha["produto_id"].(string)] = linha
+		}
+		return saida
+	}
+	quer := func(caso string, linha map[string]any, precoMudou bool, bloqueio string) {
+		t.Helper()
+		if linha["preco_mudou"] != precoMudou || linha["bloqueio"] != bloqueio {
+			t.Errorf("%s: preco_mudou = %v e bloqueio = %q, quero %v e %q (linha %v)",
+				caso, linha["preco_mudou"], linha["bloqueio"], precoMudou, bloqueio, linha)
+		}
+	}
+
+	// Limpo: nada mudou, e o disponível é o do Catálogo.
+	limpo := linhas()
+	for _, id := range []string{chaleira, bule, caneca, panela, garrafa} {
+		quer("limpo", limpo[id], false, "")
+		if limpo[id]["preco_visto_centavos"] != limpo[id]["preco_centavos"] || limpo[id]["estoque_disponivel"] != 10.0 {
+			t.Errorf("limpo: linha = %v, quero o preço visto igual ao atual e disponível 10", limpo[id])
+		}
+	}
+
+	// Preço mudou: o "de X para Y" tem os dois números, e ler não grava.
+	mudarPreco(chaleira, "Chaleira Revalidada", 6000)
+	mudado := linhas()
+	quer("preço mudou", mudado[chaleira], true, "")
+	if mudado[chaleira]["preco_visto_centavos"] != 5000.0 || mudado[chaleira]["preco_centavos"] != 6000.0 {
+		t.Errorf("preço mudou: linha = %v, quero visto 5000 e atual 6000", mudado[chaleira])
+	}
+	quer("o outro Produto não muda", mudado[bule], false, "")
+	linhas()
+	if visto := precoVistoNoBanco(itemChaleira); visto != "5000" {
+		t.Errorf("preco_visto_centavos depois de abrir o Carrinho = %s, quero 5000: ler não grava", visto)
+	}
+
+	// Mudou e voltou: o preço visto é o atual, e não há o que confirmar.
+	mudarPreco(chaleira, "Chaleira Revalidada", 5000)
+	quer("preço de volta", linhas()[chaleira], false, "")
+
+	// Acima do Estoque: há disponível, mas menos que a quantidade do Item.
+	ajustarEstoque(bule, 2)
+	acima := linhas()[bule]
+	quer("acima do Estoque", acima, false, "acima_do_estoque")
+	if acima["estoque_disponivel"] != 2.0 || acima["quantidade"] != 4.0 {
+		t.Errorf("acima do Estoque: linha = %v, quero disponível 2 e quantidade 4", acima)
+	}
+
+	// Sem Estoque: visível, mas indisponível — só remover resolve.
+	ajustarEstoque(caneca, 0)
+	sem := linhas()[caneca]
+	quer("sem Estoque", sem, false, "indisponivel")
+	if sem["visivel"] != true || sem["estoque_disponivel"] != 0.0 {
+		t.Errorf("sem Estoque: linha = %v, quero visível com disponível 0", sem)
+	}
+
+	// Produto desativado e Vendedor desativado saem iguais: invisíveis, sem nome
+	// nem preço, indisponíveis, e o preço não conta como mudado.
+	if resp := produtoCom(t, rotas, http.MethodPut, "/"+panela, corpoDe("Panela Revalidada", lojaA, 9000, 10, false), admin); resp.Code != http.StatusOK {
+		t.Fatalf("desativar o Produto = %d (%s)", resp.Code, resp.Body.String())
+	}
+	if resp := vendedorCom(t, rotas, http.MethodPut, "/"+lojaB, `{"nome":"Loja B da Revalidação","ativo":false}`, admin); resp.Code != http.StatusOK {
+		t.Fatalf("desativar o Vendedor = %d (%s)", resp.Code, resp.Body.String())
+	}
+	fora := linhas()
+	for caso, id := range map[string]string{"Produto desativado": panela, "Vendedor desativado": garrafa} {
+		quer(caso, fora[id], false, "indisponivel")
+		if fora[id]["visivel"] != false || fora[id]["nome"] != "" || fora[id]["preco_centavos"] != 0.0 || fora[id]["estoque_disponivel"] != 0.0 {
+			t.Errorf("%s: linha = %v, quero invisível e sem nome, preço nem Estoque", caso, fora[id])
+		}
+	}
+
+	// Duas mudanças na mesma linha: o preço e o Estoque. Ajustar para o
+	// disponível é a alteração da 4.3, que dá ciência do preço daquela linha.
+	mudarPreco(chaleira, "Chaleira Revalidada", 6000)
+	ajustarEstoque(chaleira, 1)
+	duas := linhas()[chaleira]
+	quer("duas mudanças", duas, true, "acima_do_estoque")
+	if resp := alterarItem(t, rotas, itemChaleira, `{"quantidade":1}`, duda); resp.Code != http.StatusOK {
+		t.Fatalf("ajustar para o disponível = %d (%s)", resp.Code, resp.Body.String())
+	}
+	quer("depois de ajustar", linhas()[chaleira], false, "")
+	if visto := precoVistoNoBanco(itemChaleira); visto != "6000" {
+		t.Errorf("preco_visto_centavos depois de ajustar = %s, quero 6000", visto)
+	}
+
+	// Ajustar o Bule para o disponível libera a linha.
+	if resp := alterarItem(t, rotas, itemBule, `{"quantidade":2}`, duda); resp.Code != http.StatusOK {
+		t.Fatalf("ajustar o Bule = %d (%s)", resp.Code, resp.Body.String())
+	}
+	quer("Bule ajustado", linhas()[bule], false, "")
+}

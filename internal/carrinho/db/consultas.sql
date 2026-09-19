@@ -45,10 +45,11 @@ FROM carrinho.carrinho AS c
 WHERE item.id = @id AND item.carrinho_id = c.id AND c.comprador_id = @comprador_id
 RETURNING item.id, item.produto_id, item.quantidade;
 
--- Leitura pura (AD-17): não há UPDATE aqui, e o preço visto nem sai da consulta.
+-- Leitura pura (AD-17): não há UPDATE aqui. O preço visto sai da consulta para
+-- a revalidação dizer "de X para Y" (4.4), mas quem o grava não é esta.
 -- O id é uuidv7, então a ordem é a da adição.
 -- name: ListarItens :many
-SELECT item.id, item.produto_id, item.quantidade
+SELECT item.id, item.produto_id, item.quantidade, item.preco_visto_centavos
 FROM carrinho.item_carrinho AS item
 JOIN carrinho.carrinho AS c ON c.id = item.carrinho_id
 WHERE c.comprador_id = @comprador_id
