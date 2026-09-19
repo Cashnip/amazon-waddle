@@ -219,3 +219,7 @@ Append-only: não edite nem remova entradas existentes.
   summary: A frase "Faltam R$ X para o Frete grátis." não tem teste automatizado de renderização, e o Carrinho vazio sem frase vale por construção, não por teste.
   evidence: `faltaParaFreteGratis` está coberta em `web/scripts/carrinho.test.mjs` nas cinco fronteiras da matriz, mas o JSX de `meu-carrinho.tsx` só passou por `next build`; a ausência da frase no Carrinho vazio depende do retorno antecipado da tela, e só o passeio a 360 e 1440 px mostra o alinhamento da frase sob o subtotal.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-a-vitrine-e-o-envelope-de-listagem.md`
+  summary: A passada de largura do passeio no navegador foi feita a 500 px, e não a 360, porque o Chrome no Windows não reduz a janela abaixo de ~500 px de viewport.
+  evidence: `resize_window` para 380x950 devolve `innerWidth` 500; a faixa abaixo do breakpoint `sm:` (640) é a mesma nas duas larguras, então o ramo de layout exercitado é o correto — o que fica sem verificação é truncamento e transbordo específicos de 360 px. Um passeio a 360 exige emulação de dispositivo no DevTools.
+

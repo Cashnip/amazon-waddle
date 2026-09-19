@@ -5,7 +5,11 @@ import { Preco } from "@/components/preco";
 // A grade da Vitrine: 1 a 4 colunas em 360–639, 640–1023, 1024–1439 e
 // ≥1440 px. O `2xl` padrão é 1536, então a quarta coluna vem de um breakpoint
 // arbitrário. Mora aqui porque a página e o `loading.tsx` a dividem.
-export const GRADE = "grid grid-cols-1 gap-grid-gutter sm:grid-cols-2 lg:grid-cols-3 min-[1440px]:grid-cols-4";
+// O quarto degrau é `min-[90rem]` (=1440px), e não `min-[1440px]`: o Tailwind v4
+// ordena as variantes de largura por unidade, então a versão em px sai no CSS
+// **antes** de `lg:` (64rem) e perdia a cascata para ela — a Vitrine ficava em
+// três colunas em qualquer largura. Em rem, o degrau sai depois, e vence.
+export const GRADE = "grid grid-cols-1 gap-grid-gutter sm:grid-cols-2 lg:grid-cols-3 min-[90rem]:grid-cols-4";
 
 export type ProdutoDaVitrine = {
   id: string;

@@ -131,7 +131,9 @@ test("Frete grátis: a distância é absoluta, e zero quando já alcançada", ()
   assert.equal(faltaParaFreteGratis(29899, ISENCAO), 1);
   assert.equal(faltaParaFreteGratis(29900, ISENCAO), 0);
   assert.equal(faltaParaFreteGratis(35000, ISENCAO), 0);
-  assert.equal(faltaParaFreteGratis(0, ISENCAO), ISENCAO);
+  // Subtotal zero cala: Carrinho vazio ou só de Produtos indisponíveis não
+  // promete Frete nenhum (achado do passeio no navegador).
+  assert.equal(faltaParaFreteGratis(0, ISENCAO), 0);
 });
 
 test("Frete grátis: a distância acompanha o subtotal otimista", () => {
@@ -151,4 +153,9 @@ test("Frete grátis: o Produto invisível não conta para a distância", () => {
   const comFora = carrinhoDe(chaleira, fora);
   assert.equal(comFora.subtotal_centavos, 17970);
   assert.equal(faltaParaFreteGratis(comFora.subtotal_centavos, comFora.frete_isencao_centavos), 11930);
+
+  // Só Produtos indisponíveis: subtotal zero, e a tela não diz nada.
+  const soFora = carrinhoDe(fora);
+  assert.equal(soFora.subtotal_centavos, 0);
+  assert.equal(faltaParaFreteGratis(soFora.subtotal_centavos, soFora.frete_isencao_centavos), 0);
 });

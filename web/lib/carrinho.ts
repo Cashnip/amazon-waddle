@@ -62,7 +62,11 @@ export function subtotalDe(itens: LinhaDoCarrinho[]): number {
 // alcançou o limiar, caso em que a tela não diz nada. Sai da mesma soma que o
 // subtotal exibido, inclusive durante a edição otimista, porque a frase e o
 // número ao lado dela não podem discordar (NFR-13, UX-DR17).
+// Subtotal zero cala também: um Carrinho só de Produtos indisponíveis não tem
+// Pedido a fazer, e prometer "Faltam R$ 299,00 para o Frete grátis." ali é
+// justamente o que a UX-DR17 proíbe.
 export function faltaParaFreteGratis(subtotal: number, isencao: number): number {
+  if (subtotal <= 0) return 0;
   return Math.max(0, isencao - subtotal);
 }
 
