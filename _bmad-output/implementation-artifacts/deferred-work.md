@@ -274,3 +274,26 @@ Append-only: não edite nem remova entradas existentes.
   summary: Metade da consequência "trocar o Endereço recalcula o Frete" (FR-20/FR-22) está provada na 5.3; falta a tela, que é da 5.4.
   evidence: `api/frete_test.go` pede `GET /api/v1/frete` para o mesmo Carrinho com um Endereço de SP, um da BA e de volta o de SP, e vê R$ 15,00, R$ 30,00 e R$ 15,00, com o total acompanhando. O esboço da Revisão já pergunta a cada abertura, mas não há teste de tela: a 5.4, ao substituir o esboço, precisa manter a pergunta a cada abertura e nunca guardar a cotação no navegador.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: O Confirmar Pedido da Revisão está desabilitado: a chave de idempotência é gerada e guardada, mas ninguém a envia, e `limparCheckout` não é chamada por ninguém.
+  evidence: `web/app/checkout/revisao/revisao-do-pedido.tsx` declara o botão em `{colors.primary-strong}` e o desabilita pelas razões acumuladas, das quais a constante `CRIACAO_DISPONIVEL = false` é uma; `api/pedido.go:17` ainda recebe `entradaPedido{ProdutoID}`, uma unidade, sem Endereço nem Frete. A 5.6 refaz o `POST /api/v1/pedidos` com chave, digest do corpo, congelamento e `TOTAL_DIVERGENTE`, vira **só** `CRIACAO_DISPONIVEL`, envia o cabeçalho `Idempotency-Key` e chama `limparCheckout` depois de o Pedido nascer. A outra razão — `sessionStorage` que não respondeu — segue travando o botão por conta própria depois disso.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: O subtotal do `GET /api/v1/carrinho` e o da cotação de `GET /api/v1/frete` são duas leituras separadas e podem discordar; a Revisão não arbitra a divergência.
+  evidence: `revisao-do-pedido.tsx` exibe as parcelas das linhas do Carrinho e o bloco Subtotal/Frete/Total da cotação, sem comparar os dois subtotais — a tela não soma nada (NFR-13). Um preço alterado entre as duas requisições deixa a soma das parcelas diferente do Subtotal exibido. Quem recusa é a criação do Pedido, sob a mesma trava da Reserva, com `TOTAL_DIVERGENTE` (5.6).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: O teste de tela da troca de Endereço (FR-20/FR-22) continua sem bancada: o `web/` só tem `node --test` sobre módulos de `lib/`, e nenhum componente React é montado em teste.
+  evidence: `web/package.json` roda `node --test "scripts/*.test.mjs"`, e os oito arquivos de teste importam só `web/lib/*.ts`. `checkout.test.mjs` prova a chave, a rota do Frete e a escolha de Endereço; a consequência "trocar o Endereço recalcula o Frete" está provada no servidor por `api/frete_test.go`, mas a metade de tela — o `useEffect` que pergunta a cotação a cada abertura e não guarda nada — segue conferida só à mão. Montar componente pede Testing Library e um ambiente de DOM, que o repositório não tem e que nenhuma estória da Épica 5 orça.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: O laranja aparece duas vezes no fluxo do Comprador enquanto o botão do esqueleto continuar na Página de Produto.
+  evidence: `web/app/produtos/[id]/comprar.tsx:63` é o "Confirmar o Pedido" da 1.6, em `primary-strong` e `rounded-full`, ainda montado dentro da `CaixaDeCompra` por `web/app/produtos/[id]/page.tsx:98`; a Revisão da 5.4 traz o segundo, que é o do `DESIGN.md`. Os dois chamam o mesmo `POST /api/v1/pedidos` do esqueleto — um de verdade, um desabilitado. Quem fecha é a 5.6, ao refazer a criação do Pedido: o caminho de um Produto e uma unidade some junto com o botão.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: A `Idempotency-Key` sobrevive a uma alteração do Carrinho entre duas passagens pela Revisão, e a 5.6 precisa decidir se isso é a mesma tentativa de checkout ou outra.
+  evidence: `chaveDeIdempotencia` só devolve chave nova depois de `limparCheckout`, que a 5.6 chama na criação do Pedido. O Comprador que entra na Revisão, volta ao Carrinho, muda a quantidade e retorna confirma sob a **mesma** chave descrevendo outro Carrinho. Pela AC da 5.6, mesma chave com corpo diferente é `409` — recusa para um Comprador legítimo. A 5.6 decide entre apagar a chave quando o conteúdo do Carrinho muda, ou tratar o digest divergente como tentativa nova; o que não serve é o 409 cru chegar à tela.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-revisao-do-pedido.md`
+  summary: Um Carrinho só de Produtos invisíveis não é vazio, chega à Revisão e é apresentado com linhas "Produto indisponível." sem quantidade nem parcela.
+  evidence: `revisao-do-pedido.tsx` recusa só `itens.length === 0`, e `LinhaDaRevisao` cala nome, quantidade e parcela da linha invisível. O subtotal e o total não mentem — `carrinho.Itens` soma só as visíveis, no Go —, mas o último ponto de leitura antes do compromisso lista Itens que não somam nada. Quem fecha o caminho é a 5.5, que revalida na entrada do checkout e bloqueia o avanço com `bloqueio` ativo (FR-19); a 5.4 tem a revalidação em `Never`. Se a 5.5 mudar de forma, a linha invisível ainda deve mostrar quantidade, ou a Revisão não deve apresentar um total que não consegue itemizar.
