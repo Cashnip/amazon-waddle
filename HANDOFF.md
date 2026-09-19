@@ -59,10 +59,10 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 5.3** (cálculo do Frete). A 5.2 está em `main` (`ac6e012`) e em `review` no
+`bmad-build` na **Estória 5.3** (cálculo do Frete). A 5.2 está em `main` (`400861b`) e em `review` no
 `sprint-status.yaml`: falta a leitura humana (`bmad-checkpoint-preview`) e o passeio da seção Verification da
 spec — 360 e 1440 px, só pelo teclado —, que ninguém fez. A 5.1 está `done` desde 2026-09-19.
-`epic-4-retrospective`, `epic-3-retrospective` e `epic-2-retrospective` continuam `optional`, sem dono.
+A retrospectiva da Épica 3 está `done` (`epic-3-retro-2026-09-19.md`); `epic-4-retrospective` e `epic-2-retrospective` continuam `optional`, sem dono.
 
 **O que a 5.2 deixou pronto, e a 5.3 a 5.6 usam:**
 - **o navegador guarda só o `endereco_id` escolhido**, em `sessionStorage` na chave `azamon:checkout:endereco_id`
