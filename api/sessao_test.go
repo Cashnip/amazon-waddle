@@ -168,7 +168,8 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 		PaginaTamanhoMax:        paginaTamanhoMaxDeTeste,
 		BuscaTermoMax:           buscaTermoMaxDeTeste,
 
-		CarrinhoUnidadesMax: carrinhoUnidadesMaxDeTeste,
+		CarrinhoUnidadesMax:  carrinhoUnidadesMaxDeTeste,
+		FreteIsencaoCentavos: freteIsencaoDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }

@@ -20,6 +20,7 @@ import {
   avisarCarrinhoAlterado,
   comPrecosConfirmados,
   comQuantidade,
+  faltaParaFreteGratis,
   parcelaDe,
   quantidadeDoCampo,
   revalidacaoDe,
@@ -187,6 +188,7 @@ export function MeuCarrinho() {
   }
 
   const { bloqueios, mudancas } = revalidacaoDe(carrinho, confirmados);
+  const falta = faltaParaFreteGratis(carrinho.subtotal_centavos, carrinho.frete_isencao_centavos);
 
   return (
     <div className="space-y-4">
@@ -271,9 +273,19 @@ export function MeuCarrinho() {
         <Button variant="outline" onClick={() => setConfirmando(true)}>
           Esvaziar o Carrinho
         </Button>
-        <p className="text-lg">
-          Subtotal: <span className="font-medium tabular-nums">{formatarPreco(carrinho.subtotal_centavos)}</span>
-        </p>
+        {/* Subtotal e nada mais (UX-DR17): o Frete depende do CEP e só aparece
+            no checkout. A distância até a isenção é uma frase em valor
+            absoluto, sem barra de progresso, e cala quando já foi alcançada. */}
+        <div className="text-right">
+          <p className="text-lg">
+            Subtotal: <span className="font-medium tabular-nums">{formatarPreco(carrinho.subtotal_centavos)}</span>
+          </p>
+          {falta > 0 && (
+            <p className="text-muted-foreground text-sm">
+              Faltam <span className="tabular-nums">{formatarPreco(falta)}</span> para o Frete grátis.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* `Dialog` de um nível só, e `Esc` fecha: é o comportamento do Radix. */}

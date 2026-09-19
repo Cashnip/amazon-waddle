@@ -74,7 +74,7 @@ development_status:
   4-2-adicionar-produto-ao-carrinho: review
   4-3-alterar-quantidade-remover-item-e-esvaziar-o-carrinho: review
   4-4-revalidação-do-carrinho-na-abertura: review
-  4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: backlog
+  4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: review
   epic-4-retrospective: optional
 
   epic-5: backlog

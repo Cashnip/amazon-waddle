@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 const {
   comPrecosConfirmados,
   comQuantidade,
+  faltaParaFreteGratis,
   parcelaDe,
   quantidadeDoCampo,
   revalidacaoDe,
@@ -61,7 +62,15 @@ test("campo de quantidade: inteiro sem sinal passa, o resto vira null", () => {
   }
 });
 
-const carrinhoDe = (...itens) => ({ itens, unidades: unidadesDe(itens), subtotal_centavos: subtotalDe(itens) });
+// O limiar da Config, que chega pronto do Go.
+const ISENCAO = 29900;
+
+const carrinhoDe = (...itens) => ({
+  itens,
+  unidades: unidadesDe(itens),
+  subtotal_centavos: subtotalDe(itens),
+  frete_isencao_centavos: ISENCAO,
+});
 const maisCara = { ...chaleira, preco_centavos: 6990, preco_mudou: true };
 const escassa = { ...bule, quantidade: 4, estoque_disponivel: 2, bloqueio: "acima_do_estoque" };
 const esgotada = { ...bule, id: "d", estoque_disponivel: 0, bloqueio: "indisponivel" };
@@ -113,4 +122,33 @@ test("texto do bloqueio: nomeia o Produto, diz o disponível e não fala em Rese
   assert.equal(unidadesTexto(1), "1 unidade");
   assert.equal(unidadesTexto(3), "3 unidades");
   for (const l of [escassa, esgotada, fora]) assert.doesNotMatch(textoDoBloqueio(l), /reserv/i);
+});
+
+// A distância até o Frete grátis (4.5): valor absoluto, e silêncio acima do
+// limiar. Nenhum valor de Frete existe aqui — só a diferença até a isenção.
+test("Frete grátis: a distância é absoluta, e zero quando já alcançada", () => {
+  assert.equal(faltaParaFreteGratis(25700, ISENCAO), 4200);
+  assert.equal(faltaParaFreteGratis(29899, ISENCAO), 1);
+  assert.equal(faltaParaFreteGratis(29900, ISENCAO), 0);
+  assert.equal(faltaParaFreteGratis(35000, ISENCAO), 0);
+  assert.equal(faltaParaFreteGratis(0, ISENCAO), ISENCAO);
+});
+
+test("Frete grátis: a distância acompanha o subtotal otimista", () => {
+  // Três Chaleiras a R$ 59,90 e dois Bules a R$ 30,05: R$ 239,80 no Carrinho.
+  const carrinho = carrinhoDe(chaleira, bule);
+  assert.equal(carrinho.subtotal_centavos, 23980);
+  assert.equal(faltaParaFreteGratis(carrinho.subtotal_centavos, carrinho.frete_isencao_centavos), 5920);
+
+  // Uma Chaleira a mais cruza o limiar, e a frase some antes de o servidor
+  // responder — o limiar vai junto na cópia otimista.
+  const depois = comQuantidade(carrinho, "a", 4);
+  assert.equal(depois.frete_isencao_centavos, ISENCAO);
+  assert.equal(faltaParaFreteGratis(depois.subtotal_centavos, depois.frete_isencao_centavos), 0);
+});
+
+test("Frete grátis: o Produto invisível não conta para a distância", () => {
+  const comFora = carrinhoDe(chaleira, fora);
+  assert.equal(comFora.subtotal_centavos, 17970);
+  assert.equal(faltaParaFreteGratis(comFora.subtotal_centavos, comFora.frete_isencao_centavos), 11930);
 });

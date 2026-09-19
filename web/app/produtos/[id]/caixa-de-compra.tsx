@@ -19,7 +19,7 @@ import { quantidadeMaxima } from "@/lib/quantidade";
 // otimista. Sem Sessão, leva ao Login com o Produto, a quantidade e o marcador
 // `adicionar` no `destino`; a volta (`adicionarAoEntrar`) cria o Item uma vez e
 // tira o marcador da URL, para o recarregar não somar de novo. O "Confirmar
-// compra" do esqueleto chega como `children`.
+// o Pedido" do esqueleto chega como `children`.
 export function CaixaDeCompra({
   produtoId,
   disponivel,

@@ -35,19 +35,19 @@ export function Comprar({ produtoId }: { produtoId: string }) {
         return;
       }
       // Sem `id` não há para onde levar, mesmo com 201: cair calado aqui
-      // deixaria a tela sem confirmação e sem erro, e o Comprador compraria
+      // deixaria a tela sem confirmação e sem erro, e o Comprador faria o Pedido
       // de novo. A mensagem exibida é sempre a do envelope — é ela que fala a
       // Voice and Tone, e o front não reescreve erro do servidor.
       if (!resposta.ok || !corpo?.id) {
-        setErro(corpo?.erro?.mensagem ?? "Não foi possível confirmar a compra.");
+        setErro(corpo?.erro?.mensagem ?? "Não foi possível confirmar o Pedido.");
         setEnviando(false);
         return;
       }
       // O botão continua desabilitado durante a navegação: reabilitá-lo abriria
-      // a janela para uma segunda compra enquanto a tela ainda é esta.
+      // a janela para um segundo Pedido enquanto a tela ainda é esta.
       router.push(`/pedidos/${corpo.id}`);
     } catch {
-      setErro("Não foi possível confirmar a compra.");
+      setErro("Não foi possível confirmar o Pedido.");
       setEnviando(false);
     }
   }
@@ -55,14 +55,14 @@ export function Comprar({ produtoId }: { produtoId: string }) {
   return (
     <div className="space-y-2">
       {/* primary-strong é o laranja reservado ao passo irreversível, e aparece
-          uma vez por fluxo (DESIGN.md). Confirmar a compra é esse passo. */}
+          uma vez por fluxo (DESIGN.md). Confirmar o Pedido é esse passo. */}
       <Button
         size="lg"
         onClick={confirmar}
         disabled={enviando}
         className="rounded-full bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong/90"
       >
-        {enviando ? "Confirmando…" : "Confirmar compra"}
+        {enviando ? "Confirmando…" : "Confirmar o Pedido"}
       </Button>
       {erro && (
         <p className="text-destructive text-sm" role="alert">

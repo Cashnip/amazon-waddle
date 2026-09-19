@@ -50,10 +50,14 @@ type saidaLinhaCarrinho struct {
 	Bloqueio           string `json:"bloqueio"`
 }
 
+// saidaCarrinho é o Carrinho aberto. `frete_isencao_centavos` é o limiar da
+// configuração (AD-13) e vai cru: a tela escreve a distância que falta a partir
+// do subtotal que ela mesma exibe, e o Carrinho não calcula Frete nenhum.
 type saidaCarrinho struct {
-	Itens            []saidaLinhaCarrinho `json:"itens"`
-	Unidades         int64                `json:"unidades"`
-	SubtotalCentavos int64                `json:"subtotal_centavos"`
+	Itens                []saidaLinhaCarrinho `json:"itens"`
+	Unidades             int64                `json:"unidades"`
+	SubtotalCentavos     int64                `json:"subtotal_centavos"`
+	FreteIsencaoCentavos int64                `json:"frete_isencao_centavos"`
 }
 
 // quantidadeDaEntrada confere minimo ≤ q ≤ teto e escreve o 400 no campo
@@ -169,9 +173,10 @@ func (s *servidor) lerCarrinho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	saida := saidaCarrinho{
-		Itens:            make([]saidaLinhaCarrinho, len(conteudo.Itens)),
-		Unidades:         conteudo.Unidades,
-		SubtotalCentavos: conteudo.SubtotalCentavos,
+		Itens:                make([]saidaLinhaCarrinho, len(conteudo.Itens)),
+		Unidades:             conteudo.Unidades,
+		SubtotalCentavos:     conteudo.SubtotalCentavos,
+		FreteIsencaoCentavos: s.cfg.FreteIsencaoCentavos,
 	}
 	for i, it := range conteudo.Itens {
 		saida.Itens[i] = saidaLinhaCarrinho{

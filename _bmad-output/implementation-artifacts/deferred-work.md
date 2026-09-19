@@ -214,3 +214,8 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-4-revalidacao-do-carrinho-na-abertura.md`
   summary: Os dois `Alert` da revalidação (bloqueio com Ajustar/Remover dentro, e preço com confirmação) não têm teste automatizado, e nunca foram abertos num navegador.
   evidence: `meu-carrinho.tsx` só passou por `next build`; `revalidacaoDe`, `textoDoBloqueio` e os campos `bloqueio`/`preco_mudou` da API têm teste, mas a renderização condicional, a cor dos botões `outline` dentro do `Alert` e o desaparecer do `Alert` de preço ao confirmar só se veem no passeio a 360 e 1440 px.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-5-a-tela-do-carrinho-nao-promete-o-que-o-sistema-nao-faz.md`
+  summary: A frase "Faltam R$ X para o Frete grátis." não tem teste automatizado de renderização, e o Carrinho vazio sem frase vale por construção, não por teste.
+  evidence: `faltaParaFreteGratis` está coberta em `web/scripts/carrinho.test.mjs` nas cinco fronteiras da matriz, mas o JSX de `meu-carrinho.tsx` só passou por `next build`; a ausência da frase no Carrinho vazio depende do retorno antecipado da tela, e só o passeio a 360 e 1440 px mostra o alinhamento da frase sob o subtotal.
+

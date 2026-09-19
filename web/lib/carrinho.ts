@@ -30,6 +30,9 @@ export type Carrinho = {
   itens: LinhaDoCarrinho[];
   unidades: number;
   subtotal_centavos: number;
+  // O limiar de isenção de Frete, da configuração do Go (AD-13). A tela mede a
+  // distância até ele; nenhum valor de Frete existe aqui.
+  frete_isencao_centavos: number;
 };
 
 // O aviso entre quem altera o Carrinho e o contador da barra: um evento na
@@ -55,12 +58,20 @@ export function subtotalDe(itens: LinhaDoCarrinho[]): number {
   return itens.reduce((soma, i) => soma + parcelaDe(i), 0);
 }
 
+// Quanto falta, em centavos, para o Frete grátis — e 0 quando o subtotal já
+// alcançou o limiar, caso em que a tela não diz nada. Sai da mesma soma que o
+// subtotal exibido, inclusive durante a edição otimista, porque a frase e o
+// número ao lado dela não podem discordar (NFR-13, UX-DR17).
+export function faltaParaFreteGratis(subtotal: number, isencao: number): number {
+  return Math.max(0, isencao - subtotal);
+}
+
 // O estado da edição otimista: a quantidade nova na linha, e unidades e
 // subtotal refeitos. É estimativa do intervalo até a resposta — quando ela
 // chega, a tela recarrega o Carrinho e o número que vale é o do servidor.
 export function comQuantidade(carrinho: Carrinho, itemId: string, quantidade: number): Carrinho {
   const itens = carrinho.itens.map((i) => (i.id === itemId ? { ...i, quantidade } : i));
-  return { itens, unidades: unidadesDe(itens), subtotal_centavos: subtotalDe(itens) };
+  return { ...carrinho, itens, unidades: unidadesDe(itens), subtotal_centavos: subtotalDe(itens) };
 }
 
 // O texto do campo de quantidade: só inteiro sem sinal. O que não é isso

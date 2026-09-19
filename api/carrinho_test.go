@@ -14,6 +14,11 @@ import (
 // O teto por Item, no padrão da Config.
 const carrinhoUnidadesMaxDeTeste = 10
 
+// O limiar de isenção de Frete. **De propósito diferente do padrão de produção
+// (29900)**: igual a ele, o teste passaria com o número cravado no handler, e o
+// que se quer provar é que a leitura repassa a Config.
+const freteIsencaoDeTeste = 25000
+
 // carrinhoDoComprador é a matriz de API da 4.1 num subteste só, com conta
 // própria.
 func carrinhoDoComprador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
@@ -185,6 +190,11 @@ func carrinhoNaTela(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	if corpo := decodificar(t, vazioLido); corpo["unidades"] != 0.0 || corpo["subtotal_centavos"] != 0.0 {
 		t.Errorf("Carrinho sem Itens = %v, quero unidades e subtotal 0", corpo)
 	}
+	// O limiar de isenção sai da Config em toda leitura, com ou sem Item: é dele
+	// que a tela tira a distância até o Frete grátis (4.5).
+	if corpo := decodificar(t, vazioLido); corpo["frete_isencao_centavos"] != float64(freteIsencaoDeTeste) {
+		t.Errorf("frete_isencao_centavos = %v, quero %d", corpo["frete_isencao_centavos"], freteIsencaoDeTeste)
+	}
 	if v := vazioLido.Header().Get("Cache-Control"); v != "no-store" {
 		t.Errorf("Cache-Control = %q, quero no-store", v)
 	}
@@ -218,8 +228,9 @@ func carrinhoNaTela(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	// Ler: pelos preços de agora, e sem gravar o preço visto (AD-17).
 	corpoLido := decodificar(t, pegarCarrinho(t, rotas, lia))
 	itens, _ := corpoLido["itens"].([]any)
-	if len(itens) != 2 || corpoLido["unidades"] != 6.0 || corpoLido["subtotal_centavos"] != 24000.0 {
-		t.Fatalf("Carrinho da Lia = %v, quero 2 Itens, 6 unidades e subtotal 24000", corpoLido)
+	if len(itens) != 2 || corpoLido["unidades"] != 6.0 || corpoLido["subtotal_centavos"] != 24000.0 ||
+		corpoLido["frete_isencao_centavos"] != float64(freteIsencaoDeTeste) {
+		t.Fatalf("Carrinho da Lia = %v, quero 2 Itens, 6 unidades, subtotal 24000 e o limiar de isenção", corpoLido)
 	}
 	if primeiro, _ := itens[0].(map[string]any); primeiro["id"] != itemChaleira || primeiro["nome"] != "Chaleira de Quatro" ||
 		primeiro["visivel"] != true || primeiro["preco_centavos"] != 5000.0 || primeiro["quantidade"] != 3.0 {
