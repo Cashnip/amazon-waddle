@@ -1,6 +1,6 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-18 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 começou:** da 3.1 à 3.4 está em `main`. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas.
+**Atualizado:** 2026-09-18 · **Estado:** PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si. **A Épica 1 está fechada:** as nove estórias estão em `main` — o andaime sobe com `docker compose up`, o Next já é casca com `rewrites()`, shadcn e a base visual da marca, o banco nasce com os três schemas e 50 Produtos semeados, o p95 da busca está medido, o Comprador entra e vê um Produto, o Pedido nasce em `AGUARDANDO_PAGAMENTO` com Reserva de Estoque, o Provedor Simulado o confirma por webhook, e a varredura o leva sozinho até `ENTREGUE` consolidando o Estoque. A 1.9 provou o resto: de um clone limpo, com o cache do Docker apagado, o sistema chega ao primeiro Produto na tela em **3 min 26 s** (teto do NFR-1: 15 min), e o esqueleto inteiro anda dentro de uma rede sem saída (NFR-15). **A Épica 2 também está fechada:** cadastro, autenticação com bloqueio, redefinição de senha, autorização por dono com separação de papéis, Endereços do Comprador e agora o Menu da conta com o retorno ao ponto de partida (2.6) estão em `main` — a porta única para Meus pedidos, Meus endereços e Perfil, presente nas oito telas públicas/Comprador. **A Épica 3 começou:** da 3.1 à 3.5 está em `main`. O Administrador gerencia Vendedores, Categorias e Produtos na área administrativa do `web/` (`/admin/entrar`, `/admin/vendedores`, `/admin/categorias` e `/admin/produtos`). A VIEW `catalogo.produto_visivel` é o predicado único do AD-19 (Vendedor ativo **e** Produto ativo) e expõe o Estoque disponível derivado. A interface de Estoque do AD-5 (`Disponivel`, `Visiveis`, `Reservar` em lote, `Liberar` e `Consolidar`) está fechada, e o Administrador ajusta o Estoque total com a guarda das Reservas ativas. A 3.5 deu à `busca` a sua primeira consulta: `GET /api/v1/produtos` lê só a VIEW, devolve o envelope do AD-18 e pagina pela URL, e a raiz `/` é a Vitrine.
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
 
@@ -59,16 +59,25 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 3.5** — a Vitrine e o envelope de listagem. É a primeira estória de `busca`: fixa a
-rota `GET /api/v1/produtos`, a leitura pela VIEW e o envelope do AD-18. Depois dela, a 3.7 (termo), a 3.8
-(filtros) e a 3.9 (ordenação) podem correr em paralelo. Uma lente de revisão basta.
+`bmad-build` nas **Estórias 3.7, 3.8 e 3.9, juntas numa spec só**: busca por texto, filtros de Categoria e faixa
+de preço, e ordenação. As três acrescentam parâmetros à mesma rota, `GET /api/v1/produtos`, e à mesma consulta de
+`busca`, então dividir em três specs faria a mesma consulta ser reescrita três vezes. Uma lente de revisão basta.
 `epic-2-retrospective` continua `optional`, sem dono.
 
-**O que a 3.4 deixou pronto e a 3.5 não refaz:**
-- a VIEW `catalogo.produto_visivel` já expõe `estoque_disponivel`, derivado e nunca negativo, e não expõe mais
-  `estoque_total`. É o que o AD-16 pede, então a 3.5 lê dela sem mudar a migração;
-- `catalogo.Disponivel` e `catalogo.Visiveis` existem, em lote e lidos da mesma VIEW;
-- o envelope `listagem[T]` está em `api/produto_admin.go`. Mova-o para onde a `busca` o alcance, sem copiar.
+**O que a 3.5 deixou pronto e a 3.7–3.9 não refaz:**
+- a rota `GET /api/v1/produtos` está no mux raiz (`api/rotas.go`) e é servida por `api/busca.go`. É o único
+  registro do padrão, e os parâmetros novos entram nesse mesmo handler;
+- `busca.Listar` (`internal/busca/busca.go`) conta primeiro e depois pagina, com `ListarVisiveis` e `ContarVisiveis`
+  em `internal/busca/db/consultas.sql`, só sobre a VIEW `catalogo.produto_visivel`. A ordem hoje é **só `id`**, de
+  propósito: a 3.9 antepõe a chave de ordenação e fixa o padrão "mais recentes" da FR-14, e o `id` fica como
+  desempate final;
+- a VIEW já expõe `busca_normalizada`, `categoria_id` e `preco_centavos`. Mexer na VIEW é "Ask First";
+- `paginacaoDe(r, cfg)` e o envelope `listagem[T]` estão em `api/rotas.go`, e a listagem administrativa usa os dois;
+- a Vitrine (`web/app/page.tsx`) é um Server Component, e a URL (`?pagina=`) é o estado. Os parâmetros novos seguem
+  a mesma regra.
+
+A barra superior com a busca global e a Faixa de Categorias continuam sendo da 3.10. A 3.6 (Página de Produto)
+não depende dessas três.
 
 **A interface de Estoque que as Épicas 4 a 6 consomem já está fechada:**
 - `Reservar(ctx, tx, pedidoID, []ItemReserva)`: trava em ordem de id, depois soma; lista vazia não faz nada;
@@ -85,10 +94,10 @@ rota `GET /api/v1/produtos`, a leitura pela VIEW e o envelope do AD-18. Depois d
 O AD-16 foi emendado na 3.2/3.3: a proibição de listar Produto fora de `busca` vale para a **loja**, e a
 listagem administrativa é do `catalogo`.
 
-**Não verificado nas 3.1–3.4: as telas administrativas nunca foram abertas num navegador.** `go test ./...`
+**Não verificado nas 3.1–3.5: nenhuma tela da Épica 3 foi aberta num navegador.** `go test ./...`
 e `npm run build` estão verdes. Faltam o passeio manual das seções Verification das três specs, a troca da
-imagem quebrada pelo bloco neutro, o `Sheet` a 360 px e o "Ajustar Estoque" com a recusa em linha. Por isso as
-quatro estórias estão em `review`, e não em `done`. O Postgres do `docker compose` guarda "Categoria Manual" e
+imagem quebrada pelo bloco neutro, o `Sheet` a 360 px e o "Ajustar Estoque" com a recusa em linha. Da 3.5, falta passear pela Vitrine a 360, 640, 1024 e 1440 px, e a linha "Catálogo
+vazio" da matriz não tem teste automatizado. Por isso as cinco estórias estão em `review`, e não em `done`. O Postgres do `docker compose` guarda "Categoria Manual" e
 "Produto Manual", este com imagem quebrada de propósito, para conferir o bloco neutro. `docker compose down -v`
 apaga os dois.
 
@@ -191,7 +200,7 @@ PRD, UX, arquitetura e spec estão finalizados e reconciliados.
 Leia HANDOFF.md primeiro. O contrato é _bmad-output/specs/spec-azamon/SPEC.md,
 com 8 CAPs de ID estável e o companions: que lista o resto — inclusive a
 ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
-Épicas 1 e 2 fechadas; 3.1 a 3.4 em main. Próximo passo: Estória 3.5 (Vitrine e envelope de listagem).
+Épicas 1 e 2 fechadas; 3.1 a 3.5 em main. Próximo passo: Estórias 3.7, 3.8 e 3.9 numa spec só (texto, filtros e ordenação).
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
