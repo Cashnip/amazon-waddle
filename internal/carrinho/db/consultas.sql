@@ -99,3 +99,13 @@ FROM (
 ) AS visto,
      carrinho.carrinho AS c
 WHERE item.id = visto.id AND item.carrinho_id = c.id AND c.comprador_id = @comprador_id;
+
+-- O esvaziar da criação do Pedido (5.6): apaga **só** os Itens que a criação
+-- leu, e nunca o Carrinho inteiro — um Item adicionado noutra aba entre a
+-- leitura e o fim fica no Carrinho e não entra no Pedido. A posse entra no
+-- WHERE (AD-11). O :execrows existe para ser conferido: linha a menos é Item
+-- que sumiu debaixo da transação, e `carrinho` o recusa.
+-- name: EsvaziarItens :execrows
+DELETE FROM carrinho.item_carrinho AS item
+USING carrinho.carrinho AS c
+WHERE item.id = ANY(@ids::uuid[]) AND item.carrinho_id = c.id AND c.comprador_id = @comprador_id;

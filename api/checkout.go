@@ -1,9 +1,11 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/Cashnip/amazon-waddle/internal/carrinho"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma/erro"
 )
@@ -43,23 +45,17 @@ func (s *servidor) entrarNoCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := s.pool.Begin(r.Context())
+	// O molde de emTransacao (AD-4), com a repetição única em impasse: duas
+	// entradas simultâneas do mesmo Comprador confirmam as mesmas linhas, e o
+	// Postgres pode escolher uma delas como vítima. `conteudo` é reescrito a
+	// cada passada, então o que sai é o relatório da passada que comitou.
+	var conteudo carrinho.Conteudo
+	err = emTransacao(r.Context(), s.pool, func(tx pgx.Tx) (bool, error) {
+		var err error
+		conteudo, err = pedido.EntrarNoCheckout(r.Context(), tx, comprador.ID)
+		return err == nil, err
+	})
 	if err != nil {
-		erro.Escrever(r.Context(), w, err, nil)
-		return
-	}
-	// O molde de criarPedido (AD-4): o Rollback depois de um Commit é no-op, e
-	// o WithoutCancel mantém vivo o contexto de desfazer quando o cliente
-	// desiste no meio.
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
-
-	conteudo, err := pedido.EntrarNoCheckout(r.Context(), tx, comprador.ID)
-	if err != nil {
-		erro.Escrever(r.Context(), w, err, nil)
-		return
-	}
-
-	if err := tx.Commit(context.WithoutCancel(r.Context())); err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}

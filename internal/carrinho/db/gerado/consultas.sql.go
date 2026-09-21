@@ -159,6 +159,30 @@ func (q *Queries) ConfirmarPrecoVisto(ctx context.Context, arg ConfirmarPrecoVis
 	return result.RowsAffected(), nil
 }
 
+const esvaziarItens = `-- name: EsvaziarItens :execrows
+DELETE FROM carrinho.item_carrinho AS item
+USING carrinho.carrinho AS c
+WHERE item.id = ANY($1::uuid[]) AND item.carrinho_id = c.id AND c.comprador_id = $2
+`
+
+type EsvaziarItensParams struct {
+	Ids         []pgtype.UUID
+	CompradorID pgtype.UUID
+}
+
+// O esvaziar da criação do Pedido (5.6): apaga **só** os Itens que a criação
+// leu, e nunca o Carrinho inteiro — um Item adicionado noutra aba entre a
+// leitura e o fim fica no Carrinho e não entra no Pedido. A posse entra no
+// WHERE (AD-11). O :execrows existe para ser conferido: linha a menos é Item
+// que sumiu debaixo da transação, e `carrinho` o recusa.
+func (q *Queries) EsvaziarItens(ctx context.Context, arg EsvaziarItensParams) (int64, error) {
+	result, err := q.db.Exec(ctx, esvaziarItens, arg.Ids, arg.CompradorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const garantirCarrinho = `-- name: GarantirCarrinho :one
 INSERT INTO carrinho.carrinho (comprador_id)
 VALUES ($1)

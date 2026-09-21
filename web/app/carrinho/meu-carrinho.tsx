@@ -30,6 +30,7 @@ import {
   type LinhaDoCarrinho,
   type PrecosConfirmados,
 } from "@/lib/carrinho";
+import { iniciarTentativaDeCheckout } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { formatarPreco } from "@/lib/preco";
@@ -50,6 +51,14 @@ import { formatarPreco } from "@/lib/preco";
 
 export function MeuCarrinho() {
   const router = useRouter();
+
+  // "Fechar o Pedido" começa uma tentativa de checkout: a chave de
+  // idempotência da anterior sai, e a Revisão gera outra ao abrir. A escolha
+  // de Endereço fica (FR-22). Ver `iniciarTentativaDeCheckout`.
+  function fecharOPedido() {
+    iniciarTentativaDeCheckout();
+    router.push("/checkout/endereco");
+  }
   const [carrinho, setCarrinho] = useState<Carrinho | null>(null);
   const [erroDaLista, setErroDaLista] = useState<string | null>(null);
   // A mensagem de uma edição ou remoção que falhou, por linha.
@@ -289,7 +298,7 @@ export function MeuCarrinho() {
               preço a confirmar — os dois `Alert` acima dizem o quê. Não é o
               passo irreversível, por isso sem laranja: esse é o Confirmar
               Pedido, na Revisão. */}
-          <Button className="mt-3" disabled={!podeAvancar} onClick={() => router.push("/checkout/endereco")}>
+          <Button className="mt-3" disabled={!podeAvancar} onClick={fecharOPedido}>
             Fechar o Pedido
           </Button>
         </div>

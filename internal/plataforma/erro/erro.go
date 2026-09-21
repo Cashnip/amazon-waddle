@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Cashnip/amazon-waddle/internal/carrinho"
 	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 	"github.com/Cashnip/amazon-waddle/internal/identidade"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
@@ -66,6 +67,13 @@ var registro = []traducao{
 	{pedido.ErrEstadoJaAvancado, http.StatusConflict, "ESTADO_JA_AVANCADO"},
 	{pedido.ErrTransicaoInvalida, http.StatusConflict, "TRANSICAO_INVALIDA"},
 	{pedido.ErrForaDaJanelaDeCancelamento, http.StatusConflict, "FORA_DA_JANELA_DE_CANCELAMENTO"},
+	// A criação do Pedido (5.6): as quatro são 409 — o corpo veio correto, o
+	// que não comporta é o Carrinho, o preço ou a chave. A chave reaproveitada
+	// leva o Pedido original em `dados`, preenchido por quem chama.
+	{pedido.ErrTotalDivergente, http.StatusConflict, "TOTAL_DIVERGENTE"},
+	{pedido.ErrCarrinhoVazio, http.StatusConflict, "CARRINHO_VAZIO"},
+	{carrinho.ErrCarrinhoMudou, http.StatusConflict, "CARRINHO_MUDOU"},
+	{pedido.ErrChaveReutilizada, http.StatusConflict, "CHAVE_REUTILIZADA"},
 	// 409 nos dois: o nome duplicado e o Vendedor com Produtos são estado do
 	// mundo. O campo do duplicado viaja em `dados`, como no e-mail.
 	{catalogo.ErrVendedorJaCadastrado, http.StatusConflict, "VENDEDOR_JA_CADASTRADO"},

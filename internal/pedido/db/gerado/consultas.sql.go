@@ -103,16 +103,38 @@ func (q *Queries) CriarItemPedido(ctx context.Context, arg CriarItemPedidoParams
 }
 
 const criarPedido = `-- name: CriarPedido :one
-INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
-VALUES ($1, $2, $3, $4)
+INSERT INTO pedido.pedido (
+    numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos,
+    endereco_destinatario, endereco_cep, endereco_logradouro, endereco_numero,
+    endereco_complemento, endereco_bairro, endereco_cidade, endereco_uf,
+    chave_idempotencia, digest_corpo
+) VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10,
+    $11, $12, $13, $14,
+    $15, $16
+)
+ON CONFLICT (comprador_id, chave_idempotencia) DO NOTHING
 RETURNING id, numero, status, total_centavos
 `
 
 type CriarPedidoParams struct {
-	Numero        string
-	CompradorID   pgtype.UUID
-	Status        string
-	TotalCentavos int64
+	Numero               string
+	CompradorID          pgtype.UUID
+	Status               string
+	SubtotalCentavos     int64
+	FreteCentavos        int64
+	TotalCentavos        int64
+	EnderecoDestinatario pgtype.Text
+	EnderecoCep          pgtype.Text
+	EnderecoLogradouro   pgtype.Text
+	EnderecoNumero       pgtype.Text
+	EnderecoComplemento  pgtype.Text
+	EnderecoBairro       pgtype.Text
+	EnderecoCidade       pgtype.Text
+	EnderecoUf           pgtype.Text
+	ChaveIdempotencia    pgtype.UUID
+	DigestCorpo          pgtype.Text
 }
 
 type CriarPedidoRow struct {
@@ -122,12 +144,30 @@ type CriarPedidoRow struct {
 	TotalCentavos int64
 }
 
+// O INSERT é a reivindicação da `Idempotency-Key` (AD-7): o gêmeo concorrente
+// espera no índice único (comprador_id, chave_idempotencia) e, quando o
+// primeiro comita, cai no DO NOTHING — zero linhas, que `pedido` traduz em
+// releitura por PedidoPorChave. O 23505 nunca chega a existir, e por isso
+// nunca chega ao navegador. Tudo que o Pedido congela está aqui, e o gatilho
+// da 5.1 impede reescrever depois.
 func (q *Queries) CriarPedido(ctx context.Context, arg CriarPedidoParams) (CriarPedidoRow, error) {
 	row := q.db.QueryRow(ctx, criarPedido,
 		arg.Numero,
 		arg.CompradorID,
 		arg.Status,
+		arg.SubtotalCentavos,
+		arg.FreteCentavos,
 		arg.TotalCentavos,
+		arg.EnderecoDestinatario,
+		arg.EnderecoCep,
+		arg.EnderecoLogradouro,
+		arg.EnderecoNumero,
+		arg.EnderecoComplemento,
+		arg.EnderecoBairro,
+		arg.EnderecoCidade,
+		arg.EnderecoUf,
+		arg.ChaveIdempotencia,
+		arg.DigestCorpo,
 	)
 	var i CriarPedidoRow
 	err := row.Scan(
@@ -301,6 +341,41 @@ func (q *Queries) ListarPedidosDoComprador(ctx context.Context, compradorID pgty
 		return nil, err
 	}
 	return items, nil
+}
+
+const pedidoPorChave = `-- name: PedidoPorChave :one
+SELECT id, numero, status, total_centavos, digest_corpo
+FROM pedido.pedido
+WHERE comprador_id = $1 AND chave_idempotencia = $2
+`
+
+type PedidoPorChaveParams struct {
+	CompradorID       pgtype.UUID
+	ChaveIdempotencia pgtype.UUID
+}
+
+type PedidoPorChaveRow struct {
+	ID            pgtype.UUID
+	Numero        string
+	Status        string
+	TotalCentavos int64
+	DigestCorpo   pgtype.Text
+}
+
+// O Pedido que a chave já criou, deste Comprador: a chave de outro Comprador
+// não casa, porque a chave é dele (AD-11). O digest vem junto para decidir
+// entre reenvio (mesmo corpo) e chave reaproveitada (corpo diferente).
+func (q *Queries) PedidoPorChave(ctx context.Context, arg PedidoPorChaveParams) (PedidoPorChaveRow, error) {
+	row := q.db.QueryRow(ctx, pedidoPorChave, arg.CompradorID, arg.ChaveIdempotencia)
+	var i PedidoPorChaveRow
+	err := row.Scan(
+		&i.ID,
+		&i.Numero,
+		&i.Status,
+		&i.TotalCentavos,
+		&i.DigestCorpo,
+	)
+	return i, err
 }
 
 const pedidosParaAvancar = `-- name: PedidosParaAvancar :many

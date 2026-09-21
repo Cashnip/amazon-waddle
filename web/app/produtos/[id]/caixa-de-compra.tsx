@@ -18,20 +18,18 @@ import { quantidadeMaxima } from "@/lib/quantidade";
 // Com Sessão, "Adicionar ao Carrinho" grava direto (4.1), sem atualização
 // otimista. Sem Sessão, leva ao Login com o Produto, a quantidade e o marcador
 // `adicionar` no `destino`; a volta (`adicionarAoEntrar`) cria o Item uma vez e
-// tira o marcador da URL, para o recarregar não somar de novo. O "Confirmar
-// o Pedido" do esqueleto chega como `children`.
+// tira o marcador da URL, para o recarregar não somar de novo. O Pedido nasce
+// só pelo Carrinho → Endereço → Revisão (5.6): esta Caixa não confirma nada.
 export function CaixaDeCompra({
   produtoId,
   disponivel,
   quantidadeInicial,
   adicionarAoEntrar,
-  children,
 }: {
   produtoId: string;
   disponivel: number;
   quantidadeInicial: number;
   adicionarAoEntrar: boolean;
-  children: React.ReactNode;
 }) {
   const router = useRouter();
   const id = useId();
@@ -150,7 +148,6 @@ export function CaixaDeCompra({
                 </p>
               )}
             </div>
-            {children}
           </>
         )}
       </CardContent>

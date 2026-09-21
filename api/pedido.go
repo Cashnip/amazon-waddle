@@ -1,9 +1,10 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -13,20 +14,33 @@ import (
 	"github.com/Cashnip/amazon-waddle/internal/plataforma/erro"
 )
 
-// entradaPedido é o corpo da compra. Um Produto, uma unidade: escolha de
-// quantidade, Endereço e Frete são das Épicas 4 e 5.
+// entradaPedido é o corpo da confirmação na Revisão: o Endereço escolhido e o
+// total que a Revisão exibiu. Os Itens vêm do Carrinho, e o Frete, da Regra de
+// Frete — nada disso viaja do navegador (NFR-13, AD-10). O total vai para que
+// o Go recuse com TOTAL_DIVERGENTE o Pedido cujo valor não é mais o que o
+// Comprador viu; quem compara é o Go.
 type entradaPedido struct {
-	ProdutoID string `json:"produto_id"`
+	EnderecoID    string `json:"endereco_id"`
+	TotalCentavos int64  `json:"total_centavos"`
 }
 
-// saidaPedido é o que a Página de Produto mostra assim que o Pedido nasce. O
-// total sai cru, em centavos int64 (AD-3), e o `numero` é o legível do AD-6 —
-// o uuid vai junto porque é dele que a tela de acompanhamento da 1.7 parte.
+// formaDaChave é a forma de uuid do cabeçalho `Idempotency-Key`: a tela gera
+// um UUIDv4, e qualquer uuid serve ao banco. Fora dela é 400, antes de abrir
+// transação.
+var formaDaChave = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// saidaPedido é o que a criação e as leituras devolvem. O total sai cru, em
+// centavos int64 (AD-9), e o `numero` é o legível do AD-6 — o uuid vai junto
+// porque é dele que a tela do Pedido parte.
 type saidaPedido struct {
 	ID            string `json:"id"`
 	Numero        string `json:"numero"`
 	Status        string `json:"status"`
 	TotalCentavos int64  `json:"total_centavos"`
+}
+
+func saidaDoPedido(p pedido.Pedido) saidaPedido {
+	return saidaPedido{ID: p.ID, Numero: p.Numero, Status: string(p.Status), TotalCentavos: p.TotalCentavos}
 }
 
 // saidaPedidoDetalhe é o que a tela do Pedido em processamento consulta em
@@ -40,10 +54,15 @@ type saidaPedidoDetalhe struct {
 	Terminal     bool   `json:"terminal"`
 }
 
-// criarPedido é o primeiro pgx.Tx do repositório: uma transação por caso de
-// uso, aberta e fechada aqui, passada adiante como parâmetro nomeado (AD-4).
-// `api/` é quem já segura o pool, e um ajudante em `plataforma` seria uma
-// camada a mais para embrulhar três chamadas do pgx.
+// criarPedido é o Confirmar Pedido da Revisão (FR-23, FR-24, NFR-12): o Pedido
+// nasce do Carrinho, com Reserva de Estoque atômica, numa transação só, e a
+// `Idempotency-Key` faz da confirmação repetida o mesmo Pedido.
+//
+// 201 com o Pedido novo; 200 com o original quando a chave já o criou com o
+// mesmo corpo — o reenvio **desfaz** a transação, então nada novo é gravado,
+// nem o número do contador. O JSON sai só depois do Commit (ou do Rollback
+// do reenvio): a transação pode ser repetida uma vez em impasse (emTransacao),
+// e uma resposta escrita dentro dela sairia duas vezes.
 func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
@@ -53,55 +72,57 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chave := r.Header.Get("Idempotency-Key")
+	if !formaDaChave.MatchString(chave) {
+		erro.Escrever(r.Context(), w, erro.ErrEntradaInvalida, nil)
+		return
+	}
+
 	var entrada entradaPedido
 	if err := decodificarCorpo(w, r, &entrada); err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 
-	tx, err := s.pool.Begin(r.Context())
+	var novo pedido.Pedido
+	var reenvio bool
+	err = emTransacao(r.Context(), s.pool, func(tx pgx.Tx) (bool, error) {
+		var err error
+		novo, reenvio, err = pedido.Criar(r.Context(), tx, comprador.ID, pedido.NovoPedido{
+			EnderecoID:    entrada.EnderecoID,
+			TotalCentavos: entrada.TotalCentavos,
+			Chave:         strings.ToLower(chave),
+		}, s.cfg.FreteIsencaoCentavos)
+		return err == nil && !reenvio, err
+	})
 	if err != nil {
-		erro.Escrever(r.Context(), w, err, nil)
-		return
-	}
-	// Rollback depois de um Commit bem-sucedido é no-op no pgx: o que o defer
-	// garante é que nenhum caminho de erro deixe a transação aberta.
-	// WithoutCancel porque o cliente pode desistir no meio, e desfazer
-	// precisa de um contexto vivo — o que sobra é a correlação, para o log.
-	defer tx.Rollback(context.WithoutCancel(r.Context()))
-
-	novo, err := pedido.Criar(r.Context(), tx, comprador.ID, entrada.ProdutoID)
-	if err != nil {
-		// Produto inexistente e identificador malformado são o mesmo 404;
-		// nada disso é 500.
+		// Endereço de outro Comprador, inexistente e malformado são o mesmo
+		// 404 (AD-11); nada disso é 500.
 		if errors.Is(err, pgx.ErrNoRows) {
 			erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
 			return
 		}
 		// A mensagem publicada continua sendo a do sentinela (AD-14); o
-		// número que o Comprador precisa ver viaja em `dados`.
+		// Produto que faltou e o disponível dele viajam em `dados`.
 		var falta catalogo.EstoqueInsuficiente
 		if errors.As(err, &falta) {
-			erro.Escrever(r.Context(), w, err, map[string]int64{"disponivel": falta.Disponivel})
+			erro.Escrever(r.Context(), w, err, map[string]any{"produto_id": falta.ProdutoID, "disponivel": falta.Disponivel})
+			return
+		}
+		// A chave que já criou um Pedido com outro corpo: a tela mostra esse
+		// Pedido e apaga a chave.
+		if errors.Is(err, pedido.ErrChaveReutilizada) {
+			erro.Escrever(r.Context(), w, err, saidaDoPedido(novo))
 			return
 		}
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
-
-	// WithoutCancel pelo mesmo motivo do Rollback, e com mais razão: um
-	// Commit que morre porque o cliente desistiu deixaria o Pedido por
-	// gravar e a resposta sairia em 500 sobre trabalho que estava pronto.
-	if err := tx.Commit(context.WithoutCancel(r.Context())); err != nil {
-		erro.Escrever(r.Context(), w, err, nil)
-		return
+	status := http.StatusCreated
+	if reenvio {
+		status = http.StatusOK
 	}
-	escreverJSON(w, http.StatusCreated, saidaPedido{
-		ID:            novo.ID,
-		Numero:        novo.Numero,
-		Status:        string(novo.Status),
-		TotalCentavos: novo.TotalCentavos,
-	})
+	escreverJSON(w, status, saidaDoPedido(novo))
 }
 
 // lerPedido é a terceira rota autenticada. Não abre transação: é uma consulta
@@ -127,12 +148,7 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	escreverJSON(w, http.StatusOK, saidaPedidoDetalhe{
-		saidaPedido: saidaPedido{
-			ID:            p.ID,
-			Numero:        p.Numero,
-			Status:        string(p.Status),
-			TotalCentavos: p.TotalCentavos,
-		},
+		saidaPedido: saidaDoPedido(p),
 		// Nano, e não segundos: duas transições do mesmo Pedido cabem no mesmo
 		// segundo, e a tela que compara instantes não teria como distingui-las.
 		// RFC3339Nano continua sendo RFC 3339.
@@ -162,12 +178,7 @@ func (s *servidor) listarPedidos(w http.ResponseWriter, r *http.Request) {
 	// o estado vazio é da tela.
 	saidas := make([]saidaPedido, 0, len(pedidos))
 	for _, p := range pedidos {
-		saidas = append(saidas, saidaPedido{
-			ID:            p.ID,
-			Numero:        p.Numero,
-			Status:        string(p.Status),
-			TotalCentavos: p.TotalCentavos,
-		})
+		saidas = append(saidas, saidaDoPedido(p))
 	}
 	escreverJSON(w, http.StatusOK, saidas)
 }

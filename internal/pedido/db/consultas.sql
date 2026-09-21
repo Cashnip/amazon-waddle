@@ -18,10 +18,34 @@ SELECT cep_inicio, cep_fim, regiao, valor_centavos, padrao
 FROM pedido.faixa_frete
 ORDER BY padrao, cep_inicio;
 
+-- O INSERT é a reivindicação da `Idempotency-Key` (AD-7): o gêmeo concorrente
+-- espera no índice único (comprador_id, chave_idempotencia) e, quando o
+-- primeiro comita, cai no DO NOTHING — zero linhas, que `pedido` traduz em
+-- releitura por PedidoPorChave. O 23505 nunca chega a existir, e por isso
+-- nunca chega ao navegador. Tudo que o Pedido congela está aqui, e o gatilho
+-- da 5.1 impede reescrever depois.
 -- name: CriarPedido :one
-INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
-VALUES ($1, $2, $3, $4)
+INSERT INTO pedido.pedido (
+    numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos,
+    endereco_destinatario, endereco_cep, endereco_logradouro, endereco_numero,
+    endereco_complemento, endereco_bairro, endereco_cidade, endereco_uf,
+    chave_idempotencia, digest_corpo
+) VALUES (
+    @numero, @comprador_id, @status, @subtotal_centavos, @frete_centavos, @total_centavos,
+    @endereco_destinatario, @endereco_cep, @endereco_logradouro, @endereco_numero,
+    @endereco_complemento, @endereco_bairro, @endereco_cidade, @endereco_uf,
+    @chave_idempotencia, @digest_corpo
+)
+ON CONFLICT (comprador_id, chave_idempotencia) DO NOTHING
 RETURNING id, numero, status, total_centavos;
+
+-- O Pedido que a chave já criou, deste Comprador: a chave de outro Comprador
+-- não casa, porque a chave é dele (AD-11). O digest vem junto para decidir
+-- entre reenvio (mesmo corpo) e chave reaproveitada (corpo diferente).
+-- name: PedidoPorChave :one
+SELECT id, numero, status, total_centavos, digest_corpo
+FROM pedido.pedido
+WHERE comprador_id = @comprador_id AND chave_idempotencia = @chave_idempotencia;
 
 -- O Item congela o que era verdade no instante da compra: nome, preço
 -- praticado e Vendedor são cópia, e não referência.

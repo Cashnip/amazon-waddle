@@ -55,31 +55,39 @@ credenciais não são segredo; elas estão versionadas junto com a lista, em `me
 
 ## 2. O passeio do esqueleto
 
-O que a Épica 1 entrega é **um** Pedido atravessando o sistema inteiro, com telas cruas:
-não há busca, Carrinho nem checkout — eles são das Épicas 3 a 5.
+O que a Épica 1 entregou foi **um** Pedido atravessando o sistema inteiro. Desde a 5.6 o
+mesmo passeio passa pelo caminho de verdade: Carrinho → Endereço → Revisão, e o Pedido
+nasce do Carrinho, com Frete, Endereço e Reserva de Estoque.
 
 1. Abra <http://localhost:3000>. É a Vitrine: os Produtos visíveis do Catálogo Semeado,
    20 por página, em cartões que levam à Página de Produto.
 2. **Entre** por "Entrar", no canto da barra, com as credenciais do Comprador acima.
 3. **Escolha o Produto com cuidado.** O Provedor Simulado decide pelos centavos do total
    (§7.1 do PRD): até `,89` ele aprova, de `,90` a `,94` recusa, e de `,95` a `,99` não
-   manda confirmação nenhuma. Só a aprovação é emitida hoje — recusa e expiração são da
-   Épica 5 —, então **qualquer** total acima de `,89` deixa o Pedido parado em
-   `AGUARDANDO_PAGAMENTO`, para sempre e sem erro na tela. O **Fone de Ouvido Bluetooth
-   Aurora, R$ 249,90**, por exemplo, cai justamente na faixa parada. Para ver o ciclo
-   inteiro, abra um Produto de centavos `,00` — este está na página 2 da Vitrine:
+   manda confirmação nenhuma. **Só a aprovação é emitida hoje** — a recusa, a nova Tentativa
+   e a expiração são das estórias 5.9 a 5.11, ainda no backlog —, então **qualquer** total
+   acima de `,89` deixa o Pedido parado em `AGUARDANDO_PAGAMENTO`, para sempre e sem erro na
+   tela. O Frete é sempre em reais inteiros, então os centavos do total são os dos
+   Produtos; e a partir de R$ 299,00 de subtotal o Frete é grátis. O **Fone de Ouvido
+   Bluetooth Aurora, R$ 249,90**, por exemplo, cai justamente na faixa parada. Para ver o
+   ciclo inteiro, abra um Produto de centavos `,00` — este está na página 2 da Vitrine:
 
    <http://localhost:3000/produtos/a0ae8ff1-da13-5591-9291-4a4f1ce15383> — Caixa de Som
    Portátil Maré, R$ 189,00.
 4. A Página de Produto mostra a Categoria no breadcrumb e, na Caixa de compra (à direita a
-   partir de 1024 px), a disponibilidade, a quantidade e "Adicionar ao Carrinho". Sem
-   Sessão, esse botão leva ao Login e volta à mesma página com a quantidade escolhida; com
-   Sessão, fica desabilitado até o Carrinho da Épica 4. Um id inexistente ou de Produto
-   desativado mostra "Este Produto não está disponível."
-5. **Confirmar compra** (1 unidade, na Caixa de compra) leva a `/pedidos/<id>`, que se atualiza sozinha. Medido no mesmo
-   ensaio: `AGUARDANDO_PAGAMENTO` → `PAGO` em 7 s (o Provedor Simulado confirma por
-   webhook), e daí `SEPARANDO` → `ENVIADO` → `ENTREGUE` de 30 em 30 s, **1 min 41 s**
-   do clique ao fim. Nenhum passo é manual: quem move o tempo é a varredura do serviço Go.
+   partir de 1024 px), a disponibilidade, a quantidade e **"Adicionar ao Carrinho"**. Sem
+   Sessão, esse botão leva ao Login e volta à mesma página com a quantidade escolhida. Um id
+   inexistente ou de Produto desativado mostra "Este Produto não está disponível."
+5. No **Carrinho** (ícone da barra), **"Fechar o Pedido"** leva ao passo **Endereço**:
+   escolha um Endereço ou cadastre um — um CEP de SP, como `01310-100`, paga R$ 15,00 de
+   Frete — e **Continuar**. A **Revisão** mostra os Itens do Carrinho, o Endereço, o
+   Subtotal, o Frete e o total, todos vindos do Go.
+6. **Confirmar Pedido** (o único botão laranja do fluxo) leva a `/pedidos/<id>`, que se
+   atualiza sozinha, e o contador do Carrinho na barra zera. Os tempos a seguir foram
+   medidos no ensaio da 1.9, pelo caminho antigo da Página de Produto, e **não** foram
+   medidos de novo pelo Carrinho: `AGUARDANDO_PAGAMENTO` → `PAGO` em 7 s (o Provedor
+   Simulado confirma por webhook), e daí `SEPARANDO` → `ENVIADO` → `ENTREGUE` de 30 em 30 s.
+   Nenhum passo é manual: quem move o tempo é a varredura do serviço Go.
 
 Os intervalos são do `.env` (`AZAMON_CONFIRMACAO_ATRASO`, `AZAMON_ENTREGA_INTERVALO`) e
 existem para caber numa apresentação.

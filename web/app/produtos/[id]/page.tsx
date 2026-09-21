@@ -5,7 +5,6 @@ import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import { Preco } from "@/components/preco";
 import { quantidadeDaUrl } from "@/lib/quantidade";
 import { CaixaDeCompra } from "./caixa-de-compra";
-import { Comprar } from "./comprar";
 
 // A Página de Produto (3.6): breadcrumb da Categoria, informação e a Caixa de
 // compra — à direita a partir de 1024 px, empilhada abaixo. A ordem do DOM é a
@@ -93,10 +92,7 @@ export default async function PaginaDeProduto({
             quantidadeInicial={quantidadeDaUrl(quantidade, produto.estoque_disponivel)}
             // A volta do Login (4.1): o marcador que a Caixa de compra pôs no `destino`.
             adicionarAoEntrar={adicionar === "1"}
-          >
-            {/* Da Página de Produto direto ao Pedido, 1 unidade, sem Carrinho (Épica 4). */}
-            <Comprar produtoId={produto.id} />
-          </CaixaDeCompra>
+          />
         </div>
       </main>
     </Casca>

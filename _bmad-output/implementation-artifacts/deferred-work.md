@@ -313,3 +313,59 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-entrada-no-checkout-e-confirmacao-do-preco-visto.md`
   summary: Duas entradas simultâneas do mesmo Comprador sobre os mesmos Itens podem, em tese, dar deadlock (40P01), e a borda HTTP não repete.
   evidence: `ConfirmarPrecoVisto` ordena os vistos por `ItemID` antes de montar os vetores, mas isso é determinismo do comando, não ordem de travas: num `UPDATE ... FROM (unnest ...)` quem ordena o bloqueio é o plano do executor. A ordem garantida do `AD-5` vem de `SELECT ... ORDER BY id FOR UPDATE`, construção que esta consulta não usa. O risco é baixo — as linhas são todas do mesmo dono, e duas entradas concorrentes exigem duas abas ou duplo disparo —, mas o `AD-4` prevê que a borda repita uma vez em `40P01`/`40001` e essa repetição não existe em `api/` para rota nenhuma. Fechar é adotar o `FOR UPDATE` ordenado aqui, ou implementar a repetição da borda, que serve a todas as rotas de uma vez.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — o `INSERT` tardio em `pedido.item_pedido`, adiado na 5.1.
+  evidence: A migração `20260921120000_pedido_criacao.sql` cria o gatilho `item_pedido_so_na_criacao`, que recusa com `restrict_violation` o Item de Pedido que já tem linha em `transicao_status`; `pedido.Criar` grava os Itens antes do histórico. Provado em `api/pedido_test.go` (`criacaoPeloCheckout`).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO em parte — a escolha `azamon:checkout:endereco_id`, adiada na 5.2, é apagada quando o Pedido nasce; ao encerrar a Sessão, continua não sendo.
+  evidence: A Revisão chama `limparCheckout` no desfecho `pedido` de `desfechoDaConfirmacao` (201, 200 e `CHAVE_REUTILIZADA`), que apaga a escolha e a chave juntas. Encerrar a Sessão não toca o `sessionStorage`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — o Confirmar Pedido desabilitado e a chave que ninguém enviava, adiados na 5.4.
+  evidence: `CRIACAO_DISPONIVEL = true` em `revisao-do-pedido.tsx`; o botão envia `Idempotency-Key`, `endereco_id` e o `total_centavos` da cotação por `requisicaoDeConfirmar`, e chama `limparCheckout` e `avisarCarrinhoAlterado` quando o Pedido existe. A guarda de armazenamento continua travando o botão sozinha.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — a divergência entre o subtotal do Carrinho e o da cotação, que a Revisão não arbitra (5.4).
+  evidence: `pedido.Criar` confere o total do corpo antes do `INSERT` e, sob a trava da Reserva, relê preços e Frete e exige as duas parcelas iguais; divergir é 409 `TOTAL_DIVERGENTE`, e a tela relê a Revisão com a mesma chave. Provado em `api/pedido_test.go`, inclusive que a recusa não consome a chave.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — o laranja duas vezes no fluxo, pelo botão do esqueleto na Página de Produto (5.4).
+  evidence: `web/app/produtos/[id]/comprar.tsx` foi removido, a `CaixaDeCompra` deixou de receber `children`, e o `POST /api/v1/pedidos` não aceita mais `produto_id`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — a `Idempotency-Key` que sobrevive a uma alteração do Carrinho entre duas passagens pela Revisão (5.4).
+  evidence: A chave é coluna do Pedido e só se prende quando ele nasce: enquanto nenhum Pedido existe, mesma chave com corpo novo é tentativa nova, e não 409. O 409 `CHAVE_REUTILIZADA` só acontece para a chave que já criou um Pedido, e a tela o trata como o Pedido que ele é — mostra e limpa —, nunca como o 409 cru.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — a escrita parcial de `carrinho.ConfirmarPrecoVisto` saindo em 500 genérico (5.5).
+  evidence: A divergência embrulha `carrinho.ErrCarrinhoMudou`, registrado em `internal/plataforma/erro/erro.go` como 409 `CARRINHO_MUDOU`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: RESOLVIDO — a repetição em `40P01`/`40001` que o AD-4 prevê e que não existia em `api/` (5.5).
+  evidence: `api/transacao.go` (`emTransacao`) repete uma vez, e só uma; `criarPedido` e `entrarNoCheckout` a usam. `api/transacao_test.go` prova que impasse e serialização repetem uma vez, que duas vezes desiste e que outro código não repete.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: `carrinho.Esvaziar` apaga por id, então o Item do mesmo Produto cuja quantidade mudou noutra aba entre a leitura e o fim é apagado com a quantidade nova, e o Pedido fica com a antiga.
+  evidence: `EsvaziarItens` casa `item.id = ANY(@ids)` e o dono. Somar ao mesmo Produto noutra aba é `ON CONFLICT DO UPDATE` sobre a mesma linha, então o id não muda e a linha some; as unidades acrescentadas não entram no Pedido e não voltam ao Carrinho. A janela é de milissegundos e exige duas abas. Fechar é passar a quantidade lida junto do id e casar as duas no `WHERE` — linha a menos já é `CARRINHO_MUDOU` —, o que muda a assinatura que a spec fixou (`itemIDs`).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: O `TOTAL_DIVERGENTE` do passo 5 — preço mudado entre o `INSERT` do Pedido e a trava dos Produtos — não tem teste determinístico.
+  evidence: `api/pedido_test.go` prova o `TOTAL_DIVERGENTE` do passo 2 (preço mudado antes da confirmação). A segunda conferência, sob a trava, só é alcançável com o `UPDATE` do Administrador comitando dentro de uma janela de milissegundos, e não há gancho no meio de `pedido.Criar`. O teste de concorrência da 5.7 é onde uma corrida dessas cabe.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: Depois de um `TOTAL_DIVERGENTE`, a Revisão relida costuma desviar ao passo Endereço, e o aviso da recusa se perde na navegação.
+  evidence: O preço que mudou marca `preco_mudou` no Carrinho, e `desvioDaRevisao` manda ao passo Endereço, que é quem reporta o "de X para Y" e grava a ciência (AD-17). O Comprador vê o aviso de preço do passo Endereço, e não a frase de `TOTAL_DIVERGENTE`. É o desfecho seguro; se a UX quiser a frase também, ela precisa atravessar a navegação.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: A resposta do Pedido (`saidaPedido`) não expõe subtotal, Frete nem Endereço congelados.
+  evidence: As colunas existem desde a 5.6 e o teste as lê do banco, mas `GET /api/v1/pedidos/{id}` devolve só id, número, Status e total. A tela do Pedido (5.8) e o Detalhe (6.x) são os primeiros a precisar deles.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: A criação do Pedido não confere no servidor a ciência do preço visto (`preco_mudou`); só o desvio da Revisão no navegador a exige.
+  evidence: `pedido.Criar` compara o total do corpo com o Carrinho de agora e nunca lê `preco_visto_centavos`. O teste de `TOTAL_DIVERGENTE` em `criacaoPeloCheckout` recota o Frete e cria o Pedido com a mesma chave sem passar por `POST /api/v1/checkout/entrada`. O Comprador viu o total que envia, então o dinheiro fecha; o que falta é o AD-17 valer no servidor e não só no `desvioDaRevisao`. Fechar pede uma recusa nova (sentinela era `Ask First` na 5.6).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-criacao-do-pedido-com-reserva-de-estoque-atomica.md`
+  summary: O contador por ano (`ProximoNumeroDoAno`) serializa toda criação de Pedido antes da trava dos Produtos, e o teste do NFR-7 da 5.7 não exercitaria o `ORDER BY id FOR UPDATE` sob concorrência real.
+  evidence: pré-existente desde a 1.6 — o `INSERT ... ON CONFLICT DO UPDATE` em `pedido.contador_numero` trava uma linha por ano antes de `catalogo.Reservar`, então N criações paralelas correm em fila. A 5.7 precisa decidir: mover a numeração para depois da Reserva, ou provar a trava do AD-5 chamando `catalogo.Reservar` diretamente em transações concorrentes. Os dois caminhos de recuperação do duplo clique (`ON CONFLICT DO NOTHING` e a releitura em `recusar`) também só rodam quando a corrida acontece — a mesma bancada da 5.7 os prende.

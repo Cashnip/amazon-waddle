@@ -10,8 +10,14 @@ const {
   aberturaDoPassoEndereco,
   chaveDeIdempotencia,
   desvioDaAberturaDaRevisao,
+  descartarChave,
+  descartarEscolha,
+  desfechoDaConfirmacao,
   desvioDaRevisao,
   enderecoEscolhido,
+  executarDesfecho,
+  iniciarTentativaDeCheckout,
+  PRAZO_DA_CONFIRMACAO_MS,
   ENTRADA_NO_CHECKOUT,
   podeContinuar,
   razoesDoContinuar,
@@ -21,6 +27,7 @@ const {
   lerEscolha,
   limparCheckout,
   pareceUUIDV4,
+  requisicaoDeConfirmar,
   rotaDoFrete,
   uuidNovo,
 } = await import(
@@ -475,4 +482,165 @@ test("abertura da Revisão: sem bloqueio e sem preço mudado, ela abre", () => {
 test("abertura da Revisão: 401 vai ao Login, e o Carrinho recusado vira aviso", () => {
   assert.equal(aberturaDaRevisao(naoOk(401), ok([casa])).semSessao, true);
   assert.equal(aberturaDaRevisao(naoOk(500, "Caiu."), ok([casa])).erro, "Caiu.");
+});
+
+// O Confirmar Pedido (5.6): a requisição, o desfecho e a execução, puros.
+const recusa = (status, codigo, dados = null) => ({
+  resposta: { ok: false, status },
+  json: { erro: { codigo, mensagem: `mensagem de ${codigo}`, dados } },
+});
+
+test("a confirmação vai por POST, com a chave no cabeçalho e o total da Revisão no corpo", () => {
+  const chave = "3f2b8c1e-9a4d-4e7f-8b21-0c5d6e7f8a9b";
+  const sinal = new AbortController().signal;
+  const { rota, init } = requisicaoDeConfirmar(chave, "e1", 26490, sinal);
+  assert.equal(rota, "/api/v1/pedidos");
+  assert.equal(init.method, "POST");
+  assert.equal(init.credentials, "same-origin");
+  assert.equal(init.headers["Idempotency-Key"], chave);
+  assert.equal(init.headers["Content-Type"], "application/json");
+  // O prazo chega ao `fetch`: sem o sinal, a requisição pendurada travaria o
+  // botão para sempre.
+  assert.equal(init.signal, sinal);
+  assert.ok(PRAZO_DA_CONFIRMACAO_MS > 0 && PRAZO_DA_CONFIRMACAO_MS <= 60_000);
+  // O corpo é o Endereço e o total, e nada mais: Itens, preços e Frete vêm do
+  // Carrinho e da Regra de Frete no Go (NFR-13).
+  assert.deepEqual(JSON.parse(init.body), { endereco_id: "e1", total_centavos: 26490 });
+});
+
+test("201 e 200 levam ao Pedido", () => {
+  for (const status of [201, 200]) {
+    const d = desfechoDaConfirmacao({ resposta: { ok: true, status }, json: { id: "p1" } });
+    assert.deepEqual(d, { tipo: "pedido", destino: "/pedidos/p1" });
+  }
+});
+
+test("2xx sem id não finge sucesso", () => {
+  const d = desfechoDaConfirmacao({ resposta: { ok: true, status: 201 }, json: null });
+  assert.equal(d.tipo, "erro");
+});
+
+test("chave reaproveitada diz que já criou um Pedido, com o link quando há id", () => {
+  assert.deepEqual(desfechoDaConfirmacao(recusa(409, "CHAVE_REUTILIZADA", { id: "original" })), {
+    tipo: "chaveReutilizada",
+    mensagem: "mensagem de CHAVE_REUTILIZADA",
+    pedido: "/pedidos/original",
+  });
+  // Sem `dados.id` o desfecho é o mesmo, só sem link: a chave sai do mesmo jeito.
+  assert.deepEqual(desfechoDaConfirmacao(recusa(409, "CHAVE_REUTILIZADA")), {
+    tipo: "chaveReutilizada",
+    mensagem: "mensagem de CHAVE_REUTILIZADA",
+    pedido: null,
+  });
+});
+
+test("total divergente relê a Revisão e avisa", () => {
+  const d = desfechoDaConfirmacao(recusa(409, "TOTAL_DIVERGENTE"));
+  assert.deepEqual(d, { tipo: "releitura", aviso: "mensagem de TOTAL_DIVERGENTE" });
+});
+
+test("recusas do Carrinho apontam o Carrinho; as outras não", () => {
+  for (const codigo of ["ESTOQUE_INSUFICIENTE", "CARRINHO_VAZIO", "CARRINHO_MUDOU"]) {
+    const d = desfechoDaConfirmacao(recusa(409, codigo, { disponivel: 0 }));
+    assert.deepEqual(d, { tipo: "erro", mensagem: `mensagem de ${codigo}`, comCarrinho: true });
+  }
+  const d = desfechoDaConfirmacao(recusa(500, "INTERNO"));
+  assert.equal(d.tipo, "erro");
+  assert.equal(d.comCarrinho, false);
+});
+
+test("só o 404 NAO_ENCONTRADO volta ao passo Endereço; outro 404 é falha", () => {
+  assert.deepEqual(desfechoDaConfirmacao(recusa(404, "NAO_ENCONTRADO")), {
+    tipo: "desvio",
+    destino: "/checkout/endereco",
+  });
+  assert.equal(desfechoDaConfirmacao(recusa(404, "OUTRA_COISA")).tipo, "erro");
+  assert.equal(desfechoDaConfirmacao({ resposta: { ok: false, status: 404 }, json: null }).tipo, "erro");
+  assert.deepEqual(desfechoDaConfirmacao(recusa(401, "SESSAO_INVALIDA")), { tipo: "semSessao" });
+});
+
+test("sem envelope, a mensagem é a da tela", () => {
+  const d = desfechoDaConfirmacao({ resposta: { ok: false, status: 502 }, json: null });
+  assert.deepEqual(d, { tipo: "erro", mensagem: "Não foi possível confirmar o Pedido.", comCarrinho: false });
+});
+
+// Os efeitos de `executarDesfecho`, registrados em ordem. O armazenamento é
+// de verdade (em memória), para provar o que sai e o que fica.
+function efeitos() {
+  const { dados, obter } = memoria();
+  dados.set(CHAVE_DO_ENDERECO, "e1");
+  dados.set(CHAVE_DE_IDEMPOTENCIA, "3f2b8c1e-9a4d-4e7f-8b21-0c5d6e7f8a9b");
+  const feitos = [];
+  const e = {
+    limpar: () => (feitos.push("limpar"), limparCheckout(obter)),
+    descartarChave: () => (feitos.push("descartarChave"), descartarChave(obter)),
+    descartarEscolha: () => (feitos.push("descartarEscolha"), descartarEscolha(obter)),
+    avisarCarrinho: () => feitos.push("avisarCarrinho"),
+    navegar: (destino) => feitos.push(`navegar ${destino}`),
+    irAoLogin: () => feitos.push("irAoLogin"),
+    reler: () => feitos.push("reler"),
+    mostrarAviso: (aviso) => feitos.push(aviso),
+  };
+  return { dados, feitos, e };
+}
+
+test("Pedido criado: limpa o checkout, avisa o Carrinho e vai ao Pedido, sem soltar a guarda", () => {
+  const { dados, feitos, e } = efeitos();
+  const soltar = executarDesfecho({ tipo: "pedido", destino: "/pedidos/p1" }, e);
+  assert.deepEqual(feitos, ["limpar", "avisarCarrinho", "navegar /pedidos/p1"]);
+  assert.equal(dados.size, 0);
+  assert.equal(soltar, false);
+});
+
+test("releitura mantém a chave e a escolha, avisa e relê", () => {
+  const { dados, feitos, e } = efeitos();
+  const soltar = executarDesfecho({ tipo: "releitura", aviso: "mudou" }, e);
+  assert.deepEqual(feitos, [{ mensagem: "mudou", comCarrinho: false, pedido: null }, "reler"]);
+  assert.ok(dados.has(CHAVE_DE_IDEMPOTENCIA) && dados.has(CHAVE_DO_ENDERECO));
+  assert.equal(soltar, true);
+});
+
+test("chave reaproveitada: a chave sai sempre, a escolha fica, e a tela avisa em vez de navegar", () => {
+  for (const pedido of ["/pedidos/original", null]) {
+    const { dados, feitos, e } = efeitos();
+    const soltar = executarDesfecho({ tipo: "chaveReutilizada", mensagem: "já criou", pedido }, e);
+    assert.deepEqual(feitos, ["descartarChave", { mensagem: "já criou", comCarrinho: false, pedido }, "reler"]);
+    assert.equal(dados.has(CHAVE_DE_IDEMPOTENCIA), false);
+    assert.equal(dados.get(CHAVE_DO_ENDERECO), "e1");
+    assert.equal(soltar, true);
+  }
+});
+
+test("desvio do 404 apaga só a escolha de Endereço e mantém a chave", () => {
+  const { dados, feitos, e } = efeitos();
+  executarDesfecho({ tipo: "desvio", destino: "/checkout/endereco" }, e);
+  assert.deepEqual(feitos, ["descartarEscolha", "navegar /checkout/endereco"]);
+  assert.equal(dados.has(CHAVE_DO_ENDERECO), false);
+  assert.ok(dados.has(CHAVE_DE_IDEMPOTENCIA));
+});
+
+test("erro e falha de rede soltam a guarda e não apagam nada", () => {
+  const { dados, feitos, e } = efeitos();
+  const soltar = executarDesfecho({ tipo: "erro", mensagem: "Estoque", comCarrinho: true }, e);
+  assert.deepEqual(feitos, [{ mensagem: "Estoque", comCarrinho: true, pedido: null }]);
+  assert.equal(dados.size, 2);
+  assert.equal(soltar, true);
+  const semSessao = efeitos();
+  assert.equal(executarDesfecho({ tipo: "semSessao" }, semSessao.e), false);
+  assert.deepEqual(semSessao.feitos, ["irAoLogin"]);
+});
+
+test("Fechar o Pedido começa outra tentativa: a chave sai, a escolha de Endereço fica", () => {
+  const { dados, obter } = memoria();
+  dados.set(CHAVE_DO_ENDERECO, "e1");
+  const antiga = chaveDeIdempotencia(obter);
+  iniciarTentativaDeCheckout(obter);
+  assert.equal(dados.has(CHAVE_DE_IDEMPOTENCIA), false);
+  assert.equal(dados.get(CHAVE_DO_ENDERECO), "e1");
+  // A Revisão seguinte gera outra.
+  const nova = chaveDeIdempotencia(obter);
+  assert.ok(pareceUUIDV4(nova));
+  assert.notEqual(nova, antiga);
+  // Sem armazenamento, não lança.
+  assert.doesNotThrow(() => iniciarTentativaDeCheckout(lanca));
 });

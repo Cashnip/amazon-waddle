@@ -235,14 +235,16 @@ export function podeContinuar(marcado: string | null, podeAvancar: boolean): boo
 }
 
 // A chave de idempotência do checkout (5.4, FR-22, NFR-12). É **estado de
-// tela**, e não de domínio: o Node continua sem nada de domínio (AD-10). Quem
-// a envia no `POST /api/v1/pedidos`, e quem chama `limparCheckout` depois de o
-// Pedido nascer, é a 5.6.
+// tela**, e não de domínio: o Node continua sem nada de domínio (AD-10). A
+// Revisão a envia no `POST /api/v1/pedidos` (`requisicaoDeConfirmar`) e chama
+// `limparCheckout` quando o Pedido nasce (`executarDesfecho`).
 //
 // Nasce ao **entrar** na Revisão, e não no clique: gerada no clique, o duplo
 // clique produziria duas chaves e dois Pedidos, e a idempotência do servidor
 // estaria correta e inútil. Fica em `sessionStorage` porque o recarregamento
-// da página é justamente o caso que ela existe para proteger.
+// da página é justamente o caso que ela existe para proteger. Vale **uma
+// tentativa de checkout**: o "Fechar o Pedido" do Carrinho começa outra e a
+// descarta (`iniciarTentativaDeCheckout`, 5.6).
 export const CHAVE_DE_IDEMPOTENCIA = "azamon:checkout:idempotency_key";
 
 // Só o que a geração usa. `randomUUID` é opcional de propósito: em contexto
@@ -303,16 +305,194 @@ export function chaveDeIdempotencia(
 }
 
 // O fim da tentativa de checkout: a escolha de Endereço e a chave saem juntas.
-// Nasce aqui, mas **quem a chama é a 5.6**, na criação do Pedido — apagar
-// antes disso daria ao duplo clique duas chaves, que é o que a chave evita.
+// Quem a chama é a Revisão, **só quando o Pedido nasceu** — apagar antes disso
+// daria ao duplo clique duas chaves, que é o que a chave evita; e recusa por
+// Estoque, por total ou por Carrinho não apaga, porque não consome a chave.
 // Cada chave no seu `try`: um armazenamento que lança na primeira não pode
 // deixar a segunda para trás.
 export function limparCheckout(armazenamento: () => Armazenamento = daSessao): void {
-  for (const chave of [CHAVE_DO_ENDERECO, CHAVE_DE_IDEMPOTENCIA]) {
+  apagar([CHAVE_DO_ENDERECO, CHAVE_DE_IDEMPOTENCIA], armazenamento);
+}
+
+// Só a chave: a escolha de Endereço continua. É o que a chave reaproveitada
+// pede — ela já criou um Pedido e não serve para outro — e o que começa uma
+// tentativa nova de checkout.
+export function descartarChave(armazenamento: () => Armazenamento = daSessao): void {
+  apagar([CHAVE_DE_IDEMPOTENCIA], armazenamento);
+}
+
+// Só a escolha de Endereço: a chave continua. É o 404 da confirmação — o
+// Endereço escolhido não é mais do Comprador, e o passo Endereço escolhe outro.
+export function descartarEscolha(armazenamento: () => Armazenamento = daSessao): void {
+  apagar([CHAVE_DO_ENDERECO], armazenamento);
+}
+
+function apagar(chaves: string[], armazenamento: () => Armazenamento): void {
+  for (const chave of chaves) {
     try {
       armazenamento().removeItem(chave);
     } catch {
       // Armazenamento indisponível equivale a nada guardado: não há o que apagar.
     }
+  }
+}
+
+// O começo de uma tentativa de checkout: o "Fechar o Pedido" do Carrinho. A
+// chave antiga sai, e a Revisão gera outra ao abrir; a escolha de Endereço
+// fica, porque voltar ao Carrinho não pode perdê-la (FR-22).
+//
+// Rodar a chave aqui é inofensivo porque ela só se prende quando um Pedido
+// **comita** (5.6): enquanto nenhum Pedido nasceu, chave nova e chave velha
+// valem o mesmo. E é necessário porque o 201 pode se perder no caminho — o
+// Pedido nasceu, a tela nunca soube, a chave ficou guardada —, e um checkout
+// seguinte sob a mesma chave devolveria em silêncio o Pedido **antigo** (200,
+// mesmo total) ou abriria o antigo pelo 409. Dentro da mesma tentativa — o
+// recarregamento da Revisão, a ida ao passo Endereço e a volta — a chave
+// continua a mesma, que é o caso que ela existe para proteger.
+export function iniciarTentativaDeCheckout(armazenamento: () => Armazenamento = daSessao): void {
+  descartarChave(armazenamento);
+}
+
+// O prazo do Confirmar Pedido. Uma requisição pendurada não pode travar o
+// botão para sempre; esgotado o prazo, a tela solta a guarda e a mesma chave
+// torna o novo clique seguro — se o Pedido nasceu, o reenvio devolve o mesmo.
+export const PRAZO_DA_CONFIRMACAO_MS = 30_000;
+
+// O Confirmar Pedido (5.6), escrito num lugar só: a rota, o método, o
+// cabeçalho `Idempotency-Key` e o corpo. O corpo é o Endereço escolhido e o
+// total que a Revisão **exibiu** — o da cotação do Go, nunca uma soma feita
+// aqui (NFR-13). Quem compara o total e recusa com `TOTAL_DIVERGENTE` é o Go;
+// o navegador só o repete.
+export function requisicaoDeConfirmar(
+  chave: string,
+  enderecoID: string,
+  totalCentavos: number,
+  sinal?: AbortSignal,
+): { rota: string; init: RequestInit } {
+  return {
+    rota: "/api/v1/pedidos",
+    init: {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": chave },
+      body: JSON.stringify({ endereco_id: enderecoID, total_centavos: totalCentavos }),
+      signal: sinal,
+    },
+  };
+}
+
+// O que a Revisão faz com a resposta do Confirmar Pedido. Cada recusa tem o
+// seu tratamento, e nenhuma cai no aviso genérico quando tem um nome:
+//
+// - `pedido`: o Pedido nasceu agora (201) ou é o reenvio desta tentativa
+//   (200). A tentativa de checkout termina, e a tela vai ao Pedido.
+// - `chaveReutilizada`: a chave já tinha criado **outro** Pedido (409
+//   `CHAVE_REUTILIZADA`). A chave sai sempre — não serve mais para nada —, e a
+//   tela diz que esta confirmação já criou um Pedido, com o link quando o Go
+//   mandou o `id`. Não navega em silêncio: o Comprador precisa saber que o
+//   Carrinho de agora não virou Pedido.
+// - `releitura`: o total mudou desde a Revisão (`TOTAL_DIVERGENTE`). A tela
+//   avisa e relê a Revisão, com a **mesma** chave — a recusa não a consumiu.
+// - `desvio`: o Endereço escolhido não é mais do Comprador (404
+//   `NAO_ENCONTRADO`). A escolha sai, e o passo Endereço escolhe outro.
+// - `semSessao`: ao Login, com o `destino` que quem chama monta.
+// - `erro`: o resto, com a mensagem do envelope; `comCarrinho` quando a saída
+//   é o Carrinho (Estoque, Carrinho vazio ou mudado).
+export type Desfecho =
+  | { tipo: "pedido"; destino: string }
+  | { tipo: "chaveReutilizada"; mensagem: string; pedido: string | null }
+  | { tipo: "releitura"; aviso: string }
+  | { tipo: "desvio"; destino: string }
+  | { tipo: "semSessao" }
+  | { tipo: "erro"; mensagem: string; comCarrinho: boolean };
+
+export const FALHA_NA_CONFIRMACAO = "Não foi possível confirmar o Pedido.";
+const CHAVE_JA_USADA = "Esta confirmação já criou um Pedido.";
+const RECUSAS_DO_CARRINHO = ["ESTOQUE_INSUFICIENTE", "CARRINHO_VAZIO", "CARRINHO_MUDOU"];
+
+const rotaDoPedido = (id: string) => `/pedidos/${encodeURIComponent(id)}`;
+
+export function desfechoDaConfirmacao(r: RespostaDoGo): Desfecho {
+  const { status } = r.resposta;
+  if (status === 401) return { tipo: "semSessao" };
+  if (r.resposta.ok) {
+    const id = (r.json as { id?: unknown } | null)?.id;
+    // Sem `id` não há para onde levar, mesmo com 2xx: cair calado deixaria a
+    // tela sem confirmação e sem erro, e o Comprador confirmaria de novo.
+    if (typeof id === "string" && id !== "") return { tipo: "pedido", destino: rotaDoPedido(id) };
+    return { tipo: "erro", mensagem: FALHA_NA_CONFIRMACAO, comCarrinho: false };
+  }
+  const erro = (r.json as { erro?: { codigo?: string; mensagem?: string; dados?: unknown } } | null)?.erro;
+  const mensagem = erro?.mensagem ?? FALHA_NA_CONFIRMACAO;
+  if (status === 409 && erro?.codigo === "CHAVE_REUTILIZADA") {
+    const id = (erro.dados as { id?: unknown } | null)?.id;
+    return {
+      tipo: "chaveReutilizada",
+      mensagem: erro.mensagem ?? CHAVE_JA_USADA,
+      pedido: typeof id === "string" && id !== "" ? rotaDoPedido(id) : null,
+    };
+  }
+  if (status === 409 && erro?.codigo === "TOTAL_DIVERGENTE") return { tipo: "releitura", aviso: mensagem };
+  // Só o 404 com o código do Go é o Endereço que deixou de ser do Comprador.
+  // Outro 404 — um proxy, uma rota que sumiu — é falha, e não motivo para
+  // apagar a escolha de ninguém.
+  if (status === 404 && erro?.codigo === "NAO_ENCONTRADO") return { tipo: "desvio", destino: "/checkout/endereco" };
+  return {
+    tipo: "erro",
+    mensagem,
+    comCarrinho: status === 409 && RECUSAS_DO_CARRINHO.includes(erro?.codigo ?? ""),
+  };
+}
+
+// O aviso que a Revisão mostra ao lado do botão. `pedido` é o link "Ver o
+// Pedido", quando há um Pedido a mostrar.
+export type AvisoDaConfirmacao = { mensagem: string; comCarrinho: boolean; pedido: string | null };
+
+// O que a tela sabe fazer, injetado: o teste troca cada um por um registro.
+export type EfeitosDaConfirmacao = {
+  limpar: () => void;
+  descartarChave: () => void;
+  descartarEscolha: () => void;
+  avisarCarrinho: () => void;
+  navegar: (destino: string) => void;
+  irAoLogin: () => void;
+  reler: () => void;
+  mostrarAviso: (aviso: AvisoDaConfirmacao) => void;
+};
+
+// Executa o desfecho. Devolve se a guarda de envio pode ser solta: quem
+// navega mantém o botão travado até a tela trocar — reabri-lo daria a janela
+// de um segundo envio enquanto a tela ainda é esta.
+//
+// A decisão de **o que** apagar mora aqui, e não no componente, porque é ela
+// que um teste consegue prender: a chave só sai quando um Pedido existe ou
+// quando ela já não serve (reaproveitada), e nunca numa recusa que não a
+// consumiu.
+export function executarDesfecho(d: Desfecho, e: EfeitosDaConfirmacao): boolean {
+  switch (d.tipo) {
+    case "pedido":
+      e.limpar();
+      e.avisarCarrinho();
+      e.navegar(d.destino);
+      return false;
+    case "chaveReutilizada":
+      e.descartarChave();
+      e.mostrarAviso({ mensagem: d.mensagem, comCarrinho: false, pedido: d.pedido });
+      e.reler();
+      return true;
+    case "releitura":
+      e.mostrarAviso({ mensagem: d.aviso, comCarrinho: false, pedido: null });
+      e.reler();
+      return true;
+    case "desvio":
+      e.descartarEscolha();
+      e.navegar(d.destino);
+      return false;
+    case "semSessao":
+      e.irAoLogin();
+      return false;
+    case "erro":
+      e.mostrarAviso({ mensagem: d.mensagem, comCarrinho: d.comCarrinho, pedido: null });
+      return true;
   }
 }

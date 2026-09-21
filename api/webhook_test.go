@@ -35,7 +35,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	}
 	ctx := context.Background()
 
-	resp := postarPedido(t, rotas, `{"produto_id":"`+produtoAprovado+`"}`, cookie)
+	resp := pedidoPeloCheckout(t, rotas, cookie, produtoAprovado, 1)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("status = %d (%s), quero 201", resp.Code, resp.Body.String())
 	}
@@ -242,7 +242,7 @@ func webhookRecusaEntradaRuim(t *testing.T, rotas http.Handler, pool *pgxpool.Po
 // próprio Pedido a PAGO sem pagar, inclusive um da faixa que o Simulado nunca
 // aprova.
 func webhookExigeOSegredo(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
-	resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+	resp := pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("status = %d (%s), quero 201", resp.Code, resp.Body.String())
 	}

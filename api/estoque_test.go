@@ -115,8 +115,15 @@ func estoqueEReservas(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	if resp := pegar(t, rotas, "/api/v1/produtos/"+produto); resp.Code != http.StatusOK {
 		t.Fatalf("Página de Produto = %d", resp.Code)
 	}
-	idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusCreated)
-	confereErro(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusConflict, "ESTOQUE_INSUFICIENTE", "")
+	// O segundo Comprador põe a unidade no Carrinho antes: é a Reserva, sob a
+	// trava, quem o recusa, e não o conselho da adição.
+	segundo := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Sara Matos","email":"sara@exemplo.br","senha":"senha-da-sara-1"}`), http.StatusCreated)
+	if resp := postarItem(t, rotas, corpoItem(produto, "1"), segundo); resp.Code != http.StatusCreated {
+		t.Fatalf("adicionar = %d (%s)", resp.Code, resp.Body.String())
+	}
+	idDe(t, pedidoPeloCheckout(t, rotas, comprador, produto, 1), http.StatusCreated)
+	confereErro(t, confirmarCarrinho(t, rotas, segundo), http.StatusConflict, "ESTOQUE_INSUFICIENTE", "")
 	if got := disponivelNaView(); got != "0" {
 		t.Errorf("estoque_disponivel = %s depois de esgotar, quero 0", got)
 	}

@@ -40,6 +40,13 @@ type AcimaDoEstoque struct {
 func (e AcimaDoEstoque) Error() string { return catalogo.ErrEstoqueInsuficiente.Error() }
 func (e AcimaDoEstoque) Unwrap() error { return catalogo.ErrEstoqueInsuficiente }
 
+// ErrCarrinhoMudou recusa a escrita de fora que encontrou menos Itens do que
+// leu: um Item removido noutra aba entre a leitura e a escrita, em READ
+// COMMITTED. É erro, e nunca silêncio — quem chama desfaz a transação inteira,
+// e o Comprador confere o Carrinho de novo. Sai de Esvaziar (criação do
+// Pedido) e da escrita parcial de ConfirmarPrecoVisto (entrada no checkout).
+var ErrCarrinhoMudou = errors.New("O Carrinho mudou. Abra-o de novo e confira antes de continuar.")
+
 // Item é o Item de Carrinho como a adição o devolve.
 type Item struct {
 	ID         string
@@ -250,7 +257,7 @@ func Itens(ctx context.Context, bd gerado.DBTX, compradorID string) (Conteudo, e
 
 // Limpar tira todos os Itens do Carrinho do Comprador: o esvaziar que ele pede
 // na tela (FR-18). Não é o Esvaziar da criação do Pedido, que recebe a
-// transação e os Itens (AD-3, Épica 5). Carrinho sem Itens é sucesso.
+// transação e só os Itens lidos (AD-3). Carrinho sem Itens é sucesso.
 func Limpar(ctx context.Context, bd gerado.DBTX, compradorID string) error {
 	dono, err := uuidDe(compradorID)
 	if err != nil {
@@ -313,8 +320,9 @@ type PrecoVisto struct {
 // escrita parcial significa que o Carrinho mudou debaixo da transação (um Item
 // removido noutra aba, em READ COMMITTED), e deixá-la passar calada devolveria
 // um "de X para Y" que não foi gravado — o aviso voltaria para sempre, que é o
-// defeito que esta função existe para matar. Divergência é erro, e quem chama
-// desfaz a transação: nada reportado, nada gravado, e a entrada seguinte avisa
+// defeito que esta função existe para matar. Divergência é ErrCarrinhoMudou
+// (409 CARRINHO_MUDOU, e não mais o 500 genérico), e quem chama desfaz a
+// transação: nada reportado, nada gravado, e a entrada seguinte avisa
 // de novo.
 func ConfirmarPrecoVisto(ctx context.Context, bd gerado.DBTX, compradorID string, vistos []PrecoVisto) error {
 	if len(vistos) == 0 {
@@ -343,7 +351,46 @@ func ConfirmarPrecoVisto(ctx context.Context, bd gerado.DBTX, compradorID string
 		return err
 	}
 	if linhas != int64(len(ordenados)) {
-		return fmt.Errorf("confirmar o preço visto: %d linhas gravadas de %d reportadas", linhas, len(ordenados))
+		return fmt.Errorf("confirmar o preço visto: %d linhas gravadas de %d reportadas: %w", linhas, len(ordenados), ErrCarrinhoMudou)
+	}
+	return nil
+}
+
+// Esvaziar tira do Carrinho do Comprador **só** os Itens que a criação do
+// Pedido leu (AD-3): é a única escrita de fora que tira Item do Carrinho, e
+// quem a chama é `pedido`, dentro da transação em que o Pedido nasce, depois
+// de catalogo.Reservar suceder. Um Item adicionado noutra aba depois da
+// leitura fica no Carrinho e não entra no Pedido.
+//
+// A posse está no WHERE (AD-11). Linha a menos — um dos Itens lidos sumiu
+// debaixo da transação — é ErrCarrinhoMudou, e quem chama desfaz tudo: o
+// Pedido não pode nascer com um Item que o Carrinho já não tinha. Lista vazia
+// é no-op com nil.
+//
+// tx é parâmetro nomeado, e não valor de contexto (AD-4): é a mesma transação
+// do Pedido, e reverter uma reverte as duas.
+func Esvaziar(ctx context.Context, tx pgx.Tx, compradorID string, itemIDs []string) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return err
+	}
+	ids := make([]pgtype.UUID, 0, len(itemIDs))
+	for _, id := range itemIDs {
+		chave, err := uuidDe(id)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, chave)
+	}
+	linhas, err := gerado.New(tx).EsvaziarItens(ctx, gerado.EsvaziarItensParams{Ids: ids, CompradorID: dono})
+	if err != nil {
+		return fmt.Errorf("esvaziar o Carrinho: %w", err)
+	}
+	if linhas != int64(len(ids)) {
+		return fmt.Errorf("esvaziar o Carrinho: %d Itens apagados de %d lidos: %w", linhas, len(ids), ErrCarrinhoMudou)
 	}
 	return nil
 }

@@ -234,7 +234,7 @@ func enderecoComCampoInvalido(t *testing.T, rotas http.Handler, cookie *http.Coo
 // isso — o Pedido congela o Endereço na criação —, e o que este subteste
 // impede é alguém criar a dependência que tornaria o DELETE impossível.
 func remocaoNaoTocaPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie, enderecoID string) {
-	pedidoID := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie), http.StatusCreated)
+	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1), http.StatusCreated)
 	antes := corpoSemCorrelacao(pegarPedido(t, rotas, pedidoID, cookie))
 	pedidosAntes := contarPedidos(t, pool)
 

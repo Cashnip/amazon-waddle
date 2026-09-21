@@ -144,8 +144,8 @@ func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pg
 	// este é exatamente o Pedido que o primeiro tique moveria.
 	var pedidoID string
 	if err := conexao.QueryRow(ctx, `
-		INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
-		VALUES ('AZ-INTERRUPTOR-0001', uuidv7(), 'PAGO', 32900)
+		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
+		VALUES ('AZ-INTERRUPTOR-0001', uuidv7(), 'PAGO', 32900, 0, 32900)
 		RETURNING id::text`).Scan(&pedidoID); err != nil {
 		t.Fatalf("criar o Pedido: %v", err)
 	}
@@ -198,8 +198,8 @@ func varreduraLevaOPedidoAPago(t *testing.T, ctx context.Context, conexao *pgx.C
 	t.Helper()
 	var pedidoID string
 	if err := conexao.QueryRow(ctx, `
-		INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
-		VALUES ('AZ-VARREDURA-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 32900)
+		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
+		VALUES ('AZ-VARREDURA-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 32900, 0, 32900)
 		RETURNING id::text`).Scan(&pedidoID); err != nil {
 		t.Fatalf("criar o Pedido: %v", err)
 	}

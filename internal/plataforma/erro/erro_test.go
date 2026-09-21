@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Cashnip/amazon-waddle/internal/carrinho"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
@@ -252,4 +253,33 @@ func decodificar(t *testing.T, resp *httptest.ResponseRecorder) map[string]any {
 		t.Fatal("corpo sem a chave \"erro\"")
 	}
 	return env.Erro
+}
+
+// TestRecusasDaCriacaoDoPedido: as quatro recusas da 5.6 estão no registro,
+// todas 409 com o código que a tela lê — inclusive embrulhadas com %w, que é
+// como `carrinho.Esvaziar` e `ConfirmarPrecoVisto` devolvem ErrCarrinhoMudou.
+func TestRecusasDaCriacaoDoPedido(t *testing.T) {
+	for _, caso := range []struct {
+		err    error
+		codigo string
+	}{
+		{pedido.ErrTotalDivergente, "TOTAL_DIVERGENTE"},
+		{pedido.ErrCarrinhoVazio, "CARRINHO_VAZIO"},
+		{pedido.ErrChaveReutilizada, "CHAVE_REUTILIZADA"},
+		{carrinho.ErrCarrinhoMudou, "CARRINHO_MUDOU"},
+		{fmt.Errorf("esvaziar o Carrinho: 1 Itens apagados de 2 lidos: %w", carrinho.ErrCarrinhoMudou), "CARRINHO_MUDOU"},
+	} {
+		resp := escrever(t, caso.err, nil)
+		if resp.Code != http.StatusConflict {
+			t.Errorf("%v: status = %d, quero 409", caso.err, resp.Code)
+		}
+		corpo := decodificar(t, resp)
+		if corpo["codigo"] != caso.codigo {
+			t.Errorf("%v: codigo = %v, quero %s", caso.err, corpo["codigo"], caso.codigo)
+		}
+		// A mensagem é a do sentinela, nunca a do embrulho (AD-14).
+		if strings.Contains(fmt.Sprint(corpo["mensagem"]), "lidos") {
+			t.Errorf("%v: a mensagem levou o contexto do embrulho: %v", caso.err, corpo["mensagem"])
+		}
+	}
 }

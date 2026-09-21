@@ -105,7 +105,12 @@ func gestaoDeVendedores(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 		INSERT INTO catalogo.produto (nome, descricao, preco_centavos, imagem_url, vendedor_id, categoria_id)
 		VALUES ('Produto da Loja X', 'Descrição.', 1000, '/api/v1/media/x.svg', $1::uuid, $2::uuid)
 		RETURNING id::text`, lojaX, categoriaSemeada)[0]
-	pedidoID := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusCreated)
+	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, comprador, produto, 1), http.StatusCreated)
+	// De volta ao Carrinho antes de desativar: é a criação do Pedido que o
+	// recusa, e não a adição.
+	if resp := postarItem(t, rotas, corpoItem(produto, "1"), comprador); resp.Code != http.StatusCreated {
+		t.Fatalf("adicionar antes de desativar = %d (%s)", resp.Code, resp.Body.String())
+	}
 	pedidoAntes := corpoSemCorrelacao(pegarPedido(t, rotas, pedidoID, comprador))
 
 	// Editar e desativar: 200 com a linha nova.
@@ -121,7 +126,7 @@ func gestaoDeVendedores(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	// Reserva gravada.
 	confereErro(t, pegar(t, rotas, "/api/v1/produtos/"+produto), http.StatusNotFound, "NAO_ENCONTRADO", "")
 	reservasAntes := len(textoDe(t, pool, `SELECT id::text FROM catalogo.reserva_estoque WHERE produto_id = $1::uuid`, produto))
-	confereErro(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusNotFound, "NAO_ENCONTRADO", "")
+	confereErro(t, confirmarCarrinho(t, rotas, comprador), http.StatusConflict, "ESTOQUE_INSUFICIENTE", "")
 	if n := len(textoDe(t, pool, `SELECT id::text FROM catalogo.reserva_estoque WHERE produto_id = $1::uuid`, produto)); n != reservasAntes {
 		t.Errorf("reservas = %d depois da compra recusada, eram %d", n, reservasAntes)
 	}

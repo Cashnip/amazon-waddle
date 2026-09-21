@@ -354,10 +354,10 @@ func TestSessaoEProduto(t *testing.T) {
 		pedidoCriado = pedidoNasceAguardandoPagamento(t, rotas, pool, cookieValido)
 	})
 	t.Run("sem Sessão não nasce Pedido", func(t *testing.T) { pedidoSemSessaoDa401(t, rotas, pool) })
-	t.Run("Produto ausente, corpo inválido e corpo grande demais", func(t *testing.T) {
+	t.Run("sem chave, Endereço alheio, corpo inválido e corpo grande demais", func(t *testing.T) {
 		pedidoComEntradaRuim(t, rotas, pool, cookieValido)
 	})
-	t.Run("Estoque esgotado recusa a compra", func(t *testing.T) {
+	t.Run("Estoque esgotado recusa o Pedido inteiro", func(t *testing.T) {
 		pedidoSemEstoqueDa409(t, rotas, pool, cookieValido)
 	})
 	t.Run("Transicionar sobre estado já avançado", func(t *testing.T) {
@@ -514,6 +514,11 @@ func TestSessaoEProduto(t *testing.T) {
 	// reporta a mudança de preço e grava a ciência dela na mesma transação.
 	t.Run("a entrada no checkout: reporta, confirma e trava o avanço", func(t *testing.T) {
 		entradaNoCheckout(t, rotas, pool)
+	})
+	// A 5.6, com contas, Produtos e Endereços próprios: a criação do Pedido a
+	// partir do Carrinho, a idempotência e as recusas.
+	t.Run("a criação do Pedido: Carrinho, Reserva atômica, idempotência e recusas", func(t *testing.T) {
+		criacaoPeloCheckout(t, rotas, pool)
 	})
 }
 

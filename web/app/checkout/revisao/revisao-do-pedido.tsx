@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
-import { parcelaDe, unidadesTexto, type Carrinho, type LinhaDoCarrinho } from "@/lib/carrinho";
+import {
+  avisarCarrinhoAlterado,
+  parcelaDe,
+  unidadesTexto,
+  type Carrinho,
+  type LinhaDoCarrinho,
+} from "@/lib/carrinho";
 import {
   aberturaDaRevisao,
   chaveDeIdempotencia,
+  descartarChave,
+  descartarEscolha,
+  desfechoDaConfirmacao,
   enderecoEscolhido,
+  executarDesfecho,
   freteGratis,
   lerEscolha,
+  limparCheckout,
+  PRAZO_DA_CONFIRMACAO_MS,
+  requisicaoDeConfirmar,
   rotaDoFrete,
+  type AvisoDaConfirmacao,
+  type Desfecho,
   type Cotacao,
 } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
@@ -38,9 +53,11 @@ import { EtapasDoCheckout } from "../etapas";
 // escolhido (5.2) e a chave de idempotência desta tentativa de checkout.
 //
 // A chave nasce ao **entrar** na Revisão, e não no clique: gerada no clique, o
-// duplo clique produziria duas chaves e dois Pedidos. Quem a envia no `POST
-// /api/v1/pedidos`, e quem chama `limparCheckout` depois de o Pedido nascer, é
-// a 5.6 — por isso o Confirmar Pedido ainda está desabilitado.
+// duplo clique produziria duas chaves e dois Pedidos. O Confirmar Pedido a
+// envia no `POST /api/v1/pedidos`, com o Endereço e o total que a Revisão
+// exibiu, e `limparCheckout` só roda quando o Pedido existe (5.6). O que fazer
+// com cada resposta é decisão pura de `desfechoDaConfirmacao`; aqui ela só é
+// executada.
 //
 // A revalidação de Estoque e preço é da entrada do checkout, no passo Endereço
 // (5.5). A Revisão **não repete a escrita**: ela desvia, por leitura pura. O
@@ -49,11 +66,10 @@ import { EtapasDoCheckout } from "../etapas";
 // que mudou depois da entrada volta ao passo Endereço, que é quem reporta e
 // confirma (AD-17). Duas escritas seriam dois lugares gravando o mesmo campo.
 
-// A criação do Pedido é da 5.6: o `POST /api/v1/pedidos` de hoje ainda é o do
-// esqueleto, de um Produto e uma unidade, sem Endereço nem Frete. Esta é a
-// **única** linha que a 5.6 vira para ligar a confirmação — a guarda de
-// armazenamento abaixo não depende dela e continua de pé sozinha.
-const CRIACAO_DISPONIVEL: boolean = false;
+// A criação do Pedido a partir do Carrinho existe desde a 5.6, que virou esta
+// linha. A guarda de armazenamento abaixo não depende dela e continua de pé
+// sozinha.
+const CRIACAO_DISPONIVEL: boolean = true;
 
 // As razões de o Confirmar Pedido estar indisponível, em ordem de exibição.
 // Ficam numa linha ao lado do botão, e não escondidas num `title`: um botão
@@ -71,17 +87,30 @@ export function RevisaoDoPedido() {
   const [endereco, setEndereco] = useState<Endereco | null>(null);
   const [cotacao, setCotacao] = useState<Cotacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  // `false` quando o `sessionStorage` não respondeu: sem chave, a confirmação
+  // `null` quando o `sessionStorage` não respondeu: sem chave, a confirmação
   // não estaria protegida, e a tela diz isso em vez de prometer o contrário.
-  const [comChave, setComChave] = useState(true);
+  // `undefined` é só o instante antes de o efeito rodar.
+  const [chave, setChave] = useState<string | null | undefined>(undefined);
+  const comChave = chave !== null;
+  // O aviso de uma recusa da confirmação. Fica fora de `erro`, que é o de não
+  // conseguir abrir a Revisão: o total divergente avisa **e** relê.
+  const [aviso, setAviso] = useState<AvisoDaConfirmacao | null>(null);
+  // Envio único: o `ref` barra o segundo disparo **no mesmo tique** — o
+  // `disabled` do estado só chega no render seguinte, e o duplo clique cabe
+  // entre os dois. O estado é o que a tela mostra.
+  const emVoo = useRef(false);
+  const [enviando, setEnviando] = useState(false);
+  // Muda para reler a Revisão inteira depois do `TOTAL_DIVERGENTE`.
+  const [leitura, setLeitura] = useState(0);
 
   useEffect(() => {
     let vivo = true;
 
     // A chave nasce aqui, na entrada da Revisão — antes de qualquer leitura, e
     // uma só por tentativa de checkout: se já existe (recarregamento, ida e
-    // volta ao Carrinho), é a mesma que continua.
-    setComChave(chaveDeIdempotencia() !== null);
+    // volta ao Carrinho, releitura depois de uma recusa), é a mesma que
+    // continua.
+    setChave(chaveDeIdempotencia());
 
     const guardado = lerEscolha();
     if (guardado === null) {
@@ -157,13 +186,60 @@ export function RevisaoDoPedido() {
     return () => {
       vivo = false;
     };
-  }, [router]);
+    // `leitura` não é lida dentro do efeito: mudar de valor é o pedido de
+    // reler a Revisão inteira do Go.
+  }, [router, leitura]);
+
+  async function confirmar() {
+    // A guarda mora aqui, e não no `disabled` nativo: o botão usa
+    // `aria-disabled` para continuar focalizável, e a razão, alcançável pelo
+    // leitor de tela (o mesmo da 5.5 no Continuar).
+    if (razoes.length > 0 || emVoo.current || !chave || endereco === null || cotacao === null) return;
+    emVoo.current = true;
+    setEnviando(true);
+    setAviso(null);
+    // Uma requisição pendurada não trava o botão para sempre: esgotado o
+    // prazo, a guarda é solta e a mesma chave torna o novo clique seguro.
+    const cancelar = new AbortController();
+    const prazo = setTimeout(() => cancelar.abort(), PRAZO_DA_CONFIRMACAO_MS);
+    let desfecho: Desfecho;
+    try {
+      const { rota, init } = requisicaoDeConfirmar(chave, endereco.id, cotacao.total_centavos, cancelar.signal);
+      const resposta = await fetch(rota, init);
+      const json = await resposta.json().catch(() => null);
+      desfecho = desfechoDaConfirmacao({ resposta, json });
+    } catch {
+      desfecho = { tipo: "erro", mensagem: FALHA_DE_REDE, comCarrinho: false };
+    } finally {
+      clearTimeout(prazo);
+    }
+    // O que fazer com a resposta é de `executarDesfecho`, pura e testada; aqui
+    // só se entregam os efeitos.
+    const soltar = executarDesfecho(desfecho, {
+      limpar: () => limparCheckout(),
+      descartarChave: () => descartarChave(),
+      descartarEscolha: () => descartarEscolha(),
+      avisarCarrinho: avisarCarrinhoAlterado,
+      navegar: (destino) => router.push(destino),
+      irAoLogin: () => router.push(paraLogin()),
+      reler: () => {
+        setCotacao(null);
+        setLeitura((n) => n + 1);
+      },
+      mostrarAviso: setAviso,
+    });
+    if (soltar) {
+      emVoo.current = false;
+      setEnviando(false);
+    }
+  }
 
   const pronta = carrinho !== null && endereco !== null && cotacao !== null;
 
   // As razões acumulam: quando as duas valem, as duas são ditas. A lista vazia
-  // é o único caso em que o botão fica habilitado, e é a 5.6 quem o alcança —
-  // sem armazenamento, `comChave` sozinho mantém o botão travado.
+  // é o único caso em que o botão fica habilitado — sem armazenamento,
+  // `comChave` sozinho mantém o botão travado. O envio em voo também trava,
+  // mas não é razão a explicar: o próprio botão diz "Confirmando…".
   const razoes = [
     ...(CRIACAO_DISPONIVEL ? [] : [RAZAO_SEM_CRIACAO]),
     ...(comChave ? [] : [RAZAO_SEM_CHAVE]),
@@ -177,6 +253,27 @@ export function RevisaoDoPedido() {
       {erro && (
         <Alert variant="destructive">
           <AlertDescription>{erro}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* A recusa da confirmação. O `Alert` já é `role="alert"`: o foco
+          continua no botão, e quem usa leitor de tela precisa ouvir por que
+          nada aconteceu. */}
+      {aviso && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            <p>{aviso.mensagem}</p>
+            {aviso.pedido !== null && (
+              <a className="text-link hover:underline" href={aviso.pedido}>
+                Ver o Pedido
+              </a>
+            )}
+            {aviso.comCarrinho && (
+              <a className="text-link hover:underline" href="/carrinho">
+                Voltar ao Carrinho
+              </a>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -276,16 +373,20 @@ export function RevisaoDoPedido() {
           <div className="flex flex-col items-end gap-2">
             {/* O passo irreversível, e a **única** aparição do laranja no fluxo
                 inteiro (UX-DR7, DESIGN.md): `{colors.primary-strong}` em pill.
-                O `disabled` deriva das razões, e não de um literal: a 5.6 vira
-                só `CRIACAO_DISPONIVEL`, e a guarda de armazenamento continua
-                travando o botão por conta própria. */}
+                `aria-disabled`, e não o `disabled` nativo: botão desabilitado
+                de verdade não recebe foco, e a razão ligada por
+                `aria-describedby` nunca chegaria ao leitor de tela (o mesmo da
+                5.5 no Continuar). Quem barra o envio é a guarda dentro de
+                `confirmar`; a trava deriva das razões e do envio em voo, e a
+                guarda de armazenamento trava o botão por conta própria. */}
             <Button
               size="lg"
-              className="rounded-full bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong/90"
-              disabled={razoes.length > 0}
+              className="rounded-full bg-primary-strong text-primary-strong-foreground hover:bg-primary-strong/90 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              aria-disabled={razoes.length > 0 || enviando}
               aria-describedby={razoes.length > 0 ? "razao-confirmar" : undefined}
+              onClick={confirmar}
             >
-              Confirmar Pedido
+              {enviando ? "Confirmando…" : "Confirmar Pedido"}
             </Button>
             {razoes.length > 0 && (
               <p id="razao-confirmar" className="text-muted-foreground text-right text-sm">

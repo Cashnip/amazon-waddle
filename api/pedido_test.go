@@ -2,18 +2,24 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Cashnip/amazon-waddle/internal/carrinho"
 	"github.com/Cashnip/amazon-waddle/internal/catalogo"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
 )
@@ -25,10 +31,16 @@ import (
 // Produto que possa ser esgotado sem estragar os outros subtestes.
 const produtoParaEsgotar = "a0ae8ff1-da13-5591-9291-4a4f1ce15383"
 
+// freteSudeste é o Frete da faixa de SP (AD-17): o Endereço que
+// enderecoDeSP garante cai nela, e todo Pedido abaixo do limiar de isenção de
+// teste (R$ 250,00) paga isto.
+const freteSudeste = 1500
+
 // pedidoNasceAguardandoPagamento cobre de uma vez as linhas da matriz que só
 // um Pedido de verdade produz: o 201, a numeração por ano, o histórico da
-// transição, o Item congelado e a Reserva ATIVA. Devolve o uuid do primeiro,
-// que o subteste do compare-and-swap reaproveita.
+// transição, o Item congelado, o Frete e o Endereço congelados, a Reserva
+// ATIVA e o Carrinho vazio. Devolve o uuid do primeiro, que o subteste do
+// compare-and-swap reaproveita.
 func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) string {
 	if cookie == nil {
 		t.Fatal("sem cookie: o login falhou antes")
@@ -40,7 +52,7 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 		fmt.Sprintf("AZ-%d-%06d", ano, 1),
 		fmt.Sprintf("AZ-%d-%06d", ano, 2),
 	} {
-		resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+		resp := pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1)
 		if resp.Code != http.StatusCreated {
 			t.Fatalf("Pedido %d: status = %d (%s), quero 201", i+1, resp.Code, resp.Body.String())
 		}
@@ -63,12 +75,13 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 		if corpo["status"] != "AGUARDANDO_PAGAMENTO" {
 			t.Errorf("status = %v", corpo["status"])
 		}
-		// O total é o preço do Produto, em centavos inteiros: não há divisão
-		// no caminho monetário (AD-3), e o JSON não pode trazer 249.90.
-		if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990 {
-			t.Errorf("total_centavos = %v, quero 24990 inteiro", corpo["total_centavos"])
+		// O total é o preço do Produto mais o Frete de SP, em centavos
+		// inteiros: não há divisão no caminho monetário (AD-9), e o JSON não
+		// pode trazer 264.9.
+		if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990+freteSudeste {
+			t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 24990+freteSudeste)
 		}
-		if strings.Contains(resp.Body.String(), "249.9") {
+		if strings.Contains(resp.Body.String(), "264.9") {
 			t.Error("o total saiu em ponto flutuante")
 		}
 		if i == 0 {
@@ -102,6 +115,16 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 		t.Errorf("item = %v, quero [%q]", itens, quer)
 	}
 
+	// Subtotal, Frete e Endereço congelados em colunas do próprio Pedido.
+	congelado := textoDe(t, pool, `
+		SELECT subtotal_centavos || '|' || frete_centavos || '|' || total_centavos || '|' ||
+		       endereco_cep || '|' || endereco_uf
+		FROM pedido.pedido WHERE id = $1::uuid`, primeiro)
+	quer = fmt.Sprintf("24990|%d|%d|01310100|SP", freteSudeste, 24990+freteSudeste)
+	if len(congelado) != 1 || congelado[0] != quer {
+		t.Errorf("Pedido = %v, quero [%q]", congelado, quer)
+	}
+
 	// A Reserva nasce ATIVA, na mesma transação, com a quantidade comprada.
 	reservas := textoDe(t, pool, `
 		SELECT estado || '|' || quantidade || '|' || produto_id
@@ -110,18 +133,23 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 	if len(reservas) != 1 || reservas[0] != quer {
 		t.Errorf("reserva = %v, quero [%q]", reservas, quer)
 	}
+
+	// O Carrinho sai vazio da criação: os Itens viraram Itens de Pedido.
+	if n := len(decodificar(t, pegarCarrinho(t, rotas, cookie))["itens"].([]any)); n != 0 {
+		t.Errorf("%d Itens no Carrinho depois do Pedido, quero 0", n)
+	}
 	return primeiro
 }
 
 // pedidoSemSessaoDa401: sem cookie, ou com cookie fora do Redis, nenhuma linha
-// entra em pedido.pedido — a rota é a segunda (e última) autenticada.
+// entra em pedido.pedido — a Sessão é conferida antes de tudo, até da chave.
 func pedidoSemSessaoDa401(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	antes := contarPedidos(t, pool)
 	for _, cookie := range []*http.Cookie{
 		nil,
 		{Name: "azamon_sessao", Value: strings.Repeat("0", 64)},
 	} {
-		resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+		resp := postarPedido(t, rotas, chaveNova(t), corpoPedido("00000000-0000-7000-8000-000000000000", 100), cookie)
 		if resp.Code != http.StatusUnauthorized {
 			t.Fatalf("cookie %v: status = %d, quero 401", cookie, resp.Code)
 		}
@@ -134,40 +162,67 @@ func pedidoSemSessaoDa401(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) 
 	}
 }
 
-// pedidoComEntradaRuim: Produto inexistente e identificador malformado são o
-// mesmo 404 — nunca 500; corpo malformado ou grande demais é 400.
+// pedidoComEntradaRuim: sem `Idempotency-Key`, ou com ela fora da forma de
+// uuid, é 400 antes de abrir transação; Endereço inexistente, malformado e de
+// outro Comprador são o mesmo 404; corpo malformado ou grande demais é 400.
 func pedidoComEntradaRuim(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
+	outro := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Ulisses Alheio","email":"ulisses.alheio@exemplo.br","senha":"senha-do-ulisses-1"}`), http.StatusCreated)
+	alheio := enderecoDeSP(t, rotas, outro)
+	// O Carrinho tem Item, para que o 404 seja do Endereço, e não de outra
+	// recusa que viesse antes dele.
+	esvaziarCarrinho(t, rotas, cookie)
+	if resp := postarItem(t, rotas, corpoItem(produtoSemeado, "1"), cookie); resp.Code != http.StatusCreated {
+		t.Fatalf("adicionar = %d (%s)", resp.Code, resp.Body.String())
+	}
 	antes := contarPedidos(t, pool)
 	for _, caso := range []struct {
+		nome   string
+		chave  string
 		corpo  string
 		status int
 		codigo string
 	}{
-		{`{"produto_id":"00000000-0000-5000-8000-000000000000"}`, http.StatusNotFound, "NAO_ENCONTRADO"},
-		{`{"produto_id":"abc"}`, http.StatusNotFound, "NAO_ENCONTRADO"},
-		{`{isso não é json`, http.StatusBadRequest, "ENTRADA_INVALIDA"},
-		{`{"produto_id":"` + strings.Repeat("a", corpoMaximo) + `"}`, http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"sem chave", "", corpoPedido(alheio, 100), http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"chave fora da forma", "nao-e-uuid", corpoPedido(alheio, 100), http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"chave com sobra", chaveNova(t) + "x", corpoPedido(alheio, 100), http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"chave com quebra de linha", chaveNova(t)[:18] + "\r\n" + chaveNova(t)[18:], corpoPedido(alheio, 100), http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"Endereço de outro Comprador", chaveNova(t), corpoPedido(alheio, 100), http.StatusNotFound, "NAO_ENCONTRADO"},
+		{"Endereço inexistente", chaveNova(t), corpoPedido("00000000-0000-7000-8000-000000000000", 100), http.StatusNotFound, "NAO_ENCONTRADO"},
+		{"Endereço malformado", chaveNova(t), corpoPedido("abc", 100), http.StatusNotFound, "NAO_ENCONTRADO"},
+		{"JSON malformado", chaveNova(t), `{isso não é json`, http.StatusBadRequest, "ENTRADA_INVALIDA"},
+		{"corpo grande demais", chaveNova(t), `{"endereco_id":"` + strings.Repeat("a", corpoMaximo) + `"}`, http.StatusBadRequest, "ENTRADA_INVALIDA"},
 	} {
-		resp := postarPedido(t, rotas, caso.corpo, cookie)
+		resp := postarPedido(t, rotas, caso.chave, caso.corpo, cookie)
 		if resp.Code != caso.status {
-			t.Fatalf("%.40s: status = %d (%s), quero %d", caso.corpo, resp.Code, resp.Body.String(), caso.status)
+			t.Fatalf("%s: status = %d (%s), quero %d", caso.nome, resp.Code, resp.Body.String(), caso.status)
 		}
 		if codigo := decodificar(t, resp)["codigo"]; codigo != caso.codigo {
-			t.Errorf("%.40s: codigo = %v, quero %q", caso.corpo, codigo, caso.codigo)
+			t.Errorf("%s: codigo = %v, quero %q", caso.nome, codigo, caso.codigo)
 		}
 	}
-	// Nenhum dos quatro casos deixa Pedido para trás: os dois de 400 voltam
-	// antes do Begin, e os dois de 404 voltam na busca do Produto, que é a
-	// primeira coisa que a transação faz.
 	if depois := contarPedidos(t, pool); depois != antes {
 		t.Errorf("%d Pedidos depois das recusas, quero os %d de antes", depois, antes)
 	}
+	if n := len(decodificar(t, pegarCarrinho(t, rotas, cookie))["itens"].([]any)); n != 1 {
+		t.Errorf("%d Itens no Carrinho depois das recusas, quero o 1 de antes", n)
+	}
+	esvaziarCarrinho(t, rotas, cookie)
 }
 
-// pedidoSemEstoqueDa409 esgota um Produto por Reserva ATIVA direta e confere
-// que a compra é recusada com o disponível em `dados`.
+// pedidoSemEstoqueDa409 é a primeira condição de aceite da 5.6: dois Produtos
+// no Carrinho, um sem Estoque — nenhum Pedido nem Reserva nasce, o disponível
+// do outro não muda, e o Carrinho fica intacto. O esgotamento é por Reserva
+// ATIVA direta, depois de o Item já estar no Carrinho: é a Reserva, sob a
+// trava, quem recusa, e não o conselho da adição.
 func pedidoSemEstoqueDa409(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
 	ctx := context.Background()
+	esvaziarCarrinho(t, rotas, cookie)
+	for _, produto := range []string{produtoSemeado, produtoParaEsgotar} {
+		if resp := postarItem(t, rotas, corpoItem(produto, "1"), cookie); resp.Code != http.StatusCreated {
+			t.Fatalf("adicionar %s = %d (%s)", produto, resp.Code, resp.Body.String())
+		}
+	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
 		SELECT id, uuidv7(), estoque_total, 'ATIVA' FROM catalogo.produto WHERE id = $1::uuid`,
@@ -175,8 +230,15 @@ func pedidoSemEstoqueDa409(t *testing.T, rotas http.Handler, pool *pgxpool.Pool,
 		t.Fatalf("esgotar o Estoque: %v", err)
 	}
 	antes := contarPedidos(t, pool)
+	reservasDoOutro := func() []string {
+		return textoDe(t, pool, `SELECT id::text FROM catalogo.reserva_estoque WHERE produto_id = $1::uuid ORDER BY id`, produtoSemeado)
+	}
+	disponivelDoOutro := func() string {
+		return textoDe(t, pool, `SELECT estoque_disponivel::text FROM catalogo.produto_visivel WHERE id = $1::uuid`, produtoSemeado)[0]
+	}
+	reservasAntes, disponivelAntes := reservasDoOutro(), disponivelDoOutro()
 
-	resp := postarPedido(t, rotas, `{"produto_id":"`+produtoParaEsgotar+`"}`, cookie)
+	resp := confirmarCarrinho(t, rotas, cookie)
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("status = %d (%s), quero 409", resp.Code, resp.Body.String())
 	}
@@ -185,11 +247,19 @@ func pedidoSemEstoqueDa409(t *testing.T, rotas http.Handler, pool *pgxpool.Pool,
 		t.Errorf("codigo = %v", envelope["codigo"])
 	}
 	dados, ok := envelope["dados"].(map[string]any)
-	if !ok || dados["disponivel"] != float64(0) {
-		t.Errorf("dados = %v, quero o disponível em zero", envelope["dados"])
+	if !ok || dados["disponivel"] != float64(0) || dados["produto_id"] != produtoParaEsgotar {
+		t.Errorf("dados = %v, quero o Produto que faltou e o disponível em zero", envelope["dados"])
 	}
 	if depois := contarPedidos(t, pool); depois != antes {
 		t.Errorf("%d Pedidos depois do 409, quero os %d de antes; a transação tinha de ser revertida", depois, antes)
+	}
+	// Tudo ou nada: o Produto que tinha Estoque não ganhou Reserva, e o
+	// disponível dele é o mesmo de antes.
+	if depois := reservasDoOutro(); !slices.Equal(depois, reservasAntes) {
+		t.Errorf("Reservas do outro Produto = %v, eram %v", depois, reservasAntes)
+	}
+	if depois := disponivelDoOutro(); depois != disponivelAntes {
+		t.Errorf("disponível do outro Produto = %s, era %s", depois, disponivelAntes)
 	}
 	// A Tentativa de Pagamento nasce na mesma transação do Pedido, e por isso
 	// é revertida junto: uma Tentativa órfã aqui seria emitida pela varredura
@@ -197,11 +267,15 @@ func pedidoSemEstoqueDa409(t *testing.T, rotas http.Handler, pool *pgxpool.Pool,
 	if n := contarTentativas(t, pool); n != antes {
 		t.Errorf("%d Tentativas depois do 409, quero uma por Pedido (%d)", n, antes)
 	}
+	// O Carrinho fica intacto: o esvaziar é o último passo, e foi desfeito.
+	if n := len(decodificar(t, pegarCarrinho(t, rotas, cookie))["itens"].([]any)); n != 2 {
+		t.Errorf("%d Itens no Carrinho depois do 409, quero os 2 de antes", n)
+	}
 
 	// A recusa não queima um número: o contador é incrementado dentro da
 	// transação revertida, que é a justificativa escrita de ele ser tabela e
 	// não SEQUENCE. O Pedido seguinte é o consecutivo, sem buraco.
-	seguinte := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+	seguinte := pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1)
 	if seguinte.Code != http.StatusCreated {
 		t.Fatalf("Pedido seguinte: status = %d (%s), quero 201", seguinte.Code, seguinte.Body.String())
 	}
@@ -265,8 +339,8 @@ func leituraDoPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cooki
 	if corpo["status"] != "AGUARDANDO_PAGAMENTO" {
 		t.Errorf("status = %v", corpo["status"])
 	}
-	if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990 {
-		t.Errorf("total_centavos = %v, quero 24990 inteiro", corpo["total_centavos"])
+	if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990+freteSudeste {
+		t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 24990+freteSudeste)
 	}
 	if !strings.HasPrefix(fmt.Sprint(corpo["numero"]), "AZ-") {
 		t.Errorf("numero = %v", corpo["numero"])
@@ -282,8 +356,8 @@ func leituraDoPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cooki
 	// Pedido de outro Comprador entra pelo banco: a semente tem uma conta só,
 	// e o que se prova aqui é o dono no WHERE, não a segunda Sessão.
 	deOutro := textoDe(t, pool, `
-		INSERT INTO pedido.pedido (numero, comprador_id, status, total_centavos)
-		VALUES ('AZ-0000-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 100)
+		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
+		VALUES ('AZ-0000-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 100, 0, 100)
 		RETURNING id::text`)
 	if len(deOutro) != 1 {
 		t.Fatalf("criar o Pedido de outro Comprador: %v", deOutro)
@@ -361,15 +435,15 @@ func meusPedidosListaPorDono(t *testing.T, rotas http.Handler) {
 		t.Errorf("lista vazia = %s, quero []", corpo)
 	}
 
-	primeiro := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie), http.StatusCreated)
-	segundo := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie), http.StatusCreated)
+	primeiro := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1), http.StatusCreated)
+	segundo := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1), http.StatusCreated)
 
 	// Outro Comprador cria um terceiro Pedido: a lista de Nara não pode
 	// trazê-lo — o dono entra na própria consulta, e não numa checagem
 	// depois (AD-11).
 	outro := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Otelo Farias","email":"otelo-pedidos@exemplo.br","senha":"senha-do-otelo-1"}`), http.StatusCreated)
-	if resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, outro); resp.Code != http.StatusCreated {
+	if resp := pedidoPeloCheckout(t, rotas, outro, produtoSemeado, 1); resp.Code != http.StatusCreated {
 		t.Fatalf("Pedido do outro Comprador = %d (%s), quero 201", resp.Code, resp.Body.String())
 	}
 
@@ -404,18 +478,6 @@ func pegarPedidos(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httpte
 func pegarPedido(t *testing.T, rotas http.Handler, id string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedidos/"+id, nil)
-	if cookie != nil {
-		req.AddCookie(cookie)
-	}
-	resp := httptest.NewRecorder()
-	rotas.ServeHTTP(resp, req)
-	return resp
-}
-
-func postarPedido(t *testing.T, rotas http.Handler, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/pedidos", strings.NewReader(corpo))
-	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -481,7 +543,7 @@ func textoDe(t *testing.T, bd consultavel, sql string, args ...any) []string {
 func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
 	ctx := context.Background()
 
-	resp := postarPedido(t, rotas, `{"produto_id":"`+produtoSemeado+`"}`, cookie)
+	resp := pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("criar o Pedido: status = %d (%s)", resp.Code, resp.Body.String())
 	}
@@ -608,5 +670,401 @@ func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, co
 	}
 	if depois := estoque(); depois != antes-1 {
 		t.Errorf("estoque_total = %d depois da segunda consolidação, quero %d", depois, antes-1)
+	}
+}
+
+// postarPedido é o Confirmar Pedido da Revisão: o corpo e o cabeçalho
+// `Idempotency-Key`, que sai da requisição quando a chave é vazia.
+func postarPedido(t *testing.T, rotas http.Handler, chave, corpo string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pedidos", strings.NewReader(corpo))
+	req.Header.Set("Content-Type", "application/json")
+	if chave != "" {
+		req.Header.Set("Idempotency-Key", chave)
+	}
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	resp := httptest.NewRecorder()
+	rotas.ServeHTTP(resp, req)
+	return resp
+}
+
+func corpoPedido(enderecoID string, total int64) string {
+	b, _ := json.Marshal(map[string]any{"endereco_id": enderecoID, "total_centavos": total})
+	return string(b)
+}
+
+// chaveNova é o UUIDv4 que a Revisão gera ao abrir: um por tentativa de
+// checkout.
+func chaveNova(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("sortear a chave: %v", err)
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// enderecoDeSP garante um Endereço de SP (CEP 01310-100, faixa Sudeste) na
+// conta, e devolve o id dele: o primeiro da lista com esse CEP, ou um novo.
+func enderecoDeSP(t *testing.T, rotas http.Handler, cookie *http.Cookie) string {
+	t.Helper()
+	for _, e := range decodificarLista(t, pegarEnderecos(t, rotas, cookie)) {
+		if e["cep"] == "01310100" {
+			return fmt.Sprint(e["id"])
+		}
+	}
+	return idDe(t, postarEndereco(t, rotas, corpoEnderecoValido, cookie), http.StatusCreated)
+}
+
+// totalDaRevisao é o total que a Revisão exibiria para este Endereço: o da
+// cotação do Go, e nunca uma soma feita no teste.
+func totalDaRevisao(t *testing.T, rotas http.Handler, cookie *http.Cookie, enderecoID string) int64 {
+	t.Helper()
+	resp := pegarFrete(t, rotas, enderecoID, cookie)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("cotar o Frete = %d (%s)", resp.Code, resp.Body.String())
+	}
+	total, _ := decodificar(t, resp)["total_centavos"].(float64)
+	return int64(total)
+}
+
+// confirmarCarrinho é o passeio do checkout sobre o Carrinho como está:
+// Endereço de SP garantido, a cotação da Revisão, e o Confirmar Pedido com uma
+// chave nova.
+func confirmarCarrinho(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	endereco := enderecoDeSP(t, rotas, cookie)
+	return postarPedido(t, rotas, chaveNova(t), corpoPedido(endereco, totalDaRevisao(t, rotas, cookie, endereco)), cookie)
+}
+
+// pedidoPeloCheckout é o caminho de um Pedido de um Produto só: limpa o
+// Carrinho, adiciona, e confirma pelo checkout. É o molde de todo subteste que
+// precisa de um Pedido e não é sobre a criação dele.
+func pedidoPeloCheckout(t *testing.T, rotas http.Handler, cookie *http.Cookie, produto string, quantidade int) *httptest.ResponseRecorder {
+	t.Helper()
+	if resp := esvaziarCarrinho(t, rotas, cookie); resp.Code != http.StatusNoContent {
+		t.Fatalf("esvaziar o Carrinho = %d (%s)", resp.Code, resp.Body.String())
+	}
+	if resp := postarItem(t, rotas, corpoItem(produto, strconv.Itoa(quantidade)), cookie); resp.Code != http.StatusCreated {
+		t.Fatalf("adicionar ao Carrinho = %d (%s)", resp.Code, resp.Body.String())
+	}
+	return confirmarCarrinho(t, rotas, cookie)
+}
+
+// criacaoPeloCheckout é a matriz de servidor da 5.6 contra o banco de verdade,
+// com conta, Produtos e Endereços próprios: a criação a partir do Carrinho, o
+// reenvio, a chave reaproveitada, o duplo clique concorrente, o preço que muda
+// depois da Revisão, o Carrinho vazio e o Endereço alheio — mais as três
+// condições de aceite que não cabem noutro subteste.
+func criacaoPeloCheckout(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
+	ctx := context.Background()
+	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)
+	loja := idDe(t, vendedorCom(t, rotas, http.MethodPost, "", `{"nome":"Loja da Criação"}`, admin), http.StatusCreated)
+	categoria := idDe(t, categoriaCom(t, rotas, http.MethodPost, "", `{"nome":"Categoria da Criação"}`, admin), http.StatusCreated)
+	corpoDe := func(nome string, preco int) string {
+		b, _ := json.Marshal(map[string]any{
+			"nome": nome, "descricao": "", "preco_centavos": preco, "imagem_url": "",
+			"vendedor_id": loja, "categoria_id": categoria, "estoque_total": 20, "ativo": true,
+		})
+		return string(b)
+	}
+	novoProduto := func(nome string, preco int) string {
+		t.Helper()
+		return idDe(t, produtoCom(t, rotas, http.MethodPost, "", corpoDe(nome, preco), admin), http.StatusCreated)
+	}
+	publicar := func(id, nome string, preco int) {
+		t.Helper()
+		if resp := produtoCom(t, rotas, http.MethodPut, "/"+id, corpoDe(nome, preco), admin); resp.Code != http.StatusOK {
+			t.Fatalf("republicar %s = %d (%s)", nome, resp.Code, resp.Body.String())
+		}
+	}
+	adicionar := func(cookie *http.Cookie, produto, quantidade string) string {
+		t.Helper()
+		return idDe(t, postarItem(t, rotas, corpoItem(produto, quantidade), cookie), http.StatusCreated)
+	}
+	itensNoCarrinho := func(cookie *http.Cookie) int {
+		t.Helper()
+		itens, _ := decodificar(t, pegarCarrinho(t, rotas, cookie))["itens"].([]any)
+		return len(itens)
+	}
+	contar := func(tabela string) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM `+tabela).Scan(&n); err != nil {
+			t.Fatalf("contar %s: %v", tabela, err)
+		}
+		return n
+	}
+	// contagens são Pedidos, Itens de Pedido, transições, Reservas e
+	// Tentativas, nessa ordem; fotografia é o que "nada gravado" quer dizer.
+	contagens := func() []int {
+		t.Helper()
+		return []int{contar("pedido.pedido"), contar("pedido.item_pedido"), contar("pedido.transicao_status"),
+			contar("catalogo.reserva_estoque"), contar("pagamento.tentativa_pagamento")}
+	}
+	fotografia := func() string {
+		t.Helper()
+		return fmt.Sprint(contagens())
+	}
+
+	chaleira := novoProduto("Chaleira da Criação", 5000)
+	bule := novoProduto("Bule da Criação", 3000)
+	lia := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Lia Criação","email":"lia.criacao@exemplo.br","senha":"senha-da-lia-1"}`), http.StatusCreated)
+	sp := enderecoDeSP(t, rotas, lia)
+
+	// Criação: dois Produtos, Endereço de SP, o total da Revisão.
+	adicionar(lia, chaleira, "2")
+	adicionar(lia, bule, "1")
+	total := totalDaRevisao(t, rotas, lia, sp)
+	if total != 13000+freteSudeste {
+		t.Fatalf("total da Revisão = %d, quero %d", total, 13000+freteSudeste)
+	}
+	chave := chaveNova(t)
+	criado := postarPedido(t, rotas, chave, corpoPedido(sp, total), lia)
+	if criado.Code != http.StatusCreated {
+		t.Fatalf("criar = %d (%s), quero 201", criado.Code, criado.Body.String())
+	}
+	original := decodificar(t, criado)
+	pedidoID := fmt.Sprint(original["id"])
+	if original["status"] != "AGUARDANDO_PAGAMENTO" || original["total_centavos"] != float64(total) {
+		t.Errorf("Pedido = %v; quero AGUARDANDO_PAGAMENTO com o total da Revisão", original)
+	}
+	congeladoNoPedido := func() string {
+		t.Helper()
+		return strings.Join(textoDe(t, pool, `
+			SELECT subtotal_centavos || '|' || frete_centavos || '|' || total_centavos || '|' ||
+			       endereco_destinatario || '|' || endereco_cep || '|' || endereco_logradouro || '|' ||
+			       endereco_numero || '|' || endereco_complemento || '|' || endereco_bairro || '|' ||
+			       endereco_cidade || '|' || endereco_uf
+			FROM pedido.pedido WHERE id = $1::uuid`, pedidoID), "")
+	}
+	itensDoPedido := func() string {
+		t.Helper()
+		return strings.Join(textoDe(t, pool, `
+			SELECT nome || '|' || vendedor_nome || '|' || preco_praticado_centavos || '|' || quantidade
+			FROM pedido.item_pedido WHERE pedido_id = $1::uuid ORDER BY nome`, pedidoID), ",")
+	}
+	querCongelado := fmt.Sprintf("13000|%d|%d|Joana Ribeiro|01310100|Avenida Paulista|1578|Apto 12|Bela Vista|São Paulo|SP",
+		freteSudeste, total)
+	if c := congeladoNoPedido(); c != querCongelado {
+		t.Errorf("Pedido congelado = %q, quero %q", c, querCongelado)
+	}
+	querItens := "Bule da Criação|Loja da Criação|3000|1,Chaleira da Criação|Loja da Criação|5000|2"
+	if i := itensDoPedido(); i != querItens {
+		t.Errorf("Itens de Pedido = %q, quero %q", i, querItens)
+	}
+	if r := strings.Join(textoDe(t, pool, `
+		SELECT estado || '|' || quantidade FROM catalogo.reserva_estoque
+		WHERE pedido_id = $1::uuid ORDER BY quantidade`, pedidoID), ","); r != "ATIVA|1,ATIVA|2" {
+		t.Errorf("Reservas = %q, quero as duas ATIVAS", r)
+	}
+	if n := itensNoCarrinho(lia); n != 0 {
+		t.Errorf("%d Itens no Carrinho depois do Pedido, quero 0", n)
+	}
+	if tentativas := textoDe(t, pool, `
+		SELECT total_centavos::text FROM pagamento.tentativa_pagamento WHERE pedido_id = $1::uuid`, pedidoID); !slices.Equal(tentativas, []string{fmt.Sprint(total)}) {
+		t.Errorf("Tentativas = %v, quero uma, com o total %d", tentativas, total)
+	}
+
+	// Reenvio: a mesma chave e o mesmo corpo devolvem o mesmo Pedido em 200,
+	// e nada novo nasce — nem o número do contador.
+	antes := fotografia()
+	reenvio := postarPedido(t, rotas, chave, corpoPedido(sp, total), lia)
+	if reenvio.Code != http.StatusOK || decodificar(t, reenvio)["id"] != pedidoID {
+		t.Fatalf("reenvio = %d (%s), quero 200 com o Pedido %s", reenvio.Code, reenvio.Body.String(), pedidoID)
+	}
+	// O uuid em maiúscula é a mesma chave e o mesmo Endereço.
+	if maiuscula := postarPedido(t, rotas, strings.ToUpper(chave), corpoPedido(strings.ToUpper(sp), total), lia); maiuscula.Code != http.StatusOK {
+		t.Errorf("reenvio em maiúscula = %d (%s), quero 200", maiuscula.Code, maiuscula.Body.String())
+	}
+	if depois := fotografia(); depois != antes {
+		t.Errorf("o reenvio gravou: %s, era %s", depois, antes)
+	}
+
+	// Chave reaproveitada: outro corpo sob a chave que já criou um Pedido é
+	// 409, com o Pedido original em `dados`.
+	reaproveitada := postarPedido(t, rotas, chave, corpoPedido(sp, total+100), lia)
+	confereErro(t, reaproveitada, http.StatusConflict, "CHAVE_REUTILIZADA", "")
+	if dados, _ := decodificar(t, reaproveitada)["dados"].(map[string]any); dados["id"] != pedidoID || dados["numero"] != original["numero"] {
+		t.Errorf("dados = %v, quero o Pedido original", dados)
+	}
+	if depois := fotografia(); depois != antes {
+		t.Errorf("a chave reaproveitada gravou: %s, era %s", depois, antes)
+	}
+	// A chave é do Comprador: a mesma chave, noutra conta, é chave livre.
+	outro := cookieDe(t, postarCadastro(t, rotas,
+		`{"nome":"Téo Criação","email":"teo.criacao@exemplo.br","senha":"senha-do-teo-1"}`), http.StatusCreated)
+	adicionar(outro, bule, "1")
+	enderecoDoOutro := enderecoDeSP(t, rotas, outro)
+	if resp := postarPedido(t, rotas, chave, corpoPedido(enderecoDoOutro, totalDaRevisao(t, rotas, outro, enderecoDoOutro)), outro); resp.Code != http.StatusCreated {
+		t.Errorf("a mesma chave noutra conta = %d (%s), quero 201", resp.Code, resp.Body.String())
+	}
+
+	// Segunda condição de aceite: o preço do Produto muda e o Endereço some,
+	// e o Pedido continua o mesmo — Itens, Frete, Endereço e total.
+	publicar(chaleira, "Chaleira da Criação", 5500)
+	if resp := deletarEndereco(t, rotas, sp, lia); resp.Code != http.StatusNoContent {
+		t.Fatalf("remover o Endereço = %d (%s)", resp.Code, resp.Body.String())
+	}
+	if c := congeladoNoPedido(); c != querCongelado {
+		t.Errorf("Pedido depois de mudar o preço e remover o Endereço = %q, quero %q", c, querCongelado)
+	}
+	if i := itensDoPedido(); i != querItens {
+		t.Errorf("Itens depois de mudar o preço = %q, quero %q", i, querItens)
+	}
+	sp = enderecoDeSP(t, rotas, lia)
+
+	// O gatilho da 5.6: Item de Pedido depois do histórico é recusado pelo
+	// banco, e o CHECK do AD-9 recusa total que não é a soma das parcelas.
+	var pgErr *pgconn.PgError
+	_, err := pool.Exec(ctx, `
+		INSERT INTO pedido.item_pedido (pedido_id, produto_id, nome, vendedor_nome, preco_praticado_centavos, quantidade)
+		VALUES ($1::uuid, $2::uuid, 'Tardio', 'Loja', 100, 1)`, pedidoID, bule)
+	if !errors.As(err, &pgErr) || pgErr.Code != "23001" {
+		t.Errorf("Item tardio = %v, quero restrict_violation (23001)", err)
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
+		VALUES ('AZ-SOMA-000001', uuidv7(), 'AGUARDANDO_PAGAMENTO', 1000, 1500, 2600)`)
+	if !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		t.Errorf("total fora da soma = %v, quero check_violation (23514)", err)
+	}
+
+	// Carrinho vazio: 409 CARRINHO_VAZIO, e nada gravado.
+	antes = fotografia()
+	confereErro(t, postarPedido(t, rotas, chaveNova(t), corpoPedido(sp, freteSudeste), lia), http.StatusConflict, "CARRINHO_VAZIO", "")
+	if depois := fotografia(); depois != antes {
+		t.Errorf("o Carrinho vazio gravou: %s, era %s", depois, antes)
+	}
+
+	// Endereço alheio: 404, nada gravado e o Carrinho intacto.
+	adicionar(lia, bule, "1")
+	confereErro(t, postarPedido(t, rotas, chaveNova(t), corpoPedido(enderecoDoOutro, 3000+freteSudeste), lia), http.StatusNotFound, "NAO_ENCONTRADO", "")
+	if depois := fotografia(); depois != antes {
+		t.Errorf("o Endereço alheio gravou: %s, era %s", depois, antes)
+	}
+	if n := itensNoCarrinho(lia); n != 1 {
+		t.Errorf("%d Itens no Carrinho depois do 404, quero 1", n)
+	}
+
+	// Preço mudou depois da Revisão: 409 TOTAL_DIVERGENTE, nada gravado, e o
+	// Carrinho intacto.
+	daRevisao := totalDaRevisao(t, rotas, lia, sp)
+	publicar(bule, "Bule da Criação", 3200)
+	chaveDaRevisao := chaveNova(t)
+	confereErro(t, postarPedido(t, rotas, chaveDaRevisao, corpoPedido(sp, daRevisao), lia), http.StatusConflict, "TOTAL_DIVERGENTE", "")
+	if depois := fotografia(); depois != antes {
+		t.Errorf("o total divergente gravou: %s, era %s", depois, antes)
+	}
+	if n := itensNoCarrinho(lia); n != 1 {
+		t.Errorf("%d Itens no Carrinho depois do TOTAL_DIVERGENTE, quero 1", n)
+	}
+	// Terceira condição de aceite: a recusa não consome a chave. A mesma
+	// chave, com o total novo que a Revisão relida mostra, cria o Pedido.
+	novoTotal := totalDaRevisao(t, rotas, lia, sp)
+	if novoTotal != 3200+freteSudeste {
+		t.Fatalf("total relido = %d, quero %d", novoTotal, 3200+freteSudeste)
+	}
+	if resp := postarPedido(t, rotas, chaveDaRevisao, corpoPedido(sp, novoTotal), lia); resp.Code != http.StatusCreated {
+		t.Errorf("a mesma chave com o total novo = %d (%s), quero 201", resp.Code, resp.Body.String())
+	}
+
+	// Duplo clique concorrente: duas requisições iguais em paralelo, um
+	// Pedido, e as duas respostas com o mesmo id.
+	adicionar(lia, chaleira, "1")
+	adicionar(lia, bule, "1")
+	corpo := corpoPedido(sp, totalDaRevisao(t, rotas, lia, sp))
+	dupla := chaveNova(t)
+	antesDoDuplo := contagens()
+	respostas := make([]*httptest.ResponseRecorder, 2)
+	var grupo sync.WaitGroup
+	for i := range respostas {
+		grupo.Add(1)
+		go func() {
+			defer grupo.Done()
+			respostas[i] = postarPedido(t, rotas, dupla, corpo, lia)
+		}()
+	}
+	grupo.Wait()
+	var ids, codigos []string
+	for _, r := range respostas {
+		codigos = append(codigos, strconv.Itoa(r.Code))
+		ids = append(ids, fmt.Sprint(decodificar(t, r)["id"]))
+	}
+	slices.Sort(codigos)
+	if !slices.Equal(codigos, []string{"200", "201"}) || ids[0] != ids[1] {
+		t.Errorf("duplo clique: status %v e ids %v; quero um 201 e um 200 com o mesmo id", codigos, ids)
+	}
+	// O delta inteiro, e não só o número de Pedidos: um Pedido, os seus dois
+	// Itens, uma transição, as suas duas Reservas e uma Tentativa. O gêmeo
+	// desfez tudo, inclusive o número do contador.
+	depoisDoDuplo := contagens()
+	quero := []int{antesDoDuplo[0] + 1, antesDoDuplo[1] + 2, antesDoDuplo[2] + 1, antesDoDuplo[3] + 2, antesDoDuplo[4] + 1}
+	if !slices.Equal(depoisDoDuplo, quero) {
+		t.Errorf("duplo clique: Pedidos, Itens, transições, Reservas e Tentativas = %v, quero %v", depoisDoDuplo, quero)
+	}
+	if n := itensNoCarrinho(lia); n != 0 {
+		t.Errorf("%d Itens no Carrinho depois do duplo clique, quero 0", n)
+	}
+
+	// Carrinho só de Produtos desativados: 409 ESTOQUE_INSUFICIENTE nomeando o
+	// Produto, e nada gravado — nem o CHECK do subtotal chega a ser tentado.
+	jarra := novoProduto("Jarra da Criação", 2000)
+	adicionar(lia, jarra, "1")
+	desativado, _ := json.Marshal(map[string]any{
+		"nome": "Jarra da Criação", "descricao": "", "preco_centavos": 2000, "imagem_url": "",
+		"vendedor_id": loja, "categoria_id": categoria, "estoque_total": 20, "ativo": false,
+	})
+	if resp := produtoCom(t, rotas, http.MethodPut, "/"+jarra, string(desativado), admin); resp.Code != http.StatusOK {
+		t.Fatalf("desativar a Jarra = %d (%s)", resp.Code, resp.Body.String())
+	}
+	antes = fotografia()
+	invisiveis := confirmarCarrinho(t, rotas, lia)
+	confereErro(t, invisiveis, http.StatusConflict, "ESTOQUE_INSUFICIENTE", "")
+	if dados, _ := decodificar(t, invisiveis)["dados"].(map[string]any); dados["produto_id"] != jarra || dados["disponivel"] != float64(0) {
+		t.Errorf("dados = %v, quero a Jarra com disponível 0", dados)
+	}
+	if depois := fotografia(); depois != antes {
+		t.Errorf("o Carrinho só de invisíveis gravou: %s, era %s", depois, antes)
+	}
+	if resp := esvaziarCarrinho(t, rotas, lia); resp.Code != http.StatusNoContent {
+		t.Fatalf("esvaziar = %d", resp.Code)
+	}
+
+	// Item adicionado noutra aba entre a leitura e o fim: Esvaziar apaga só os
+	// Itens lidos, e o novo fica no Carrinho. Sem gancho no meio da criação,
+	// a prova é da própria porta, na transação que a criação usaria.
+	lido := adicionar(lia, chaleira, "1")
+	daOutraAba := adicionar(lia, bule, "1")
+	compradora := textoDe(t, pool, `SELECT id::text FROM identidade.comprador WHERE email = 'lia.criacao@exemplo.br'`)[0]
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := carrinho.Esvaziar(ctx, tx, compradora, []string{lido}); err != nil {
+		t.Fatalf("Esvaziar só o lido = %v", err)
+	}
+	if ficou := textoDe(t, tx, `SELECT id::text FROM carrinho.item_carrinho WHERE id = ANY($1::uuid[])`, []string{lido, daOutraAba}); !slices.Equal(ficou, []string{daOutraAba}) {
+		t.Errorf("Itens depois de Esvaziar = %v, quero só o da outra aba", ficou)
+	}
+	// O Item lido que sumiu debaixo da transação é ErrCarrinhoMudou: linha a
+	// menos desfaz tudo.
+	if err := carrinho.Esvaziar(ctx, tx, compradora, []string{lido}); !errors.Is(err, carrinho.ErrCarrinhoMudou) {
+		t.Errorf("Esvaziar de Item que sumiu = %v, quero ErrCarrinhoMudou", err)
+	}
+	// A escrita parcial da entrada no checkout (5.5) é o mesmo sentinela: o
+	// preço a confirmar é de um Item que sumiu na mesma transação.
+	err = carrinho.ConfirmarPrecoVisto(ctx, tx, compradora, []carrinho.PrecoVisto{
+		{ItemID: daOutraAba, PrecoCentavos: 3200},
+		{ItemID: lido, PrecoCentavos: 5500},
+	})
+	if !errors.Is(err, carrinho.ErrCarrinhoMudou) {
+		t.Errorf("ConfirmarPrecoVisto com Item que sumiu = %v, quero ErrCarrinhoMudou", err)
 	}
 }

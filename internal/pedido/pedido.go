@@ -3,23 +3,29 @@
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
 // importa (AD-1), junto com maquina.go, que guarda a tabela de transições do
 // AD-3 e o Transicionar, e frete.go, que guarda a Regra de Frete (AD-17).
-// Aqui moram o nascimento do Pedido em AGUARDANDO_PAGAMENTO, as leituras e os dois passos da varredura — aplicar a
+// Aqui moram o nascimento do Pedido a partir do Carrinho, as leituras e os dois passos da varredura — aplicar a
 // confirmação e simular a entrega até ENTREGUE.
 package pedido
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Cashnip/amazon-waddle/internal/carrinho"
 	"github.com/Cashnip/amazon-waddle/internal/catalogo"
+	"github.com/Cashnip/amazon-waddle/internal/identidade"
 	"github.com/Cashnip/amazon-waddle/internal/pagamento"
 	"github.com/Cashnip/amazon-waddle/internal/pedido/db/gerado"
 )
@@ -41,12 +47,7 @@ func proximoDaSimulacao(status Status) (Status, bool) {
 	return proximo, ok
 }
 
-// unidade: a estória compra uma unidade por Pedido. Escolha de quantidade e
-// Carrinho são das Épicas 4 e 5 — o campo no banco já é `quantidade`, então
-// alargar é trocar esta constante por parâmetro.
-const unidade = 1
-
-// Pedido é o que a Página de Produto mostra assim que a compra é confirmada.
+// Pedido é o que a criação devolve e as leituras mostram.
 // O total é coluna, nunca derivação de leitura (AD-3).
 type Pedido struct {
 	ID            string
@@ -59,54 +60,232 @@ type Pedido struct {
 	AtualizadoEm time.Time
 }
 
-// Criar faz o Pedido nascer em AGUARDANDO_PAGAMENTO, dentro da transação que
-// `api/` abriu (AD-4). A ordem é a do AD-6: o Pedido e a primeira linha do
-// histórico primeiro, o efeito sobre o Estoque depois — os dois na mesma
-// transação, e uma Reserva recusada reverte o Pedido junto.
+// ErrTotalDivergente recusa a criação cujo total não é mais o que a Revisão
+// exibiu: um preço ou o Frete mudou entre a Revisão e a confirmação. Conferido
+// duas vezes — antes do INSERT e de novo com os Produtos travados (AD-5) —, e a
+// recusa não grava nada, nem prende a chave de idempotência.
+var ErrTotalDivergente = errors.New("O total do Pedido mudou desde a Revisão. Confira os valores e confirme de novo.")
+
+// ErrCarrinhoVazio recusa a criação sem Item de Carrinho nenhum: não há Pedido
+// a fechar.
+var ErrCarrinhoVazio = errors.New("O Carrinho está vazio.")
+
+// ErrChaveReutilizada recusa a `Idempotency-Key` que já criou um Pedido deste
+// Comprador com outro corpo (AD-7). Criar devolve esse Pedido original junto
+// com o erro: é ele que a tela mostra. A chave só se prende quando o Pedido
+// existe — recusa por Estoque, por total ou por Carrinho desfaz a transação e
+// a deixa livre.
+var ErrChaveReutilizada = errors.New("Esta confirmação já criou um Pedido.")
+
+// NovoPedido é o corpo da confirmação: o Endereço escolhido e o total que a
+// Revisão exibiu, mais a chave de idempotência do cabeçalho. Itens, preços e
+// Frete não vêm do navegador — vêm do Carrinho e da Regra de Frete (NFR-13).
+type NovoPedido struct {
+	EnderecoID    string
+	TotalCentavos int64
+	Chave         string
+}
+
+// digestDe é a impressão do corpo que a chave protege: mesma chave com o mesmo
+// digest é reenvio, com outro digest é chave reaproveitada. O Endereço entra
+// em minúscula porque o uuid em maiúscula é o mesmo Endereço.
+func digestDe(novo NovoPedido) string {
+	soma := sha256.Sum256([]byte(strings.ToLower(novo.EnderecoID) + "\n" + strconv.FormatInt(novo.TotalCentavos, 10)))
+	return hex.EncodeToString(soma[:])
+}
+
+// Criar faz o Pedido nascer em AGUARDANDO_PAGAMENTO a partir do Carrinho do
+// Comprador, dentro da transação que `api/` abriu (AD-4). O `bool` diz
+// reenvio: a chave já tinha criado um Pedido com o mesmo corpo, e o Pedido
+// devolvido é o original — quem chama desfaz a transação e responde 200.
 //
-// Produto inexistente e identificador malformado saem como pgx.ErrNoRows, que
-// `api/` traduz em 404 — nunca em 500.
-func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedido, error) {
-	var comprador pgtype.UUID
+// **A ordem é o contrato**, e cada passo existe por causa do seguinte:
+//
+//  1. a chave já usada por este Comprador decide antes de tudo: mesmo digest
+//     é reenvio, digest diferente é ErrChaveReutilizada (com o original);
+//  2. Endereço do dono, Carrinho, Frete e total — ErrTotalDivergente se o
+//     total já difere do que a Revisão exibiu;
+//  3. o INSERT do Pedido com a chave, que é a reivindicação dela: o gêmeo do
+//     duplo clique espera antes de tocar Estoque, e cai no passo 1 quando o
+//     primeiro comita;
+//  4. catalogo.Reservar, tudo ou nada, sob a trava `ORDER BY id FOR UPDATE`;
+//  5. **só então** a releitura dos preços, com os Produtos travados, e o
+//     Frete recalculado sobre eles (a Regra de Frete não é travada: só muda
+//     por migração) — o total foi ao INSERT calculado antes da trava, e é aqui
+//     que se confirma que nada mudou; o gatilho da 5.1 impede corrigir depois;
+//  6. Itens de Pedido (preço praticado e Vendedor congelados), a primeira
+//     linha do histórico, carrinho.Esvaziar sobre os Itens lidos e a Tentativa.
+//
+// Endereço de outro Comprador, inexistente ou malformado sai como
+// pgx.ErrNoRows, que `api/` traduz no mesmo 404.
+func Criar(ctx context.Context, tx pgx.Tx, compradorID string, novo NovoPedido, isencaoCentavos int64) (Pedido, bool, error) {
+	var comprador, chave pgtype.UUID
 	if err := comprador.Scan(compradorID); err != nil {
-		return Pedido{}, fmt.Errorf("identificador de Comprador inválido: %w", err)
+		return Pedido{}, false, fmt.Errorf("identificador de Comprador inválido: %w", err)
 	}
-	// O Item congela o Produto: daqui em diante o Pedido não depende mais da
-	// linha de catalogo.produto continuar como estava.
-	produto, err := catalogo.BuscarProduto(ctx, tx, produtoID)
-	if err != nil {
-		return Pedido{}, err
+	if err := chave.Scan(novo.Chave); err != nil {
+		return Pedido{}, false, fmt.Errorf("chave de idempotência inválida: %w", err)
+	}
+	digest := digestDe(novo)
+	q := gerado.New(tx)
+
+	// Passo 1. `decidirPelaChave` é chamado de novo em toda recusa do passo 2
+	// que depende do Carrinho — vazio, só de invisíveis, total divergente — e
+	// no conflito do passo 3: entre a primeira leitura e a recusa, o gêmeo pode
+	// ter comitado e esvaziado o Carrinho, e a resposta certa para ele é o
+	// Pedido original, nunca CARRINHO_VAZIO. O 404 do Endereço não passa por
+	// aqui: o gêmeo não apaga Endereço, então a mesma chave e o mesmo corpo não
+	// têm como virar Endereço alheio entre as duas leituras.
+	if p, achou, err := decidirPelaChave(ctx, q, comprador, chave, digest); achou || err != nil {
+		return p, achou && err == nil, err
+	}
+	recusar := func(motivo error) (Pedido, bool, error) {
+		if p, achou, err := decidirPelaChave(ctx, q, comprador, chave, digest); achou || err != nil {
+			return p, achou && err == nil, err
+		}
+		return Pedido{}, false, motivo
 	}
 
-	q := gerado.New(tx)
+	// Passo 2.
+	endereco, err := identidade.BuscarEndereco(ctx, tx, novo.EnderecoID, compradorID)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	conteudo, err := carrinho.Itens(ctx, tx, compradorID)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	if len(conteudo.Itens) == 0 {
+		return recusar(ErrCarrinhoVazio)
+	}
+	// Carrinho só de Produtos invisíveis: não há subtotal, e o Pedido sem
+	// parcela de Produto seria recusado pelo CHECK do banco num 500. É a mesma
+	// resposta que Reservar daria para o primeiro deles.
+	if conteudo.SubtotalCentavos == 0 {
+		return recusar(catalogo.EstoqueInsuficiente{ProdutoID: conteudo.Itens[0].ProdutoID})
+	}
+	faixas, err := faixasDeFrete(ctx, tx)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	frete, err := CalcularFrete(faixas, endereco.CEP, conteudo.SubtotalCentavos, isencaoCentavos)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	total := conteudo.SubtotalCentavos + frete.ValorCentavos
+	if total != novo.TotalCentavos {
+		return recusar(ErrTotalDivergente)
+	}
+
+	// Passo 3. O contador por ano vem antes, porque o número vai no INSERT; é
+	// ele, na prática, o primeiro ponto de espera de dois Pedidos do mesmo ano
+	// — o gêmeo espera ali, e o índice da chave o recusa em seguida.
 	ano := time.Now().UTC().Year()
 	sequencial, err := q.ProximoNumeroDoAno(ctx, int32(ano))
 	if err != nil {
-		return Pedido{}, fmt.Errorf("reservar o número do Pedido: %w", err)
+		return Pedido{}, false, fmt.Errorf("reservar o número do Pedido: %w", err)
 	}
-
-	// Multiplicação de inteiros: não existe divisão no caminho monetário (AD-3).
+	texto := func(s string) pgtype.Text { return pgtype.Text{String: s, Valid: true} }
 	linha, err := q.CriarPedido(ctx, gerado.CriarPedidoParams{
-		Numero:        fmt.Sprintf("AZ-%d-%06d", ano, sequencial),
-		CompradorID:   comprador,
-		Status:        string(StatusAguardandoPagamento),
-		TotalCentavos: produto.PrecoCentavos * unidade,
+		Numero:               fmt.Sprintf("AZ-%d-%06d", ano, sequencial),
+		CompradorID:          comprador,
+		Status:               string(StatusAguardandoPagamento),
+		SubtotalCentavos:     conteudo.SubtotalCentavos,
+		FreteCentavos:        frete.ValorCentavos,
+		TotalCentavos:        total,
+		EnderecoDestinatario: texto(endereco.Destinatario),
+		EnderecoCep:          texto(endereco.CEP),
+		EnderecoLogradouro:   texto(endereco.Logradouro),
+		EnderecoNumero:       texto(endereco.Numero),
+		EnderecoComplemento:  texto(endereco.Complemento),
+		EnderecoBairro:       texto(endereco.Bairro),
+		EnderecoCidade:       texto(endereco.Cidade),
+		EnderecoUf:           texto(endereco.UF),
+		ChaveIdempotencia:    chave,
+		DigestCorpo:          texto(digest),
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// O DO NOTHING: o gêmeo comitou o Pedido desta chave enquanto este
+		// esperava. A releitura o encontra — é um comando novo, e em READ
+		// COMMITTED ele já vê o que o outro gravou.
+		if p, achou, err := decidirPelaChave(ctx, q, comprador, chave, digest); achou || err != nil {
+			return p, achou && err == nil, err
+		}
+		return Pedido{}, false, errors.New("criar o Pedido: a chave colidiu e o Pedido dela não foi encontrado")
+	}
 	if err != nil {
-		return Pedido{}, fmt.Errorf("criar o Pedido: %w", err)
+		return Pedido{}, false, fmt.Errorf("criar o Pedido: %w", err)
+	}
+	pedido := Pedido{
+		ID:            linha.ID.String(),
+		Numero:        linha.Numero,
+		Status:        Status(linha.Status),
+		TotalCentavos: linha.TotalCentavos,
 	}
 
-	var produtoChave pgtype.UUID
-	_ = produtoChave.Scan(produto.ID) // veio do banco, já é canônico
-	if err := q.CriarItemPedido(ctx, gerado.CriarItemPedidoParams{
-		PedidoID:               linha.ID,
-		ProdutoID:              produtoChave,
-		Nome:                   produto.Nome,
-		VendedorNome:           produto.VendedorNome,
-		PrecoPraticadoCentavos: produto.PrecoCentavos,
-		Quantidade:             unidade,
-	}); err != nil {
-		return Pedido{}, fmt.Errorf("criar o Item do Pedido: %w", err)
+	// Passo 4. Todos os Itens, inclusive o de Produto invisível: é Reservar
+	// quem o recusa, sob a trava, com EstoqueInsuficiente de disponível zero.
+	reserva := make([]catalogo.ItemReserva, 0, len(conteudo.Itens))
+	lidos := make([]string, 0, len(conteudo.Itens))
+	for _, item := range conteudo.Itens {
+		reserva = append(reserva, catalogo.ItemReserva{ProdutoID: item.ProdutoID, Quantidade: item.Quantidade})
+		lidos = append(lidos, item.ID)
+	}
+	if err := catalogo.Reservar(ctx, tx, pedido.ID, reserva); err != nil {
+		return Pedido{}, false, err
+	}
+
+	// Passo 5. Com os Produtos travados, o preço não muda até o Commit: o
+	// UPDATE do Administrador espera pela mesma linha. O que se lê aqui é o que
+	// o Item de Pedido congela. A Regra de Frete é relida, mas **não** travada:
+	// pedido.faixa_frete só muda por migração, e a releitura existe para o
+	// Frete ser recalculado sobre o subtotal sob a trava, não para protegê-la.
+	produtos := make([]catalogo.Produto, 0, len(conteudo.Itens))
+	var subtotal int64
+	for _, item := range conteudo.Itens {
+		produto, err := catalogo.BuscarProduto(ctx, tx, item.ProdutoID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// O Vendedor desativado não trava a linha do Produto: sumiu da
+			// visibilidade entre a Reserva e aqui, e é a mesma falta.
+			return Pedido{}, false, catalogo.EstoqueInsuficiente{ProdutoID: item.ProdutoID}
+		}
+		if err != nil {
+			return Pedido{}, false, err
+		}
+		produtos = append(produtos, produto)
+		// Multiplicação de inteiros: não existe divisão no caminho monetário (AD-9).
+		subtotal += produto.PrecoCentavos * int64(item.Quantidade)
+	}
+	faixas, err = faixasDeFrete(ctx, tx)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	freteSobTrava, err := CalcularFrete(faixas, endereco.CEP, subtotal, isencaoCentavos)
+	if err != nil {
+		return Pedido{}, false, err
+	}
+	// As duas parcelas, e não só o total: um preço que cai e cruza o limiar de
+	// isenção pode fechar o mesmo total com outra divisão, e o Pedido gravado
+	// mentiria sobre o subtotal.
+	if subtotal != conteudo.SubtotalCentavos || freteSobTrava.ValorCentavos != frete.ValorCentavos {
+		return Pedido{}, false, ErrTotalDivergente
+	}
+
+	// Passo 6. Os Itens antes do histórico: depois da primeira transição o
+	// banco recusa Item novo (gatilho da 5.6).
+	for i, item := range conteudo.Itens {
+		var produtoChave pgtype.UUID
+		_ = produtoChave.Scan(produtos[i].ID) // veio do banco, já é canônico
+		if err := q.CriarItemPedido(ctx, gerado.CriarItemPedidoParams{
+			PedidoID:               linha.ID,
+			ProdutoID:              produtoChave,
+			Nome:                   produtos[i].Nome,
+			VendedorNome:           produtos[i].VendedorNome,
+			PrecoPraticadoCentavos: produtos[i].PrecoCentavos,
+			Quantidade:             item.Quantidade,
+		}); err != nil {
+			return Pedido{}, false, fmt.Errorf("criar o Item do Pedido: %w", err)
+		}
 	}
 
 	// A primeira linha do histórico (NFR-9), que é a primeira linha da tabela
@@ -118,25 +297,44 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID, produtoID string) (Pedid
 		StatusNovo:     string(StatusAguardandoPagamento),
 		Ator:           string(AtorComprador),
 	}); err != nil {
-		return Pedido{}, fmt.Errorf("registrar a transição: %w", err)
+		return Pedido{}, false, fmt.Errorf("registrar a transição: %w", err)
 	}
 
-	pedido := Pedido{
+	// Só os Itens lidos: o que outra aba acrescentou depois fica no Carrinho.
+	if err := carrinho.Esvaziar(ctx, tx, compradorID, lidos); err != nil {
+		return Pedido{}, false, err
+	}
+
+	// A Tentativa nasce na mesma transação (AD-7): o Pedido revertido não
+	// deixa Tentativa órfã. O total vai como valor — `pagamento` não consulta
+	// `pedido`.
+	if err := pagamento.IniciarTentativa(ctx, tx, pedido.ID, pedido.TotalCentavos); err != nil {
+		return Pedido{}, false, err
+	}
+	return pedido, false, nil
+}
+
+// decidirPelaChave é o passo 1 de Criar. `achou` falso é chave livre; `achou`
+// verdadeiro devolve o Pedido original, com ErrChaveReutilizada quando o corpo
+// difere.
+func decidirPelaChave(ctx context.Context, q *gerado.Queries, comprador, chave pgtype.UUID, digest string) (Pedido, bool, error) {
+	linha, err := q.PedidoPorChave(ctx, gerado.PedidoPorChaveParams{CompradorID: comprador, ChaveIdempotencia: chave})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Pedido{}, false, nil
+	}
+	if err != nil {
+		return Pedido{}, false, fmt.Errorf("ler o Pedido da chave: %w", err)
+	}
+	original := Pedido{
 		ID:            linha.ID.String(),
 		Numero:        linha.Numero,
 		Status:        Status(linha.Status),
 		TotalCentavos: linha.TotalCentavos,
 	}
-	if err := catalogo.Reservar(ctx, tx, pedido.ID, []catalogo.ItemReserva{{ProdutoID: produto.ID, Quantidade: unidade}}); err != nil {
-		return Pedido{}, err
+	if linha.DigestCorpo.String != digest {
+		return original, true, ErrChaveReutilizada
 	}
-	// A Tentativa nasce na mesma transação (AD-7): o Pedido revertido não
-	// deixa Tentativa órfã, e a emissão derivada não tem o que reemitir.
-	// O total vai como valor — `pagamento` não consulta `pedido`.
-	if err := pagamento.IniciarTentativa(ctx, tx, pedido.ID, pedido.TotalCentavos); err != nil {
-		return Pedido{}, err
-	}
-	return pedido, nil
+	return original, true, nil
 }
 
 // Buscar é a leitura da tela de acompanhamento. O dono entra no WHERE: Pedido

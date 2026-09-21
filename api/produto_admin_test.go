@@ -146,7 +146,7 @@ func gestaoDeProdutos(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	}
 
 	// Preço congelado: o Pedido feito antes da edição é lido idêntico.
-	pedidoID := idDe(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusCreated)
+	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, comprador, produto, 1), http.StatusCreated)
 	pedidoAntes := corpoSemCorrelacao(pegarPedido(t, rotas, pedidoID, comprador))
 	estoqueAntes := textoDe(t, pool, `SELECT estoque_total::text FROM catalogo.produto WHERE id = $1::uuid`, produto)[0]
 	editado := produtoCom(t, rotas, http.MethodPut, "/"+produto, valido(func(c map[string]any) {
@@ -166,7 +166,12 @@ func gestaoDeProdutos(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 		t.Errorf("busca_normalizada depois do editar = %q", got)
 	}
 
-	// Desativar: a Página de Produto é 404, e a compra também, sem Reserva.
+	// Desativar: a Página de Produto é 404, e o Produto que já estava no
+	// Carrinho é recusado na criação do Pedido, sem Reserva — é a mesma falta
+	// de Estoque de disponível zero (AD-19).
+	if resp := postarItem(t, rotas, corpoItem(produto, "1"), comprador); resp.Code != http.StatusCreated {
+		t.Fatalf("adicionar antes de desativar = %d (%s)", resp.Code, resp.Body.String())
+	}
 	desativar := func(ativo bool) {
 		t.Helper()
 		resp := produtoCom(t, rotas, http.MethodPut, "/"+produto, valido(func(c map[string]any) { c["ativo"] = ativo }), admin)
@@ -180,7 +185,7 @@ func gestaoDeProdutos(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 		return len(textoDe(t, pool, `SELECT id::text FROM catalogo.reserva_estoque WHERE produto_id = $1::uuid`, produto))
 	}
 	antes := reservas()
-	confereErro(t, postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador), http.StatusNotFound, "NAO_ENCONTRADO", "")
+	confereErro(t, confirmarCarrinho(t, rotas, comprador), http.StatusConflict, "ESTOQUE_INSUFICIENTE", "")
 	if n := reservas(); n != antes {
 		t.Errorf("reservas = %d depois da compra recusada, eram %d", n, antes)
 	}

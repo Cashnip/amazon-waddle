@@ -33,11 +33,23 @@ type PedidoItemPedido struct {
 }
 
 type PedidoPedido struct {
-	ID            pgtype.UUID
-	Numero        string
-	CompradorID   pgtype.UUID
-	Status        string
-	TotalCentavos int64
+	ID                   pgtype.UUID
+	Numero               string
+	CompradorID          pgtype.UUID
+	Status               string
+	TotalCentavos        int64
+	SubtotalCentavos     int64
+	FreteCentavos        int64
+	EnderecoDestinatario pgtype.Text
+	EnderecoCep          pgtype.Text
+	EnderecoLogradouro   pgtype.Text
+	EnderecoNumero       pgtype.Text
+	EnderecoComplemento  pgtype.Text
+	EnderecoBairro       pgtype.Text
+	EnderecoCidade       pgtype.Text
+	EnderecoUf           pgtype.Text
+	ChaveIdempotencia    pgtype.UUID
+	DigestCorpo          pgtype.Text
 }
 
 type PedidoTransicaoStatus struct {

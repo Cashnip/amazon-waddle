@@ -41,7 +41,7 @@ func maquinaDeEstados(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 
 	novoPedido := func() string {
 		t.Helper()
-		resp := postarPedido(t, rotas, `{"produto_id":"`+produto+`"}`, comprador)
+		resp := pedidoPeloCheckout(t, rotas, comprador, produto, 1)
 		if resp.Code != http.StatusCreated {
 			t.Fatalf("criar o Pedido: status = %d (%s)", resp.Code, resp.Body.String())
 		}
