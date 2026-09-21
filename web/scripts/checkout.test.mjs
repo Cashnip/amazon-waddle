@@ -6,8 +6,15 @@ import assert from "node:assert/strict";
 const {
   CHAVE_DE_IDEMPOTENCIA,
   CHAVE_DO_ENDERECO,
+  aberturaDaRevisao,
+  aberturaDoPassoEndereco,
   chaveDeIdempotencia,
+  desvioDaAberturaDaRevisao,
+  desvioDaRevisao,
   enderecoEscolhido,
+  ENTRADA_NO_CHECKOUT,
+  podeContinuar,
+  razoesDoContinuar,
   enderecoMarcado,
   freteGratis,
   guardarEscolha,
@@ -283,4 +290,189 @@ test("pareceUUIDV4 aceita o que uuidNovo gera, pelos dois caminhos", () => {
   assert.equal(pareceUUIDV4(uuidNovo()), true);
   assert.equal(pareceUUIDV4(uuidNovo(semRandomUUID)), true);
   assert.equal(pareceUUIDV4("nao-e-uuid"), false);
+});
+
+// O desvio da Revisão (5.5): leitura pura sobre o Carrinho que ela já pediu.
+// Quem reporta e confirma é `POST /api/v1/checkout/entrada`, no passo
+// Endereço — aqui não há escrita nenhuma.
+const linha = (extras) => ({
+  id: "i1",
+  produto_id: "p1",
+  quantidade: 1,
+  visivel: true,
+  nome: "Chaleira",
+  imagem_url: "",
+  preco_centavos: 5000,
+  preco_visto_centavos: 5000,
+  estoque_disponivel: 10,
+  preco_mudou: false,
+  bloqueio: "",
+  ...extras,
+});
+const carrinhoCom = (...itens) => ({
+  itens,
+  unidades: itens.length,
+  subtotal_centavos: 0,
+  frete_isencao_centavos: 29900,
+});
+
+test("Carrinho limpo: a Revisão abre", () => {
+  assert.equal(desvioDaRevisao(carrinhoCom(linha({}), linha({ id: "i2" }))), null);
+});
+
+test("linha acima do Estoque: volta ao Carrinho, que é onde estão Ajustar e Remover", () => {
+  const cheia = linha({ id: "i2", bloqueio: "acima_do_estoque", estoque_disponivel: 0 });
+  assert.equal(desvioDaRevisao(carrinhoCom(linha({}), cheia)), "/carrinho");
+});
+
+test("Carrinho só de Produtos invisíveis não é vazio, e não chega à Revisão", () => {
+  const invisivel = linha({
+    visivel: false,
+    nome: "",
+    preco_centavos: 0,
+    estoque_disponivel: 0,
+    bloqueio: "indisponivel",
+  });
+  assert.equal(desvioDaRevisao(carrinhoCom(invisivel)), "/carrinho");
+});
+
+test("preço mudado depois da entrada: volta ao passo Endereço, que é quem confirma", () => {
+  const mudada = linha({ preco_mudou: true, preco_visto_centavos: 5000, preco_centavos: 6000 });
+  assert.equal(desvioDaRevisao(carrinhoCom(mudada)), "/checkout/endereco");
+});
+
+// Confirmar preço não desbloqueia: as duas listas são independentes, e quem
+// manda é o bloqueio — o passo Endereço não resolveria a linha bloqueada.
+test("bloqueio e preço mudado na mesma linha: o bloqueio decide", () => {
+  const duas = linha({ preco_mudou: true, bloqueio: "acima_do_estoque" });
+  assert.equal(desvioDaRevisao(carrinhoCom(duas)), "/carrinho");
+});
+
+// A linha invisível não tem preço a confirmar, e o visto dela nunca é tocado:
+// um `preco_mudou` nela não pode mandar o Comprador ao passo Endereço.
+test("linha invisível não desvia ao passo Endereço por preço", () => {
+  const invisivel = linha({ id: "i2", visivel: false, nome: "", preco_centavos: 0, preco_mudou: true });
+  assert.equal(desvioDaRevisao(carrinhoCom(linha({}), invisivel)), null);
+});
+
+// A fiação das duas telas do checkout (5.5). Montar componente React pede
+// Testing Library e um DOM, que o repositório não tem; o que dá para prender
+// aqui — e é o que carrega a estória — são as decisões que os dois `useEffect`
+// delegam a funções puras: por qual rota o passo Endereço abre, em que ordem
+// as guardas correm, e quando o Continuar libera.
+
+const ok = (json) => ({ resposta: { ok: true, status: 200 }, json });
+const naoOk = (status, mensagem) => ({
+  resposta: { ok: false, status },
+  json: mensagem === undefined ? null : { erro: { mensagem } },
+});
+
+// **A rota da abertura é a que escreve.** Trocá-la por `GET /api/v1/carrinho`
+// é uma linha, e derruba a estória inteira sem derrubar mais nada.
+test("o passo Endereço abre pela rota que escreve, e por POST", () => {
+  assert.equal(ENTRADA_NO_CHECKOUT.rota, "/api/v1/checkout/entrada");
+  assert.equal(ENTRADA_NO_CHECKOUT.metodo, "POST");
+  assert.notEqual(ENTRADA_NO_CHECKOUT.rota, "/api/v1/carrinho");
+});
+
+test("abertura do passo Endereço: entrada e lista ok, tudo aplicado", () => {
+  const a = aberturaDoPassoEndereco(ok(carrinhoCom(linha({}))), ok([casa, trabalho]));
+  assert.equal(a.semSessao, false);
+  assert.equal(a.destino, null);
+  assert.equal(a.erro, null);
+  assert.equal(a.carrinho.itens.length, 1);
+  assert.deepEqual(a.enderecos, [casa, trabalho]);
+});
+
+test("abertura do passo Endereço: 401 de qualquer uma das duas vai ao Login", () => {
+  for (const par of [
+    [naoOk(401), ok([casa])],
+    [ok(carrinhoCom(linha({}))), naoOk(401)],
+  ]) {
+    const a = aberturaDoPassoEndereco(...par);
+    assert.equal(a.semSessao, true);
+    assert.equal(a.carrinho, null);
+  }
+});
+
+test("abertura do passo Endereço: entrada recusada não inventa relatório", () => {
+  const a = aberturaDoPassoEndereco(naoOk(500, "Erro do servidor."), ok([casa]));
+  assert.equal(a.carrinho, null);
+  assert.equal(a.erro, "Erro do servidor.");
+  assert.equal(a.destino, null);
+});
+
+test("abertura do passo Endereço: Carrinho vazio volta ao Carrinho", () => {
+  const a = aberturaDoPassoEndereco(ok(carrinhoCom()), ok([casa]));
+  assert.equal(a.destino, "/carrinho");
+});
+
+// **A linha do P1.** A entrada já comitou a ciência quando a lista de
+// Endereços falha: perder o relatório aqui é a mudança de preço sumindo sem
+// ninguém ver — o AD-17 do lado do cliente. O relatório e o aviso convivem.
+test("lista de Endereços falha depois de a entrada comitar: o relatório sobrevive", () => {
+  const mudada = linha({ preco_mudou: true, preco_visto_centavos: 5000, preco_centavos: 6000 });
+  const a = aberturaDoPassoEndereco(ok(carrinhoCom(mudada)), naoOk(500, "Não foi possível ler os Endereços."));
+  assert.notEqual(a.carrinho, null, "o relatório da entrada não pode ser descartado");
+  assert.equal(a.carrinho.itens[0].preco_mudou, true);
+  assert.equal(a.erro, "Não foi possível ler os Endereços.");
+  assert.equal(a.enderecos, null);
+});
+
+// E o mesmo no desvio: o Carrinho vazio também não apaga o que já foi gravado.
+test("Carrinho vazio: o desvio leva o relatório junto", () => {
+  const a = aberturaDoPassoEndereco(ok(carrinhoCom()), ok([casa]));
+  assert.notEqual(a.carrinho, null);
+  assert.equal(a.carrinho.itens.length, 0);
+});
+
+test("sem envelope na resposta, a mensagem é a da tela", () => {
+  const a = aberturaDoPassoEndereco(naoOk(500), ok([casa]));
+  assert.equal(a.erro, "Não foi possível abrir o Carrinho.");
+});
+
+// **A trava do avanço.** `!marcado || !podeAvancar`: trocar por `!marcado`
+// sozinho reabre o furo que a 5.5 existe para fechar.
+test("o Continuar só libera com Endereço marcado E Carrinho liberado", () => {
+  assert.equal(podeContinuar("e1", true), true);
+  assert.equal(podeContinuar(null, true), false);
+  assert.equal(podeContinuar("e1", false), false);
+  assert.equal(podeContinuar(null, false), false);
+});
+
+test("as razões do Continuar acumulam, e as duas aparecem quando as duas valem", () => {
+  assert.deepEqual(razoesDoContinuar(0, 0), []);
+  assert.equal(razoesDoContinuar(1, 0).length, 1);
+  assert.equal(razoesDoContinuar(0, 1)[0], "Confirme o novo preço para continuar.");
+  assert.equal(razoesDoContinuar(0, 2)[0], "Confirme os novos preços para continuar.");
+  assert.equal(razoesDoContinuar(2, 2).length, 2);
+});
+
+// **A ordem da abertura da Revisão.** Vazio primeiro, revalidação depois: um
+// Carrinho vazio não tem preço a confirmar, e mandá-lo ao passo Endereço seria
+// um beco.
+test("abertura da Revisão: vazio decide antes da revalidação", () => {
+  assert.equal(desvioDaAberturaDaRevisao(carrinhoCom()), "/carrinho");
+  const mudada = linha({ preco_mudou: true, preco_visto_centavos: 5000, preco_centavos: 6000 });
+  assert.equal(desvioDaAberturaDaRevisao(carrinhoCom(mudada)), "/checkout/endereco");
+  assert.equal(desvioDaAberturaDaRevisao(carrinhoCom(linha({}))), null);
+});
+
+test("abertura da Revisão: o desvio corre antes da guarda da lista de Endereços", () => {
+  const bloqueada = linha({ bloqueio: "indisponivel", visivel: false, nome: "", preco_centavos: 0 });
+  const a = aberturaDaRevisao(ok(carrinhoCom(bloqueada)), naoOk(500, "Não foi possível ler os Endereços."));
+  assert.equal(a.destino, "/carrinho", "o bloqueio manda de volta mesmo com a lista falhando");
+  assert.equal(a.erro, null);
+});
+
+test("abertura da Revisão: sem bloqueio e sem preço mudado, ela abre", () => {
+  const a = aberturaDaRevisao(ok(carrinhoCom(linha({}))), ok([casa]));
+  assert.equal(a.destino, null);
+  assert.equal(a.erro, null);
+  assert.deepEqual(a.enderecos, [casa]);
+});
+
+test("abertura da Revisão: 401 vai ao Login, e o Carrinho recusado vira aviso", () => {
+  assert.equal(aberturaDaRevisao(naoOk(401), ok([casa])).semSessao, true);
+  assert.equal(aberturaDaRevisao(naoOk(500, "Caiu."), ok([casa])).erro, "Caiu.");
 });

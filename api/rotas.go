@@ -70,6 +70,11 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// O Frete do Carrinho para um Endereço do dono (5.3): a Regra é de
 	// `pedido` (AD-17), e a Revisão pergunta a cada abertura.
 	mux.HandleFunc("GET /api/v1/frete", s.lerFrete)
+	// A entrada no checkout (5.5): a única rota que revalida o Carrinho E
+	// grava a ciência de uma mudança de preço, na mesma transação e nessa
+	// ordem (AD-17). POST porque escreve, e sem corpo porque não há nada a
+	// pedir — o cookie é `SameSite=Lax`, como em `DELETE …/carrinho/itens`.
+	mux.HandleFunc("POST /api/v1/checkout/entrada", s.entrarNoCheckout)
 	// O Carrinho do Comprador (FR-16): um por dono, resolvido pela Sessão, e por
 	// isso sem identificador na rota. O que tem identificador é o Item.
 	// "Esvaziar" do Comprador (FR-18) é `DELETE …/itens`, e não `DELETE

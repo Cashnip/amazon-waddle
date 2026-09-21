@@ -510,6 +510,11 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o Frete: faixa, região padrão, isenção e Endereço alheio", func(t *testing.T) {
 		freteDoCarrinho(t, rotas, pool)
 	})
+	// A 5.5, com contas, Produtos e Endereço próprios: a entrada no checkout
+	// reporta a mudança de preço e grava a ciência dela na mesma transação.
+	t.Run("a entrada no checkout: reporta, confirma e trava o avanço", func(t *testing.T) {
+		entradaNoCheckout(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

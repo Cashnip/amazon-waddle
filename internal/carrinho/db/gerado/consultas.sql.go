@@ -113,6 +113,52 @@ func (q *Queries) BuscarItem(ctx context.Context, arg BuscarItemParams) (BuscarI
 	return i, err
 }
 
+const confirmarPrecoVisto = `-- name: ConfirmarPrecoVisto :execrows
+UPDATE carrinho.item_carrinho AS item
+SET preco_visto_centavos = visto.preco
+FROM (
+    SELECT i.id, p.preco
+    FROM unnest($2::uuid[]) WITH ORDINALITY AS i(id, n)
+    JOIN unnest($3::bigint[]) WITH ORDINALITY AS p(preco, n) USING (n)
+) AS visto,
+     carrinho.carrinho AS c
+WHERE item.id = visto.id AND item.carrinho_id = c.id AND c.comprador_id = $1
+`
+
+type ConfirmarPrecoVistoParams struct {
+	CompradorID pgtype.UUID
+	Ids         []pgtype.UUID
+	Precos      []int64
+}
+
+// A ciência de uma mudança de preço que o Comprador NÃO provocou (AD-17): a
+// única escrita de `preco_visto_centavos` fora de Adicionar e Alterar. Quem a
+// chama é `pedido`, na transação de entrada no checkout, e sempre com os
+// preços que a resposta acabou de reportar — nunca com uma releitura.
+//
+// Os dois vetores andam em par pela ordinalidade, e a posse entra no WHERE
+// (AD-11): Item alheio e inexistente afetam as mesmas zero linhas. Vetor vazio
+// é zero linhas e nenhum erro. O :execrows existe para ser conferido: o Go
+// compara o número de linhas com o número de vistos, e a escrita parcial é
+// erro, nunca silêncio.
+//
+// A ordem em que as linhas são bloqueadas é do plano do executor, e não do
+// vetor: a ordenação por id que o Go faz antes de chamar é determinismo do
+// comando, e não a garantia do AD-5 — essa vem de SELECT ... ORDER BY id FOR
+// UPDATE, que é de quem decide Estoque, e não desta confirmação.
+//
+// O `unnest(a, b)` de dois argumentos seria mais curto, mas o analisador do
+// sqlc v1.31.1 não o conhece ("function unnest(unknown, unknown) does not
+// exist"): o par sai de dois `unnest ... WITH ORDINALITY` juntados pela
+// posição, que é a mesma coisa e passa pelo gerador.
+func (q *Queries) ConfirmarPrecoVisto(ctx context.Context, arg ConfirmarPrecoVistoParams) (int64, error) {
+	result, err := q.db.Exec(ctx, confirmarPrecoVisto, arg.CompradorID, arg.Ids, arg.Precos)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const garantirCarrinho = `-- name: GarantirCarrinho :one
 INSERT INTO carrinho.carrinho (comprador_id)
 VALUES ($1)

@@ -10,6 +10,7 @@ import { ImagemDoProduto } from "@/components/imagem-do-produto";
 import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
 import { parcelaDe, unidadesTexto, type Carrinho, type LinhaDoCarrinho } from "@/lib/carrinho";
 import {
+  aberturaDaRevisao,
   chaveDeIdempotencia,
   enderecoEscolhido,
   freteGratis,
@@ -41,8 +42,12 @@ import { EtapasDoCheckout } from "../etapas";
 // /api/v1/pedidos`, e quem chama `limparCheckout` depois de o Pedido nascer, é
 // a 5.6 — por isso o Confirmar Pedido ainda está desabilitado.
 //
-// A revalidação de Estoque e preço na entrada do checkout é da 5.5: a Revisão
-// não repete os `Alert` do Carrinho.
+// A revalidação de Estoque e preço é da entrada do checkout, no passo Endereço
+// (5.5). A Revisão **não repete a escrita**: ela desvia, por leitura pura. O
+// `GET /api/v1/carrinho` que ela já pedia traz `bloqueio` e `preco_mudou`, e
+// `desvioDaRevisao` decide — Carrinho com bloqueio volta ao Carrinho, preço
+// que mudou depois da entrada volta ao passo Endereço, que é quem reporta e
+// confirma (AD-17). Duas escritas seriam dois lugares gravando o mesmo campo.
 
 // A criação do Pedido é da 5.6: o `POST /api/v1/pedidos` de hoje ainda é o do
 // esqueleto, de um Produto e uma unidade, sem Endereço nem Frete. Esta é a
@@ -94,27 +99,31 @@ export function RevisaoDoPedido() {
           pedir("/api/v1/enderecos", "GET"),
         ]);
         if (!vivo) return;
-        if (oCarrinho.resposta.status === 401 || aLista.resposta.status === 401) {
+        // A decisão inteira desta etapa mora em `aberturaDaRevisao`, pura e
+        // testada: 401, Carrinho que não abriu, Carrinho vazio, desvio da 5.5
+        // e só então a lista de Endereços. A ordem é o que importa — o desvio
+        // vem **antes** de qualquer pintura, e quem digitou esta URL por cima
+        // de um avanço bloqueado não vê a Revisão piscar — e no efeito ela não
+        // teria como ser presa por teste.
+        const abertura = aberturaDaRevisao<Endereco>(oCarrinho, aLista);
+        if (abertura.semSessao) {
           router.push(paraLogin());
           return;
         }
-        if (!oCarrinho.resposta.ok || !oCarrinho.json) {
-          setErro(oCarrinho.json?.erro?.mensagem ?? "Não foi possível abrir o Carrinho.");
+        if (abertura.destino !== null) {
+          router.replace(abertura.destino);
           return;
         }
-        if ((oCarrinho.json as Carrinho).itens.length === 0) {
-          router.replace("/carrinho");
+        if (abertura.erro !== null || abertura.carrinho === null || abertura.enderecos === null) {
+          setErro(abertura.erro ?? "Não foi possível abrir o Carrinho.");
           return;
         }
-        if (!aLista.resposta.ok) {
-          setErro(aLista.json?.erro?.mensagem ?? "Não foi possível ler os Endereços.");
-          return;
-        }
+        const revalidado = abertura.carrinho;
 
         // Sem escolha válida — nada guardado, ou um `id` removido em "Meus
         // endereços" entre uma visita e outra — o Comprador não escolheu nada,
         // e o passo volta ao Endereço.
-        const escolhido = enderecoEscolhido<Endereco>(aLista.json ?? [], guardado);
+        const escolhido = enderecoEscolhido<Endereco>(abertura.enderecos, guardado);
         if (!escolhido) {
           router.replace("/checkout/endereco");
           return;
@@ -137,7 +146,7 @@ export function RevisaoDoPedido() {
           return;
         }
 
-        setCarrinho(oCarrinho.json as Carrinho);
+        setCarrinho(revalidado);
         setEndereco(escolhido);
         setCotacao(frete.json);
       } catch {

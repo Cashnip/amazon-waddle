@@ -172,6 +172,15 @@ func (s *servidor) lerCarrinho(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
+	escreverJSON(w, http.StatusOK, s.envelopeDoCarrinho(conteudo))
+}
+
+// envelopeDoCarrinho monta a saída do Carrinho aberto. Mora aqui, e não dentro
+// de lerCarrinho, porque a entrada no checkout (5.5) devolve **o mesmo**
+// envelope: a tela do passo Endereço reaproveita `revalidacaoDe` e
+// `textoDoBloqueio` sem uma linha de regra nova, e os dois `Alert` ficam
+// idênticos aos que o Comprador acabou de ver no Carrinho.
+func (s *servidor) envelopeDoCarrinho(conteudo carrinho.Conteudo) saidaCarrinho {
 	saida := saidaCarrinho{
 		Itens:                make([]saidaLinhaCarrinho, len(conteudo.Itens)),
 		Unidades:             conteudo.Unidades,
@@ -186,7 +195,7 @@ func (s *servidor) lerCarrinho(w http.ResponseWriter, r *http.Request) {
 			PrecoMudou: it.PrecoMudou, Bloqueio: it.Bloqueio,
 		}
 	}
-	escreverJSON(w, http.StatusOK, saida)
+	return saida
 }
 
 // esvaziarOCarrinho é o "Esvaziar" que o Comprador confirma na tela (FR-18).

@@ -8,6 +8,9 @@ package carrinho
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -273,6 +276,74 @@ func RemoverItem(ctx context.Context, bd gerado.DBTX, itemID, compradorID string
 	}
 	if linhas == 0 {
 		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// PrecoVisto é uma linha a confirmar: o Item e o preço que o Comprador acabou
+// de ver reportado. O preço vem de quem reportou, e nunca de uma releitura.
+type PrecoVisto struct {
+	ItemID        string
+	PrecoCentavos int64
+}
+
+// ConfirmarPrecoVisto persiste a ciência de uma mudança de preço que o
+// Comprador NÃO provocou — a única escrita de `preco_visto_centavos` fora de
+// Adicionar e AlterarQuantidade, que gravam o preço de uma alteração que ele
+// mesmo fez e que já é ciência. É a única porta dessa ciência (AD-17), e quem
+// a abre é só `pedido`, na transação de entrada no checkout, **depois** de
+// montar a resposta que reporta a diferença.
+//
+// Grava exatamente os preços recebidos: confirmar uma releitura apagaria uma
+// mudança que ninguém chegou a ver. Lista vazia é no-op com nil — um Carrinho
+// sem preço mudado não é erro —, Item alheio e inexistente não casam, porque a
+// posse está no WHERE (AD-11), e o uuid malformado sai como pgx.ErrNoRows,
+// como no resto do módulo.
+//
+// Os vistos são ordenados por ItemID antes de virarem parâmetro, e isso é só
+// determinismo: a mesma entrada produz sempre o mesmo comando, o que torna
+// falha reproduzível e diff de log comparável. **Não** é ordem de travas — num
+// UPDATE ... FROM (unnest ...) quem decide em que ordem as linhas são
+// bloqueadas é o plano do executor, e não a posição no vetor. A garantia de
+// ordem do AD-5 vem de `SELECT ... ORDER BY id FOR UPDATE`, que é outra
+// construção e que esta confirmação não precisa: ela não decide Estoque, e
+// todas as linhas que toca são do mesmo dono.
+//
+// O número de linhas afetadas é conferido contra o número de vistos: uma
+// escrita parcial significa que o Carrinho mudou debaixo da transação (um Item
+// removido noutra aba, em READ COMMITTED), e deixá-la passar calada devolveria
+// um "de X para Y" que não foi gravado — o aviso voltaria para sempre, que é o
+// defeito que esta função existe para matar. Divergência é erro, e quem chama
+// desfaz a transação: nada reportado, nada gravado, e a entrada seguinte avisa
+// de novo.
+func ConfirmarPrecoVisto(ctx context.Context, bd gerado.DBTX, compradorID string, vistos []PrecoVisto) error {
+	if len(vistos) == 0 {
+		return nil
+	}
+	dono, err := uuidDe(compradorID)
+	if err != nil {
+		return err
+	}
+	ordenados := slices.Clone(vistos)
+	slices.SortFunc(ordenados, func(a, b PrecoVisto) int { return strings.Compare(a.ItemID, b.ItemID) })
+	ids := make([]pgtype.UUID, 0, len(ordenados))
+	precos := make([]int64, 0, len(ordenados))
+	for _, v := range ordenados {
+		chave, err := uuidDe(v.ItemID)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, chave)
+		precos = append(precos, v.PrecoCentavos)
+	}
+	linhas, err := gerado.New(bd).ConfirmarPrecoVisto(ctx, gerado.ConfirmarPrecoVistoParams{
+		CompradorID: dono, Ids: ids, Precos: precos,
+	})
+	if err != nil {
+		return err
+	}
+	if linhas != int64(len(ordenados)) {
+		return fmt.Errorf("confirmar o preço visto: %d linhas gravadas de %d reportadas", linhas, len(ordenados))
 	}
 	return nil
 }
