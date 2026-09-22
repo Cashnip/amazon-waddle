@@ -520,6 +520,11 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a criação do Pedido: Carrinho, Reserva atômica, idempotência e recusas", func(t *testing.T) {
 		criacaoPeloCheckout(t, rotas, pool)
 	})
+	// A 5.7, o critério de aceite da NFR-7: N checkouts paralelos na última
+	// unidade produzem exatamente o Estoque inicial em Pedidos.
+	t.Run("a consistência de Estoque sob concorrência", func(t *testing.T) {
+		consistenciaSobConcorrencia(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
