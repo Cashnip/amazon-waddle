@@ -556,10 +556,27 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 		return fmt.Errorf("travar o Pedido: %w", err)
 	}
 
+	// A aprovação que chega para um Pedido já CANCELADO é a corrida clássica
+	// do checkout (FR-26): o Status não muda, mas a informação de que o
+	// pagamento foi aprovado não pode virar perda silenciosa (addendum §2,
+	// invariante 7). O registro que a 6.5 lê é a própria linha da inbox —
+	// APROVADO em NAO_APLICAVEL_SINALIZADA numa Tentativa de um Pedido
+	// CANCELADO —, e não o aviso lá embaixo: log não é caminho de leitura.
+	//
+	// `Corrente` não entra de propósito, e é a diferença para o `if` que
+	// aplica: uma aprovação de Tentativa superada também é dinheiro aprovado,
+	// e o Pedido está cancelado do mesmo jeito. Confirmação RECUSADA não avisa
+	// — não há pagamento aprovado a perder.
+	aprovadaSobreCancelado := c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusCancelado
+
 	// Só é aplicada a confirmação que pertence à Tentativa corrente, que é
 	// aprovada e cujo Pedido ainda aguarda pagamento. Todo o resto é sinalizado
-	// e sai da fila — recusa e expiração são da Épica 5.
+	// e sai da fila — aplicar a recusa é da 5.10, e expirar, da 5.11.
 	estado := pagamento.NaoAplicavelSinalizada
+	// Quem protege o Status do Pedido é o CAS de Transicionar, e não esta
+	// condição: sem ela, o UPDATE … WHERE status = 'AGUARDANDO_PAGAMENTO'
+	// casaria zero linhas e sairia ErrEstadoJaAvancado. Ela existe para nomear
+	// o caso e não gastar uma transição perdida.
 	if c.Corrente && c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusAguardandoPagamento {
 		err := Transicionar(ctx, tx, c.PedidoID, StatusAguardandoPagamento, StatusPago, AtorProvedor, "")
 		switch {
@@ -577,7 +594,17 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	if err := pagamento.Marcar(ctx, tx, c.ID, estado); err != nil {
 		return err
 	}
-	return tx.Commit(context.WithoutCancel(ctx))
+	if err := tx.Commit(context.WithoutCancel(ctx)); err != nil {
+		return err
+	}
+	// Depois do commit, e não antes: commit que falha devolve a confirmação a
+	// PENDENTE, e o aviso emitido antes se repetiria a cada tique sobre uma
+	// sinalização que ainda não existe.
+	if aprovadaSobreCancelado {
+		slog.WarnContext(ctx, "pagamento aprovado sobre Pedido cancelado",
+			"pedido", c.PedidoID, "confirmacao", c.ID)
+	}
+	return nil
 }
 
 // SimularEntrega é o passo "simular" do tique: leva o Pedido PAGO até ENTREGUE,

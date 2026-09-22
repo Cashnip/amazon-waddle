@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/Cashnip/amazon-waddle/internal/pagamento"
 	"github.com/Cashnip/amazon-waddle/internal/pedido"
+	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
 // Teclado Mecânico Compacto Tucano, R$ 329,00: os centavos caem em `,00`, que
@@ -132,17 +135,14 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 		t.Errorf("status = %s, quero PAGO", s)
 	}
 	// NFR-9: o avanço deixa a sua linha, com o Provedor como ator.
-	historico := textoDe(t, pool, `
-		SELECT status_anterior || '|' || status_novo || '|' || ator
-		FROM pedido.transicao_status WHERE pedido_id = $1::uuid ORDER BY ocorrido_em`, pedidoID)
+	historico := transicoesDe(t, pool, pedidoID)
 	if len(historico) != 2 || historico[1] != "AGUARDANDO_PAGAMENTO|PAGO|PROVEDOR" {
 		t.Errorf("histórico = %v; quero o nascimento e o avanço para PAGO", historico)
 	}
 
 	// PAGO mantém a Reserva ATIVA: consolidar é da 1.8, e nenhum total de
 	// Estoque muda aqui.
-	reservas := textoDe(t, pool, `
-		SELECT estado FROM catalogo.reserva_estoque WHERE pedido_id = $1::uuid`, pedidoID)
+	reservas := reservasDe(t, pool, pedidoID)
 	if len(reservas) != 1 || reservas[0] != "ATIVA" {
 		t.Errorf("reserva = %v, quero [ATIVA]", reservas)
 	}
@@ -152,7 +152,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	if err := pedido.Varrer(ctx, pool); err != nil {
 		t.Fatalf("varredura repetida = %v", err)
 	}
-	if n := len(textoDe(t, pool, `SELECT id::text FROM pedido.transicao_status WHERE pedido_id = $1::uuid`, pedidoID)); n != 2 {
+	if n := len(transicoesDe(t, pool, pedidoID)); n != 2 {
 		t.Errorf("%d transições depois da segunda varredura, quero 2", n)
 	}
 }
@@ -200,6 +200,172 @@ func confirmacaoDeTentativaSuperada(t *testing.T, rotas http.Handler, pool *pgxp
 	}
 	if s := statusDe(t, pool, pedidoID); s != "AGUARDANDO_PAGAMENTO" {
 		t.Errorf("status = %s; a Tentativa superada não avança o Pedido", s)
+	}
+}
+
+// confirmacaoAprovadaSobrePedidoCancelado é a corrida clássica do checkout
+// (FR-26, invariante 7 do addendum §2): o Provedor aprova um pagamento cujo
+// Pedido o Comprador já cancelou. O Status não muda e a Reserva continua
+// liberada, mas a informação de que o pagamento foi aprovado fica registrada
+// na Tentativa — é dela que a 6.5 deriva o sinal ao Administrador, e é ela que
+// torna possível o estorno da fase 2 sem arqueologia de log.
+//
+// A emissão derivada não entra aqui de propósito: ela é provada no caminho
+// feliz, e rodá-la de novo varreria as Tentativas que os subtestes anteriores
+// inventaram. A confirmação entra pela rota de verdade, que é o que importa.
+func confirmacaoAprovadaSobrePedidoCancelado(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
+	if cookie == nil {
+		t.Fatal("sem cookie: o login falhou antes")
+	}
+	ctx := context.Background()
+
+	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoAprovado, 1), http.StatusCreated)
+
+	// O Comprador cancela. A tela do cancelamento é da 6.3, então o caminho é
+	// `Transicionar` — e não um UPDATE à mão, que deixaria o histórico e a
+	// Reserva do teste divergirem dos de produção.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := pedido.Transicionar(ctx, tx, pedidoID,
+		pedido.StatusAguardandoPagamento, pedido.StatusCancelado, pedido.AtorComprador, ""); err != nil {
+		t.Fatalf("cancelar o Pedido: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit do cancelamento: %v", err)
+	}
+	// O cancelamento liberou a Reserva: é este estado que a confirmação
+	// aprovada não pode mexer.
+	if r := reservasDe(t, pool, pedidoID); len(r) != 1 || r[0] != "LIBERADA" {
+		t.Fatalf("reserva depois do cancelamento = %v, quero [LIBERADA]", r)
+	}
+	// Nascimento e cancelamento, com o ator que o NFR-9 exige. É contra estas
+	// duas linhas que a ausência de transição nova é conferida depois — uma
+	// contagem sozinha passaria mesmo se o cancelamento não gravasse nada.
+	transicoesAntes := transicoesDe(t, pool, pedidoID)
+	quer := "AGUARDANDO_PAGAMENTO|CANCELADO|COMPRADOR"
+	if len(transicoesAntes) != 2 || transicoesAntes[1] != quer {
+		t.Fatalf("histórico depois do cancelamento = %v, quero o nascimento e %q", transicoesAntes, quer)
+	}
+
+	// O Provedor aprova assim mesmo: `pagamento` não conhece `pedido` (AD-7) e
+	// não tem como saber que o Pedido foi cancelado. Quem decide não aplicar é
+	// a varredura, com a trava do Pedido na mão.
+	confirmar(t, rotas, pedidoID, 1)
+	// A mesma confirmação de novo: 200 outra vez, e uma linha só.
+	repetida := postarWebhook(t, rotas, corpoDe(t, pagamento.Confirmacao{
+		IDExterno: pagamento.IDExterno(pedidoID, 1), Resultado: pagamento.Aprovado,
+	}))
+	if repetida.Code != http.StatusOK {
+		t.Errorf("repetição = %d (%s), quero 200", repetida.Code, repetida.Body.String())
+	}
+
+	// O aviso é a única saída em tempo real deste caso, e some sem ruído se
+	// alguém apagar o `if`: o estado terminal já seria o mesmo sem ele.
+	var registro bytes.Buffer
+	anterior := slog.Default()
+	slog.SetDefault(plataforma.NovoLogger(&registro, "varredura"))
+	err = pedido.Varrer(ctx, pool)
+	slog.SetDefault(anterior)
+	if err != nil {
+		t.Fatalf("varrer = %v", err)
+	}
+	if aviso := registro.String(); !strings.Contains(aviso, "pagamento aprovado sobre Pedido cancelado") ||
+		!strings.Contains(aviso, pedidoID) {
+		t.Errorf("log da varredura = %q; quero o aviso nomeando o Pedido", aviso)
+	}
+
+	if s := statusDe(t, pool, pedidoID); s != "CANCELADO" {
+		t.Errorf("status = %s; a aprovação tardia não ressuscita o Pedido", s)
+	}
+	chave := pagamento.ChaveIdempotencia(pagamento.IDExterno(pedidoID, 1))
+	if tem := confirmacoesDe(t, pool, pedidoID); len(tem) != 1 || tem[0] != chave+"|APROVADO|NAO_APLICAVEL_SINALIZADA" {
+		t.Errorf("inbox = %v, quero [%q]", tem, chave+"|APROVADO|NAO_APLICAVEL_SINALIZADA")
+	}
+	if n := len(transicoesDe(t, pool, pedidoID)); n != len(transicoesAntes) {
+		t.Errorf("%d transições depois da varredura, quero as %d de antes", n, len(transicoesAntes))
+	}
+	if r := reservasDe(t, pool, pedidoID); len(r) != 1 || r[0] != "LIBERADA" {
+		t.Errorf("reserva = %v; a aprovação sobre Pedido cancelado não reserva nada", r)
+	}
+
+	// Varrer de novo não encontra mais a linha: o estado é terminal.
+	if err := pedido.Varrer(ctx, pool); err != nil {
+		t.Fatalf("varredura repetida = %v", err)
+	}
+	if n := len(transicoesDe(t, pool, pedidoID)); n != len(transicoesAntes) {
+		t.Errorf("%d transições depois da segunda varredura, quero as %d de antes", n, len(transicoesAntes))
+	}
+
+	// O sinal que a 6.5 vai mostrar é alcançável sem ler log: metade em
+	// `pagamento` (aprovada e sinalizada), metade no Status do Pedido. A
+	// junção das duas é em Go, e não em SQL, porque `pedido` só fala com
+	// `pagamento` pela porta (AD-1).
+	sinalizada := textoDe(t, pool, `
+		SELECT c.id::text
+		FROM pagamento.confirmacao_recebida c
+		JOIN pagamento.tentativa_pagamento t ON t.id = c.tentativa_id
+		WHERE t.pedido_id = $1::uuid
+		  AND c.resultado = 'APROVADO' AND c.estado = 'NAO_APLICAVEL_SINALIZADA'`, pedidoID)
+	if len(sinalizada) != 1 || statusDe(t, pool, pedidoID) != "CANCELADO" {
+		t.Errorf("o predicado da 6.5 não encontra o Pedido: confirmações = %v", sinalizada)
+	}
+}
+
+// confirmacaoDePedidoTravadoFicaPendente é a última linha da matriz: o tique
+// que encontra o Pedido travado por outro caminho não espera nem falha — o
+// `FOR UPDATE SKIP LOCKED` do `TravarPedido` o deixa passar, a confirmação
+// continua `PENDENTE`, e o tique seguinte a aplica. É o que garante que uma
+// confirmação não se perde por chegar no instante errado.
+func confirmacaoDePedidoTravadoFicaPendente(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
+	if cookie == nil {
+		t.Fatal("sem cookie: o login falhou antes")
+	}
+	ctx := context.Background()
+
+	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoAprovado, 1), http.StatusCreated)
+	confirmar(t, rotas, pedidoID, 1)
+
+	// Outro caminho segura a linha do Pedido. Não é encenação: é exatamente o
+	// que dois tiques sobrepostos, ou o tique e uma requisição, fazem.
+	travada, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação que trava: %v", err)
+	}
+	// `defer`, e não Rollback em cada saída: qualquer t.Fatalf de dentro de um
+	// helper deixaria a trava de pé sobre a linha do Pedido e uma conexão presa
+	// pelo resto do pacote. O Rollback explícito lá embaixo é quem solta a
+	// trava no caminho feliz; este é a rede.
+	defer travada.Rollback(context.WithoutCancel(ctx))
+	if _, err := travada.Exec(ctx, `SELECT id FROM pedido.pedido WHERE id = $1::uuid FOR UPDATE`, pedidoID); err != nil {
+		t.Fatalf("travar a linha do Pedido: %v", err)
+	}
+
+	if err := pedido.Varrer(ctx, pool); err != nil {
+		t.Fatalf("varrer com o Pedido travado = %v; quero nil", err)
+	}
+	chave := pagamento.ChaveIdempotencia(pagamento.IDExterno(pedidoID, 1))
+	if tem := confirmacoesDe(t, pool, pedidoID); len(tem) != 1 || tem[0] != chave+"|APROVADO|PENDENTE" {
+		t.Fatalf("inbox = %v, quero [%q]", tem, chave+"|APROVADO|PENDENTE")
+	}
+	if s := statusDe(t, pool, pedidoID); s != "AGUARDANDO_PAGAMENTO" {
+		t.Fatalf("status = %s; o tique travado não avança nada", s)
+	}
+
+	if err := travada.Rollback(ctx); err != nil {
+		t.Fatalf("soltar a trava: %v", err)
+	}
+	// Solta a trava, o tique seguinte aplica: nada se perdeu.
+	if err := pedido.Varrer(ctx, pool); err != nil {
+		t.Fatalf("varrer depois da trava = %v", err)
+	}
+	if tem := confirmacoesDe(t, pool, pedidoID); len(tem) != 1 || tem[0] != chave+"|APROVADO|APLICADA" {
+		t.Errorf("inbox = %v, quero [%q]", tem, chave+"|APROVADO|APLICADA")
+	}
+	if s := statusDe(t, pool, pedidoID); s != "PAGO" {
+		t.Errorf("status = %s, quero PAGO", s)
 	}
 }
 
@@ -344,6 +510,18 @@ func statusDe(t *testing.T, pool *pgxpool.Pool, pedidoID string) string {
 		t.Fatalf("Pedido %s não encontrado", pedidoID)
 	}
 	return linhas[0]
+}
+
+func reservasDe(t *testing.T, pool *pgxpool.Pool, pedidoID string) []string {
+	t.Helper()
+	return textoDe(t, pool, `SELECT estado FROM catalogo.reserva_estoque WHERE pedido_id = $1::uuid`, pedidoID)
+}
+
+func transicoesDe(t *testing.T, pool *pgxpool.Pool, pedidoID string) []string {
+	t.Helper()
+	return textoDe(t, pool, `
+		SELECT status_anterior || '|' || status_novo || '|' || ator
+		FROM pedido.transicao_status WHERE pedido_id = $1::uuid ORDER BY ocorrido_em`, pedidoID)
 }
 
 func confirmacoesDe(t *testing.T, pool *pgxpool.Pool, pedidoID string) []string {

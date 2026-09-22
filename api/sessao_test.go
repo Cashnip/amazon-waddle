@@ -378,6 +378,17 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("confirmação de Tentativa superada não aplica", func(t *testing.T) {
 		confirmacaoDeTentativaSuperada(t, rotas, pool)
 	})
+	// A 5.9. Os dois criam Pedido próprio pelo checkout e não olham para os
+	// dos outros subtestes, então a posição é indiferente entre os vizinhos —
+	// o que não é indiferente é vir depois de quem deixa confirmação na fila:
+	// `Varrer` é global, e os dois conferem o que a varredura fez ao SEU
+	// Pedido depois de ela ter passado por toda a inbox.
+	t.Run("aprovação sobre Pedido cancelado é registrada e não ressuscita", func(t *testing.T) {
+		confirmacaoAprovadaSobrePedidoCancelado(t, rotas, pool, cookieValido)
+	})
+	t.Run("confirmação de Pedido travado fica pendente e é aplicada depois", func(t *testing.T) {
+		confirmacaoDePedidoTravadoFicaPendente(t, rotas, pool, cookieValido)
+	})
 	t.Run("webhook com corpo ruim ou chave desconhecida", func(t *testing.T) {
 		webhookRecusaEntradaRuim(t, rotas, pool)
 	})

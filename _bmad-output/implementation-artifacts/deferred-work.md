@@ -385,3 +385,7 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento.md`
   summary: A superfície "recusado" da tela do Pedido não é alcançável no sistema rodando até a 5.10 (aplicar a recusa) e a 5.11 (expirar), e um total de `,90`–`,99` na primeira Tentativa fica em `AGUARDANDO_PAGAMENTO` com o relógio zerado.
   evidence: A 5.8 não emite recusa (aplicá-la é da 5.10) nem expira Tentativa (5.11); só o teste de Go chega a `PAGAMENTO_RECUSADO`, por `Transicionar` direto. O relógio zerado diz apenas que o prazo terminou, sem prometer atualização. O passeio manual da superfície recusada fica para quando a 5.10 ou a 5.11 existir; até lá ela é provada pelas funções puras de `web/lib/pedido.ts` e pela matriz de servidor.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-confirmacao-aprovada-por-webhook.md`
+  summary: A aprovação sobre Pedido cancelado só é alcançável pelo teste até a 6.3 dar ao Comprador o cancelamento, e o sinal só fica visível na 6.5.
+  evidence: `janelaDeCancelamento` inclui `AGUARDANDO_PAGAMENTO`, mas nenhuma rota leva a `CANCELADO` — o subteste cancela por `pedido.Transicionar` direto. Até a 6.3 existir, a corrida clássica da FR-26 não acontece no sistema rodando, e o registro que a varredura grava não tem leitor: o campo `pagamento_aprovado_sobre_cancelado` e as duas superfícies do Administrador são a 6.5.
