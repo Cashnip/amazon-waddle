@@ -39,9 +39,25 @@ const (
 )
 
 // primeiraTentativa é o número da Tentativa que nasce com o Pedido, e o limiar
-// de Decidir: a faixa do §7.1 vale só para ela. A nova Tentativa (5.10) só
-// precisa incrementar `numero`.
+// de Decidir: a faixa do §7.1 vale só para ela.
 const primeiraTentativa = 1
+
+// ErrTetoDeTentativas recusa a Tentativa além do teto do §7.1 (FR-27). É
+// daqui, e não de `pedido`, porque o dono da Tentativa é dono do teto (AD-8):
+// `pedido` o traduz na recusa da transição em que a pediu, e é essa tradução
+// que chega à borda HTTP.
+var ErrTetoDeTentativas = errors.New("o teto de Tentativas de Pagamento do Pedido foi atingido")
+
+// proximaTentativa é o número da Tentativa seguinte às `feitas`, ou
+// ErrTetoDeTentativas quando ela passaria do teto. Contar e somar um só é
+// seguro porque quem chama segura a linha do Pedido: a primeira Tentativa
+// nasce no INSERT dele, e a nova, depois do compare-and-swap da transição.
+func proximaTentativa(feitas, teto int) (int32, error) {
+	if feitas >= teto {
+		return 0, ErrTetoDeTentativas
+	}
+	return int32(feitas + 1), nil
+}
 
 // Simulado é o Provedor Simulado: decide pelos centavos do total e mais nada.
 // As duas faixas vêm da configuração (AD-13), e não de constante aqui.
@@ -109,19 +125,32 @@ func IDExterno(pedidoID string, numero int32) string {
 func ChaveIdempotencia(idExterno string) string { return "confirmacao:" + idExterno }
 
 // IniciarTentativa é a primeira das duas operações da porta. Roda dentro da
-// transação em que o Pedido nasce (AD-4): se o Pedido for revertido, a
-// Tentativa vai junto. O total chega como valor — o adapter nunca consulta
-// `pedido` para saber quanto cobrar.
-func IniciarTentativa(ctx context.Context, tx pgx.Tx, pedidoID string, totalCentavos int64) error {
+// transação de quem a pede (AD-4) — a que faz o Pedido nascer, ou a da nova
+// Tentativa (FR-27) —, e se ela for revertida a Tentativa vai junto. O total
+// chega como valor — o adapter nunca consulta `pedido` para saber quanto
+// cobrar —, e o teto também, da configuração (AD-13).
+//
+// O número é derivado das Tentativas que o Pedido já tem, e o teto é
+// conferido aqui: além dele, ErrTetoDeTentativas, sem gravar nada.
+func IniciarTentativa(ctx context.Context, tx pgx.Tx, pedidoID string, totalCentavos int64, teto int) error {
 	var chave pgtype.UUID
 	if err := chave.Scan(pedidoID); err != nil {
 		return fmt.Errorf("identificador de Pedido inválido: %w", err)
 	}
-	if err := gerado.New(tx).CriarTentativa(ctx, gerado.CriarTentativaParams{
+	q := gerado.New(tx)
+	feitas, err := q.ContarTentativas(ctx, chave)
+	if err != nil {
+		return fmt.Errorf("contar as Tentativas do Pedido: %w", err)
+	}
+	numero, err := proximaTentativa(int(feitas), teto)
+	if err != nil {
+		return err
+	}
+	if err := q.CriarTentativa(ctx, gerado.CriarTentativaParams{
 		PedidoID:      chave,
 		TotalCentavos: totalCentavos,
-		IDExterno:     IDExterno(pedidoID, primeiraTentativa),
-		Numero:        primeiraTentativa,
+		IDExterno:     IDExterno(pedidoID, numero),
+		Numero:        numero,
 	}); err != nil {
 		return fmt.Errorf("criar a Tentativa de Pagamento: %w", err)
 	}
@@ -216,9 +245,9 @@ func Marcar(ctx context.Context, bd gerado.DBTX, confirmacaoID, estado string) e
 // Nenhuma chamada de rede dentro de transação aberta (AD-4): a leitura fecha
 // antes de o primeiro envio sair.
 //
-// A 1.7 só emite o caminho aprovado. A faixa de recusa e a de "a confirmação
-// nunca chega" existem na decisão do Simulado e ficam sem emissão até a
-// Épica 5 trazer recusa e expiração.
+// Emite o aprovado e o recusado (5.10). A faixa em que a confirmação nunca
+// chega não emite nada, de propósito: é ela que a expiração existe para
+// resolver (FR-34), e a Tentativa fica na lista até lá.
 func EmitirConfirmacoesDevidas(ctx context.Context, bd gerado.DBTX, s Simulado, atraso time.Duration, enviar Enviar) error {
 	var ate pgtype.Timestamptz
 	if err := ate.Scan(time.Now().Add(-atraso)); err != nil {
@@ -230,10 +259,11 @@ func EmitirConfirmacoesDevidas(ctx context.Context, bd gerado.DBTX, s Simulado, 
 	}
 	var falhas []error
 	for _, t := range devidas {
-		if s.Decidir(t.TotalCentavos, t.Numero) != Aprovado {
+		resultado := s.Decidir(t.TotalCentavos, t.Numero)
+		if resultado == SemConfirmacao {
 			continue
 		}
-		if err := enviar(ctx, Confirmacao{IDExterno: t.IDExterno, Resultado: Aprovado}); err != nil {
+		if err := enviar(ctx, Confirmacao{IDExterno: t.IDExterno, Resultado: resultado}); err != nil {
 			// Uma Tentativa que falhou não impede as outras: a emissão é
 			// derivada, então o próximo tique tenta de novo sozinho.
 			falhas = append(falhas, fmt.Errorf("emitir %s: %w", t.IDExterno, err))

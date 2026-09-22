@@ -196,7 +196,7 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 			EnderecoID:    entrada.EnderecoID,
 			TotalCentavos: entrada.TotalCentavos,
 			Chave:         strings.ToLower(chave),
-		}, s.cfg.FreteIsencaoCentavos)
+		}, s.cfg.FreteIsencaoCentavos, s.cfg.PagamentoTentativasMax)
 		return err == nil && !reenvio, err
 	})
 	if err != nil {
@@ -227,6 +227,56 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusOK
 	}
 	escreverJSON(w, status, saidaDoPedido(novo))
+}
+
+// novaTentativa é o "Tentar pagar de novo" da tela do Pedido (FR-27): a
+// nova Tentativa de Pagamento a partir do próprio Pedido recusado, numa
+// transação só — nova Reserva sobre os Itens do Pedido, e o teto conferido por
+// `pagamento` (AD-8). Sem corpo: nada viaja do navegador além do identificador
+// na rota, e nada é remontado a partir do Carrinho.
+//
+// 201 com o Pedido de volta a AGUARDANDO_PAGAMENTO. Recusas, todas 409 e sem
+// gravar nada: ESTOQUE_INSUFICIENTE (com o Produto em `dados`),
+// TETO_DE_TENTATIVAS e ESTADO_JA_AVANCADO — este último também é o segundo
+// clique, que espera o primeiro na linha do Pedido e o encontra já aguardando.
+// A tela relê o Pedido nas três. Pedido alheio, inexistente e malformado são o
+// mesmo 404 (AD-11).
+//
+// Sem corpo, como a entrada no checkout: o cookie de Sessão é `SameSite=Lax`,
+// então um formulário de outro site que poste aqui chega sem Sessão e sai 401.
+func (s *servidor) novaTentativa(w http.ResponseWriter, r *http.Request) {
+	semCache(w)
+
+	comprador, err := s.compradorDaRequisicao(r)
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	var p pedido.Pedido
+	err = emTransacao(r.Context(), s.pool, func(tx pgx.Tx) (bool, error) {
+		var err error
+		p, err = pedido.NovaTentativa(r.Context(), tx, r.PathValue("id"), comprador.ID, s.cfg.PagamentoTentativasMax)
+		return err == nil, err
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
+			return
+		}
+		var falta catalogo.EstoqueInsuficiente
+		if errors.As(err, &falta) {
+			erro.Escrever(r.Context(), w, err, map[string]any{"produto_id": falta.ProdutoID, "disponivel": falta.Disponivel})
+			return
+		}
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	// A forma curta da criação, e só depois do Commit (a transação pode ser
+	// repetida uma vez em impasse). O prazo novo e as Tentativas restantes a
+	// tela lê do Detalhe, que ela relê em seguida.
+	escreverJSON(w, http.StatusCreated, saidaDoPedido(p))
 }
 
 // lerPedido é a tela do Pedido (5.8): a consulta que ela repete a cada 3 s

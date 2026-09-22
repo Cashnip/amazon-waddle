@@ -1,6 +1,9 @@
 package pagamento
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // A regra do §7.1 é lida sobre os centavos do total, e não sobre o total: um
 // Pedido de R$ 1.234,50 decide pelo `50`. Este teste é a fronteira das três
@@ -38,6 +41,29 @@ func TestSimuladoAprovaDaSegundaTentativaEmDiante(t *testing.T) {
 			if tem := s.Decidir(total, numero); tem != Aprovado {
 				t.Errorf("Decidir(%d, %d) = %s, quero %s", total, numero, tem, Aprovado)
 			}
+		}
+	}
+}
+
+// O número da Tentativa sai das que o Pedido já teve, e o teto do §7.1 é
+// conferido antes de gravar: com 3, a quarta é recusada — e não numerada.
+func TestProximaTentativaRespeitaOTeto(t *testing.T) {
+	for _, caso := range []struct {
+		feitas, teto int
+		quer         int32
+	}{
+		{0, 3, 1},
+		{1, 3, 2},
+		{2, 3, 3},
+	} {
+		numero, err := proximaTentativa(caso.feitas, caso.teto)
+		if err != nil || numero != caso.quer {
+			t.Errorf("proximaTentativa(%d, %d) = %d, %v; quero %d", caso.feitas, caso.teto, numero, err, caso.quer)
+		}
+	}
+	for _, feitas := range []int{3, 4} {
+		if _, err := proximaTentativa(feitas, 3); !errors.Is(err, ErrTetoDeTentativas) {
+			t.Errorf("proximaTentativa(%d, 3) = %v; quero ErrTetoDeTentativas", feitas, err)
 		}
 	}
 }

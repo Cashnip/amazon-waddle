@@ -88,16 +88,97 @@ export function tempoRestante(expiraEm: string, agoraMs: number): TempoRestante 
   return { ms, texto, esgotado: ms === 0 };
 }
 
+// O motivo que a varredura grava ao aplicar a recusa do Provedor (5.10).
+export const RECUSADO_PELO_PROVEDOR = "RECUSADO_PELO_PROVEDOR";
+
+// A frase de cada motivo que o Go grava. Nomear o motivo sempre que o sistema
+// souber (EXPERIENCE, Voice and Tone): o Provedor Simulado não tem motivo além
+// da própria recusa, e é isso que a frase diz, sem inventar "saldo".
+const frasesDoMotivo: Record<string, string> = {
+  [TEMPO_ESGOTADO]: "Tempo de pagamento expirado.",
+  [RECUSADO_PELO_PROVEDOR]: "O Provedor de Pagamento recusou a Tentativa de Pagamento.",
+};
+
 // O motivo da última entrada em PAGAMENTO_RECUSADO, como a tela o escreve. A
-// expiração tem frase própria (EXPERIENCE, "Tentativa expirada"); a recusa do
-// Provedor, uma genérica — o motivo que ela grava é da 5.10.
+// expiração tem frase própria (EXPERIENCE, "Tentativa expirada"), e a recusa
+// do Provedor também; motivo que a tela não conhece cai na genérica.
 export function motivoDaRecusa(historico: readonly Transicao[]): string {
   for (let i = historico.length - 1; i >= 0; i--) {
     if (historico[i].para === PAGAMENTO_RECUSADO) {
-      return historico[i].motivo === TEMPO_ESGOTADO ? "Tempo de pagamento expirado." : "O pagamento foi recusado.";
+      // `hasOwn`, e não a indexação crua: um motivo como "constructor"
+      // acharia o herdado de Object.prototype em vez de cair na genérica.
+      const motivo = historico[i].motivo ?? "";
+      return Object.hasOwn(frasesDoMotivo, motivo) ? frasesDoMotivo[motivo] : "O pagamento foi recusado.";
     }
   }
   return "O pagamento foi recusado.";
+}
+
+// A ação da tripla do AD-18 (EXPERIENCE, "A ação disponível é derivada"):
+// "Tentar pagar de novo" existe só com o Pedido recusado, Tentativa restante e
+// todos os Itens de Pedido com Estoque disponível. Os três números vêm do Go;
+// aqui só se lê. Com o Status sozinho, o botão apareceria para sempre.
+export function podeTentarDeNovo(
+  p: Pick<DetalheDoPedido, "status" | "tentativas_restantes" | "itens">,
+): boolean {
+  return p.status === PAGAMENTO_RECUSADO && p.tentativas_restantes > 0 && p.itens.every((item) => item.disponivel);
+}
+
+// Por que a ação saiu da tela, quando saiu pelo Estoque: uma frase por Item de
+// Pedido sem Estoque disponível, nomeando o Produto (FR-27, "mensagem
+// explícita"). Sem Tentativa restante não há frase aqui — `textoDasTentativas`
+// já diz que não restam, e repetir seria dizer duas vezes a mesma coisa.
+// Produto desativado e esgotado saem iguais, como o Go os devolve (FR-12).
+// A chave é o Produto, e não a frase: dois Itens de Pedido podem ter o mesmo
+// nome congelado, e a frase repetida seria chave repetida na lista.
+export function impedimentosDaNovaTentativa(
+  p: Pick<DetalheDoPedido, "status" | "tentativas_restantes" | "itens">,
+): { chave: string; texto: string }[] {
+  if (p.status !== PAGAMENTO_RECUSADO || p.tentativas_restantes <= 0) return [];
+  return p.itens
+    .filter((item) => !item.disponivel)
+    .map((item) => ({
+      chave: item.produto_id,
+      texto: `Não há Estoque disponível de ${item.nome} para uma nova Tentativa de Pagamento.`,
+    }));
+}
+
+export function rotaDaNovaTentativa(pedidoId: string): string {
+  return `/api/v1/pedidos/${encodeURIComponent(pedidoId)}/tentativas`;
+}
+
+export const FALHA_NA_NOVA_TENTATIVA = "Não foi possível iniciar a nova Tentativa de Pagamento.";
+
+// As recusas da nova Tentativa em que o Pedido é que mudou: sem Estoque, sem
+// Tentativa, ou outro caminho chegou antes (inclusive o segundo clique). Nas
+// três a resposta certa é reler o Pedido — a tela relida tira o botão e diz
+// por quê, pela tripla.
+//
+// Sem Estoque e sem Tentativa também avisam, com a mensagem do Go: a unidade
+// pode ter voltado entre a recusa e a releitura, e aí a tripla relida mostra o
+// botão de novo — sem o aviso, o clique pareceria não ter feito nada. A
+// corrida não avisa: o Pedido já anda, e a tela relida o mostra andando.
+const RECUSAS_QUE_AVISAM = ["ESTOQUE_INSUFICIENTE", "TETO_DE_TENTATIVAS"];
+const RECUSAS_CALADAS = ["ESTADO_JA_AVANCADO"];
+
+export type DesfechoDaNovaTentativa =
+  | { tipo: "releitura"; aviso: string | null }
+  | { tipo: "semSessao" }
+  | { tipo: "erro"; mensagem: string };
+
+// O que fazer com a resposta de `POST .../tentativas`. O 201 também relê: é a
+// leitura do Detalhe que traz o prazo novo e as Tentativas restantes.
+export function desfechoDaNovaTentativa(r: { resposta: { ok: boolean; status: number }; json: unknown }): DesfechoDaNovaTentativa {
+  const { ok, status } = r.resposta;
+  if (status === 401) return { tipo: "semSessao" };
+  if (ok) return { tipo: "releitura", aviso: null };
+  const erro = (r.json as { erro?: { codigo?: string; mensagem?: string } } | null)?.erro;
+  const codigo = erro?.codigo ?? "";
+  if (status === 409 && RECUSAS_CALADAS.includes(codigo)) return { tipo: "releitura", aviso: null };
+  if (status === 409 && RECUSAS_QUE_AVISAM.includes(codigo)) {
+    return { tipo: "releitura", aviso: erro?.mensagem ?? FALHA_NA_NOVA_TENTATIVA };
+  }
+  return { tipo: "erro", mensagem: erro?.mensagem ?? FALHA_NA_NOVA_TENTATIVA };
 }
 
 // As tentativas restantes, com o termo do glossário e a concordância certa.

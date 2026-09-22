@@ -44,6 +44,11 @@ const (
 // (FR-34): o caminho é o da recusa, e é o motivo que os distingue.
 const MotivoTempoEsgotado = "TEMPO_ESGOTADO"
 
+// MotivoRecusadoPeloProvedor é o motivo da recusa que o Provedor de Pagamento
+// devolve (FR-27). Não é reservado: a linha da recusa aceita qualquer motivo
+// menos TEMPO_ESGOTADO, e este é o que a varredura grava ao aplicá-la.
+const MotivoRecusadoPeloProvedor = "RECUSADO_PELO_PROVEDOR"
+
 // ErrEstadoJaAvancado é o desfecho de toda transição que chega tarde: o
 // compare-and-swap afetou zero linhas porque outro caminho já moveu o Pedido.
 // Não é falha do sistema — a varredura conta com ele como resultado normal.

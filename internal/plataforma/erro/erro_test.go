@@ -283,3 +283,27 @@ func TestRecusasDaCriacaoDoPedido(t *testing.T) {
 		}
 	}
 }
+
+// TestTetoDeTentativas: a recusa da nova Tentativa além do teto (5.10) é 409
+// com o código que a tela lê. O que chega aqui é a tradução de `pedido`
+// embrulhando a causa de `pagamento`, dono do teto (AD-8) — e a mensagem é a
+// do sentinela registrado, nunca a da causa nem a do embrulho (AD-14).
+func TestTetoDeTentativas(t *testing.T) {
+	causa := errors.New("o teto de Tentativas de Pagamento do Pedido foi atingido")
+	for _, err := range []error{
+		pedido.ErrTentativasEsgotadas,
+		fmt.Errorf("%w: %w", pedido.ErrTentativasEsgotadas, causa),
+	} {
+		resp := escrever(t, err, nil)
+		if resp.Code != http.StatusConflict {
+			t.Errorf("%v: status = %d, quero 409", err, resp.Code)
+		}
+		corpo := decodificar(t, resp)
+		if corpo["codigo"] != "TETO_DE_TENTATIVAS" {
+			t.Errorf("%v: codigo = %v, quero TETO_DE_TENTATIVAS", err, corpo["codigo"])
+		}
+		if corpo["mensagem"] != pedido.ErrTentativasEsgotadas.Error() {
+			t.Errorf("%v: mensagem = %v", err, corpo["mensagem"])
+		}
+	}
+}

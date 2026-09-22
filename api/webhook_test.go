@@ -21,8 +21,9 @@ import (
 
 // Teclado Mecânico Compacto Tucano, R$ 329,00: os centavos caem em `,00`, que
 // é a faixa aprovada do §7.1. O Produto de R$ 249,90 dos outros subtestes cai
-// em `,90` e fica esperando a Épica 5 — é o recorte da estória, e não um
-// descuido do teste.
+// em `,90`, a faixa que recusa: a recusa é da 5.10, que a prova com Produtos
+// próprios em `nova_tentativa_test.go`, e os Pedidos dele aqui ficam
+// aguardando pagamento porque nenhum transporte destes subtestes a entrega.
 const produtoAprovado = "b489768a-4430-5081-b888-35f6dec41790"
 
 // simuladoDeTeste são as faixas do `.env` da demonstração.
@@ -58,8 +59,19 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 
 	// A emissão é derivada: atraso zero vence na hora, e o envio entra pela
 	// rota de verdade — o mesmo caminho que o `http.Post` do binário usa.
-	var enviadas []pagamento.Confirmacao
+	//
+	// Só a Tentativa deste Pedido é entregue; as outras são anotadas em
+	// `emitidas` e não chegam ao webhook. Desde a 5.10 a recusa também é
+	// emitida, e os Pedidos de R$ 249,90 dos subtestes anteriores (`,90`, a
+	// faixa que recusa) têm Tentativa vencida: entregar a recusa deles deixaria
+	// a varredura abaixo levá-los a PAGAMENTO_RECUSADO, e os subtestes
+	// seguintes contam com eles ainda aguardando pagamento.
+	var enviadas, emitidas []pagamento.Confirmacao
 	enviar := func(_ context.Context, c pagamento.Confirmacao) error {
+		emitidas = append(emitidas, c)
+		if c.IDExterno != pagamento.IDExterno(pedidoID, 1) {
+			return nil
+		}
 		enviadas = append(enviadas, c)
 		if r := postarWebhook(t, rotas, corpoDe(t, c)); r.Code != http.StatusOK {
 			t.Errorf("webhook = %d (%s), quero 200", r.Code, r.Body.String())
@@ -69,10 +81,18 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, 0, enviar); err != nil {
 		t.Fatalf("emitir = %v", err)
 	}
-	// Só o caminho aprovado atravessa: os Pedidos de R$ 249,90 dos subtestes
-	// anteriores têm Tentativa vencida e não emitem nada.
 	if len(enviadas) != 1 || enviadas[0].Resultado != pagamento.Aprovado {
-		t.Fatalf("emitidas = %v; quero só a confirmação aprovada desta Tentativa", enviadas)
+		t.Fatalf("enviadas = %v; quero só a confirmação aprovada desta Tentativa", enviadas)
+	}
+	// E o que o emissor decidiu para as outras: a faixa de `,90` sai RECUSADO
+	// (5.10), e nada sai como resultado fora dos dois do §7.1.
+	for _, c := range emitidas {
+		if c.Resultado != pagamento.Aprovado && c.Resultado != pagamento.Recusado {
+			t.Errorf("emitiu %v; quero só APROVADO ou RECUSADO", c)
+		}
+	}
+	if len(emitidas) < 2 || !slices.ContainsFunc(emitidas, func(c pagamento.Confirmacao) bool { return c.Resultado == pagamento.Recusado }) {
+		t.Errorf("emitidas = %v; quero também a recusa dos Pedidos de R$ 249,90", emitidas)
 	}
 
 	chave := pagamento.ChaveIdempotencia(pagamento.IDExterno(pedidoID, 1))
@@ -95,7 +115,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 
 	// Com linha na inbox, a emissão derivada para sozinha — é o que impede o
 	// tique de 1 s de reenviar para sempre.
-	enviadas = nil
+	enviadas, emitidas = nil, nil
 	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, 0, enviar); err != nil {
 		t.Fatalf("segunda emissão = %v", err)
 	}

@@ -77,6 +77,14 @@ var ErrCarrinhoVazio = errors.New("O Carrinho está vazio.")
 // a deixa livre.
 var ErrChaveReutilizada = errors.New("Esta confirmação já criou um Pedido.")
 
+// ErrTentativasEsgotadas recusa a nova Tentativa de Pagamento do Pedido que
+// já usou o teto do §7.1 (FR-27). Quem confere o teto é `pagamento`, dono da
+// Tentativa, com pagamento.ErrTetoDeTentativas; `pedido` o traduz nesta
+// recusa da transição (AD-8), e é esta que a borda HTTP conhece — o AD-1 não
+// tem aresta de `plataforma` para `pagamento`. O erro devolvido embrulha os
+// dois, então errors.Is casa com qualquer um.
+var ErrTentativasEsgotadas = errors.New("Este Pedido já usou todas as Tentativas de Pagamento.")
+
 // NovoPedido é o corpo da confirmação: o Endereço escolhido e o total que a
 // Revisão exibiu, mais a chave de idempotência do cabeçalho. Itens, preços e
 // Frete não vêm do navegador — vêm do Carrinho e da Regra de Frete (NFR-13).
@@ -118,7 +126,7 @@ func digestDe(novo NovoPedido) string {
 //
 // Endereço de outro Comprador, inexistente ou malformado sai como
 // pgx.ErrNoRows, que `api/` traduz no mesmo 404.
-func Criar(ctx context.Context, tx pgx.Tx, compradorID string, novo NovoPedido, isencaoCentavos int64) (Pedido, bool, error) {
+func Criar(ctx context.Context, tx pgx.Tx, compradorID string, novo NovoPedido, isencaoCentavos int64, teto int) (Pedido, bool, error) {
 	var comprador, chave pgtype.UUID
 	if err := comprador.Scan(compradorID); err != nil {
 		return Pedido{}, false, fmt.Errorf("identificador de Comprador inválido: %w", err)
@@ -307,11 +315,65 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID string, novo NovoPedido, 
 
 	// A Tentativa nasce na mesma transação (AD-7): o Pedido revertido não
 	// deixa Tentativa órfã. O total vai como valor — `pagamento` não consulta
-	// `pedido`.
-	if err := pagamento.IniciarTentativa(ctx, tx, pedido.ID, pedido.TotalCentavos); err != nil {
+	// `pedido`. O teto também vai como valor: quem o confere é `pagamento`.
+	if err := pagamento.IniciarTentativa(ctx, tx, pedido.ID, pedido.TotalCentavos, teto); err != nil {
 		return Pedido{}, false, err
 	}
 	return pedido, false, nil
+}
+
+// NovaTentativa é a Tentativa de Pagamento que o Comprador inicia a partir do
+// próprio Pedido recusado (FR-27), na transação que `api/` abriu (AD-4). Nada
+// é remontado: os Itens, o total e o Endereço são os do Pedido.
+//
+// **A ordem é o contrato:**
+//
+//  1. o Pedido do dono — de outro Comprador, inexistente ou malformado sai
+//     como pgx.ErrNoRows, o mesmo 404 (AD-11);
+//  2. Transicionar de PAGAMENTO_RECUSADO a AGUARDANDO_PAGAMENTO, que faz o
+//     compare-and-swap, a linha do histórico — é dela que ExpiraEm recomeça o
+//     prazo — e a nova Reserva sobre os Itens do Pedido, falhando com
+//     EstoqueInsuficiente se faltar;
+//  3. só então pagamento.IniciarTentativa, que numera e confere o teto —
+//     além dele, ErrTentativasEsgotadas. Com a linha do Pedido presa pelo CAS, dois
+//     cliques contam uma vez só: o segundo espera e sai ErrEstadoJaAvancado.
+//     Antes do CAS, os dois contariam o mesmo número e colidiriam no índice
+//     único de `id_externo`, num 500.
+//
+// Qualquer recusa volta para quem abriu a transação desfazer: o Pedido
+// permanece em PAGAMENTO_RECUSADO, sem Reserva, sem Tentativa e sem linha nova.
+// O Pedido devolvido já está no Status novo.
+func NovaTentativa(ctx context.Context, tx pgx.Tx, pedidoID, compradorID string, teto int) (Pedido, error) {
+	var chave, comprador pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return Pedido{}, pgx.ErrNoRows
+	}
+	if err := comprador.Scan(compradorID); err != nil {
+		return Pedido{}, pgx.ErrNoRows
+	}
+	linha, err := gerado.New(tx).BuscarPedidoDoComprador(ctx, gerado.BuscarPedidoDoCompradorParams{
+		PedidoID:    chave,
+		CompradorID: comprador,
+	})
+	if err != nil {
+		return Pedido{}, err
+	}
+	p := Pedido{
+		ID:            linha.ID.String(),
+		Numero:        linha.Numero,
+		Status:        StatusAguardandoPagamento,
+		TotalCentavos: linha.TotalCentavos,
+	}
+	if err := Transicionar(ctx, tx, p.ID, StatusPagamentoRecusado, StatusAguardandoPagamento, AtorComprador, ""); err != nil {
+		return Pedido{}, err
+	}
+	if err := pagamento.IniciarTentativa(ctx, tx, p.ID, p.TotalCentavos, teto); err != nil {
+		if errors.Is(err, pagamento.ErrTetoDeTentativas) {
+			return Pedido{}, fmt.Errorf("%w: %w", ErrTentativasEsgotadas, err)
+		}
+		return Pedido{}, err
+	}
+	return p, nil
 }
 
 // decidirPelaChave é o passo 1 de Criar. `achou` falso é chave livre; `achou`
@@ -569,16 +631,22 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	// — não há pagamento aprovado a perder.
 	aprovadaSobreCancelado := c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusCancelado
 
-	// Só é aplicada a confirmação que pertence à Tentativa corrente, que é
-	// aprovada e cujo Pedido ainda aguarda pagamento. Todo o resto é sinalizado
-	// e sai da fila — aplicar a recusa é da 5.10, e expirar, da 5.11.
+	// Só é aplicada a confirmação que pertence à Tentativa corrente e cujo
+	// Pedido ainda aguarda pagamento: a aprovada leva a PAGO, e a recusada, a
+	// PAGAMENTO_RECUSADO, liberando a Reserva dentro de Transicionar. Todo o
+	// resto é sinalizado e sai da fila — sem o `Corrente`, uma recusa atrasada
+	// da Tentativa 1 derrubaria a Reserva que a 2 acabou de criar (AD-7).
 	estado := pagamento.NaoAplicavelSinalizada
+	destino, motivo := StatusPago, ""
+	if c.Resultado == pagamento.Recusado {
+		destino, motivo = StatusPagamentoRecusado, MotivoRecusadoPeloProvedor
+	}
 	// Quem protege o Status do Pedido é o CAS de Transicionar, e não esta
 	// condição: sem ela, o UPDATE … WHERE status = 'AGUARDANDO_PAGAMENTO'
 	// casaria zero linhas e sairia ErrEstadoJaAvancado. Ela existe para nomear
 	// o caso e não gastar uma transição perdida.
-	if c.Corrente && c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusAguardandoPagamento {
-		err := Transicionar(ctx, tx, c.PedidoID, StatusAguardandoPagamento, StatusPago, AtorProvedor, "")
+	if c.Corrente && Status(travado.Status) == StatusAguardandoPagamento {
+		err := Transicionar(ctx, tx, c.PedidoID, StatusAguardandoPagamento, destino, AtorProvedor, motivo)
 		switch {
 		case err == nil:
 			estado = pagamento.Aplicada

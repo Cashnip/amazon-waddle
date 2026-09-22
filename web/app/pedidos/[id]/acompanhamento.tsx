@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,15 @@ import { Preco } from "@/components/preco";
 import { freteGratis } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
 import {
+  FALHA_NA_NOVA_TENTATIVA,
   INTERVALO_AGUARDANDO_MS,
+  PAGAMENTO_RECUSADO,
+  desfechoDaNovaTentativa,
+  impedimentosDaNovaTentativa,
   intervaloDaConsulta,
   motivoDaRecusa,
+  podeTentarDeNovo,
+  rotaDaNovaTentativa,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -169,11 +175,28 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
   const router = useRouter();
   const [pedido, setPedido] = useState<DetalheDoPedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // A consulta mora dentro do efeito, com o intervalo dela; a nova Tentativa
+  // precisa pedir uma leitura agora, e é por aqui que a alcança.
+  const consultarAgora = useRef<() => Promise<void>>(async () => {});
+  // Um envio por clique (FR-27): o ref barra o segundo antes de o estado
+  // chegar à tela. O servidor também barra — o segundo sai ESTADO_JA_AVANCADO —,
+  // mas a tela não precisa gastar a ida.
+  const emVoo = useRef(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erroDaTentativa, setErroDaTentativa] = useState<string | null>(null);
+  // Depois da nova Tentativa o botão some com a superfície recusada, e o foco
+  // cairia no `body`; ele vai para o título do Pedido, cujo Status a região
+  // viva logo abaixo anuncia.
+  const titulo = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     let vivo = true;
     let timer: ReturnType<typeof setInterval> | undefined;
     let atual = 0;
+    // Só a consulta mais recente escreve na tela: a do intervalo que saiu
+    // antes do clique pode voltar depois da releitura forçada, e traria de
+    // volta o Pedido recusado — com o botão — por um intervalo inteiro.
+    let ultima = 0;
 
     // Trocar de ritmo é recriar o intervalo: setInterval não muda de período
     // depois de armado. O `atual` evita reprogramar a cada consulta, o que
@@ -186,12 +209,13 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
     }
 
     async function consultar() {
+      const minha = ++ultima;
       try {
         const resposta = await fetch(`/api/v1/pedidos/${encodeURIComponent(pedidoId)}`, {
           credentials: "same-origin",
         });
         const corpo = await resposta.json().catch(() => null);
-        if (!vivo) return;
+        if (!vivo || minha !== ultima) return;
         if (!resposta.ok) {
           // Sessão expirada leva ao Login com o caminho atual no `destino`: a
           // tela não tem o que mostrar sem Sessão, e o Comprador volta a este
@@ -213,6 +237,9 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
         }
         setErro(null);
         setPedido(corpo);
+        // O aviso da nova Tentativa é da superfície recusada: com o Pedido
+        // andando, ele envelheceria e voltaria numa recusa futura.
+        if (corpo?.status !== PAGAMENTO_RECUSADO) setErroDaTentativa(null);
         const proxima = intervaloDaConsulta(corpo);
         if (proxima === null) {
           clearInterval(timer);
@@ -220,10 +247,11 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
         }
         reprogramar(proxima);
       } catch {
-        if (vivo) setErro("Não foi possível ler o Pedido.");
+        if (vivo && minha === ultima) setErro("Não foi possível ler o Pedido.");
       }
     }
 
+    consultarAgora.current = consultar;
     consultar();
     reprogramar(INTERVALO_AGUARDANDO_MS);
     return () => {
@@ -232,13 +260,51 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
     };
   }, [pedidoId, router]);
 
+  // "Tentar pagar de novo": o Go decide tudo — nova Reserva, teto, corrida —,
+  // e a tela executa o desfecho de `desfechoDaNovaTentativa`. No sucesso e nas
+  // recusas em que o Pedido mudou, relê: é a leitura que traz o relógio de
+  // volta com o prazo novo, ou que tira o botão e diz por quê.
+  async function tentarDeNovo() {
+    if (emVoo.current) return;
+    emVoo.current = true;
+    setEnviando(true);
+    setErroDaTentativa(null);
+    try {
+      const resposta = await fetch(rotaDaNovaTentativa(pedidoId), {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const json = await resposta.json().catch(() => null);
+      const desfecho = desfechoDaNovaTentativa({ resposta, json });
+      if (desfecho.tipo === "semSessao") {
+        router.push(paraLogin());
+        return;
+      }
+      if (desfecho.tipo === "erro") {
+        setErroDaTentativa(desfecho.mensagem);
+        return;
+      }
+      await consultarAgora.current();
+      if (desfecho.aviso) {
+        setErroDaTentativa(desfecho.aviso);
+      } else if (resposta.ok) {
+        titulo.current?.focus();
+      }
+    } catch {
+      setErroDaTentativa(FALHA_NA_NOVA_TENTATIVA);
+    } finally {
+      emVoo.current = false;
+      setEnviando(false);
+    }
+  }
+
   const superficie = pedido ? superficieDoPedido(pedido) : null;
 
   return (
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-4">
-          <h1 className="text-2xl font-medium">Pedido {pedido ? pedido.numero : "…"}</h1>
+          <h1 ref={titulo} tabIndex={-1} className="text-2xl font-medium outline-none">Pedido {pedido ? pedido.numero : "…"}</h1>
           {/* A região vive desde o primeiro render e só o conteúdo muda: uma
               região `role="status"` que entra no DOM junto com o texto costuma
               não ser anunciada por leitor de tela — e é exatamente esta
@@ -271,9 +337,36 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
           {pedido && superficie === "recusado" && (
             <>
               <p className="text-sm">{textoDasTentativas(pedido.tentativas_restantes)}</p>
+              {/* Quando a ação sai da tela pelo Estoque, a razão fica no lugar
+                  dela, nomeando o Produto (FR-27). "Cancelar Pedido" é da 6.3:
+                  até lá a tela não promete o que não tem. */}
+              {impedimentosDaNovaTentativa(pedido).map(({ chave, texto }) => (
+                <p key={chave} className="text-sm">
+                  {texto}
+                </p>
+              ))}
               <p className="text-muted-foreground text-sm">
                 Os Itens de Pedido continuam no próprio Pedido.
               </p>
+              {podeTentarDeNovo(pedido) && (
+                // Primário do shadcn, sem pill nem laranja: não é botão de ação
+                // da loja (UX-DR5), e o laranja é só do Confirmar Pedido
+                // (UX-DR7). `aria-disabled`, e não `disabled`, para o foco não
+                // cair no vazio durante o envio.
+                <Button
+                  type="button"
+                  onClick={tentarDeNovo}
+                  aria-disabled={enviando}
+                  className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                >
+                  {enviando ? "Iniciando a nova Tentativa…" : "Tentar pagar de novo"}
+                </Button>
+              )}
+              {erroDaTentativa && (
+                <p className="text-destructive text-sm" role="alert">
+                  {erroDaTentativa}
+                </p>
+              )}
             </>
           )}
 

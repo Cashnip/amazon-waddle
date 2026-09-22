@@ -74,6 +74,11 @@ var registro = []traducao{
 	{pedido.ErrCarrinhoVazio, http.StatusConflict, "CARRINHO_VAZIO"},
 	{carrinho.ErrCarrinhoMudou, http.StatusConflict, "CARRINHO_MUDOU"},
 	{pedido.ErrChaveReutilizada, http.StatusConflict, "CHAVE_REUTILIZADA"},
+	// A nova Tentativa além do teto (5.10): 409, porque o pedido veio bem
+	// formado e o que não comporta é o Pedido. O teto é de `pagamento` (AD-8),
+	// mas a borda conhece a tradução de `pedido`: o AD-1 não tem aresta de
+	// `plataforma` para `pagamento`.
+	{pedido.ErrTentativasEsgotadas, http.StatusConflict, "TETO_DE_TENTATIVAS"},
 	// 409 nos dois: o nome duplicado e o Vendedor com Produtos são estado do
 	// mundo. O campo do duplicado viaja em `dados`, como no e-mail.
 	{catalogo.ErrVendedorJaCadastrado, http.StatusConflict, "VENDEDOR_JA_CADASTRADO"},

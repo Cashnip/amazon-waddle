@@ -544,6 +544,12 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a tela do Pedido: prazo, tripla, valores, Endereço e histórico", func(t *testing.T) {
 		detalheDoPedido(t, rotas, pool)
 	})
+	// A 5.10, com contas e Produtos próprios: a recusa aplicada e a nova
+	// Tentativa. A emissão e a varredura são globais, mas o transporte entrega
+	// só as Tentativas dos Pedidos dela — os dos subtestes acima não mudam.
+	t.Run("a recusa do pagamento e a nova Tentativa", func(t *testing.T) {
+		recusaENovaTentativa(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

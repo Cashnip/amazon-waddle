@@ -5,10 +5,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  FALHA_NA_NOVA_TENTATIVA,
   INTERVALO_AGUARDANDO_MS,
   INTERVALO_AVANCANDO_MS,
+  desfechoDaNovaTentativa,
+  impedimentosDaNovaTentativa,
   intervaloDaConsulta,
   motivoDaRecusa,
+  podeTentarDeNovo,
+  rotaDaNovaTentativa,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -72,4 +77,94 @@ test("as tentativas restantes, com o termo do glossário", () => {
   assert.equal(textoDasTentativas(2), "Restam 2 Tentativas de Pagamento para este Pedido.");
   assert.equal(textoDasTentativas(1), "Resta 1 Tentativa de Pagamento para este Pedido.");
   assert.equal(textoDasTentativas(0), "Não restam Tentativas de Pagamento para este Pedido.");
+});
+
+test("a recusa do Provedor tem frase própria, e o motivo desconhecido cai na genérica", () => {
+  const nascimento = { de: null, para: "AGUARDANDO_PAGAMENTO", ator: "COMPRADOR", motivo: null, em: "t0" };
+  const recusou = {
+    de: "AGUARDANDO_PAGAMENTO",
+    para: "PAGAMENTO_RECUSADO",
+    ator: "PROVEDOR",
+    motivo: "RECUSADO_PELO_PROVEDOR",
+    em: "t1",
+  };
+  assert.equal(motivoDaRecusa([nascimento, recusou]), "O Provedor de Pagamento recusou a Tentativa de Pagamento.");
+  assert.equal(motivoDaRecusa([nascimento, { ...recusou, motivo: "OUTRO" }]), "O pagamento foi recusado.");
+  // Chave herdada de Object.prototype não é motivo conhecido.
+  assert.equal(motivoDaRecusa([nascimento, { ...recusou, motivo: "constructor" }]), "O pagamento foi recusado.");
+});
+
+// A tripla do AD-18: Status, Tentativas restantes e disponível por Item.
+const item = (nome, disponivel) => ({
+  produto_id: nome,
+  nome,
+  quantidade: 1,
+  preco_praticado_centavos: 4990,
+  disponivel,
+});
+const recusado = { status: "PAGAMENTO_RECUSADO", tentativas_restantes: 2, itens: [item("Relógio", true), item("Caneca", true)] };
+
+test("tentar de novo só com recusado, Tentativa restante e todo Item disponível", () => {
+  assert.equal(podeTentarDeNovo(recusado), true);
+  assert.equal(podeTentarDeNovo({ ...recusado, tentativas_restantes: 0 }), false);
+  assert.equal(podeTentarDeNovo({ ...recusado, itens: [item("Relógio", true), item("Caneca", false)] }), false);
+  for (const status of ["AGUARDANDO_PAGAMENTO", "PAGO", "CANCELADO"]) {
+    assert.equal(podeTentarDeNovo({ ...recusado, status }), false, status);
+  }
+});
+
+test("sem Estoque, a tela nomeia cada Produto; sem Tentativa, quem fala é o texto das Tentativas", () => {
+  assert.deepEqual(impedimentosDaNovaTentativa(recusado), []);
+  assert.deepEqual(impedimentosDaNovaTentativa({ ...recusado, itens: [item("Relógio", false), item("Caneca", true)] }), [
+    { chave: "Relógio", texto: "Não há Estoque disponível de Relógio para uma nova Tentativa de Pagamento." },
+  ]);
+  // Dois Itens com o mesmo nome congelado: a chave é o Produto, e não a frase.
+  const gemeos = [
+    { ...item("Caneca", false), produto_id: "p1" },
+    { ...item("Caneca", false), produto_id: "p2" },
+  ];
+  assert.deepEqual(
+    impedimentosDaNovaTentativa({ ...recusado, itens: gemeos }).map((i) => i.chave),
+    ["p1", "p2"],
+  );
+  const semNada = { ...recusado, tentativas_restantes: 0, itens: [item("Relógio", false)] };
+  assert.deepEqual(impedimentosDaNovaTentativa(semNada), []);
+  assert.equal(textoDasTentativas(semNada.tentativas_restantes), "Não restam Tentativas de Pagamento para este Pedido.");
+  // Aguardando pagamento, o próprio Pedido segura a unidade e o Item lê
+  // indisponível (5.8): isso não é impedimento de nada.
+  assert.deepEqual(impedimentosDaNovaTentativa({ ...recusado, status: "AGUARDANDO_PAGAMENTO", itens: [item("Relógio", false)] }), []);
+});
+
+test("a rota da nova Tentativa é a do próprio Pedido", () => {
+  assert.equal(rotaDaNovaTentativa("0190-a/b"), "/api/v1/pedidos/0190-a%2Fb/tentativas");
+});
+
+test("a resposta da nova Tentativa: relê no sucesso e nas recusas do Pedido, e erra no resto", () => {
+  const resposta = (status, codigo, mensagem) => ({
+    resposta: { ok: status < 300, status },
+    json: codigo ? { erro: { codigo, mensagem } } : { id: "x", status: "AGUARDANDO_PAGAMENTO" },
+  });
+  assert.deepEqual(desfechoDaNovaTentativa(resposta(201)), { tipo: "releitura", aviso: null });
+  // Sem Estoque e sem Tentativa relêem e avisam: a unidade pode ter voltado
+  // antes da releitura, e o clique não pode parecer que não fez nada.
+  for (const codigo of ["ESTOQUE_INSUFICIENTE", "TETO_DE_TENTATIVAS"]) {
+    assert.deepEqual(desfechoDaNovaTentativa(resposta(409, codigo, "m")), { tipo: "releitura", aviso: "m" }, codigo);
+  }
+  // A corrida relê calada: o Pedido já anda.
+  assert.deepEqual(desfechoDaNovaTentativa(resposta(409, "ESTADO_JA_AVANCADO", "m")), { tipo: "releitura", aviso: null });
+  assert.deepEqual(desfechoDaNovaTentativa(resposta(401, "SESSAO_INVALIDA", "m")), { tipo: "semSessao" });
+  assert.deepEqual(desfechoDaNovaTentativa(resposta(404, "NAO_ENCONTRADO", "Recurso não encontrado.")), {
+    tipo: "erro",
+    mensagem: "Recurso não encontrado.",
+  });
+  // Um 409 que não é do Pedido — ou uma resposta sem envelope — não relê em
+  // silêncio: diz que falhou.
+  assert.deepEqual(desfechoDaNovaTentativa(resposta(409, "TRANSICAO_INVALIDA", "Esta mudança…")), {
+    tipo: "erro",
+    mensagem: "Esta mudança…",
+  });
+  assert.deepEqual(desfechoDaNovaTentativa({ resposta: { ok: false, status: 502 }, json: null }), {
+    tipo: "erro",
+    mensagem: FALHA_NA_NOVA_TENTATIVA,
+  });
 });

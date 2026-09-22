@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-22-2026 17:50
+last_updated: 09-22-2026 21:30
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   5-7-consistência-de-estoque-sob-concorrência: review
   5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento: review
   5-9-confirmação-aprovada-por-webhook: review
-  5-10-pagamento-recusado-e-nova-tentativa: backlog
+  5-10-pagamento-recusado-e-nova-tentativa: review
   5-11-expiração-da-tentativa-de-pagamento: backlog
   epic-5-retrospective: optional
 

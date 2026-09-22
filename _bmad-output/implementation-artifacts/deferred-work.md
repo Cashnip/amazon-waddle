@@ -389,3 +389,27 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-confirmacao-aprovada-por-webhook.md`
   summary: A aprovação sobre Pedido cancelado só é alcançável pelo teste até a 6.3 dar ao Comprador o cancelamento, e o sinal só fica visível na 6.5.
   evidence: `janelaDeCancelamento` inclui `AGUARDANDO_PAGAMENTO`, mas nenhuma rota leva a `CANCELADO` — o subteste cancela por `pedido.Transicionar` direto. Até a 6.3 existir, a corrida clássica da FR-26 não acontece no sistema rodando, e o registro que a varredura grava não tem leitor: o campo `pagamento_aprovado_sobre_cancelado` e as duas superfícies do Administrador são a 6.5.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: RESOLVIDO — a entrada da 5.1 "A nova Tentativa de um Pedido cujo Produto ou Vendedor foi desativado depois da compra falha como `ESTOQUE_INSUFICIENTE` com `disponivel: 0`" foi decidida pela 5.10.
+  evidence: A mensagem é a mesma do esgotado, de propósito: a FR-12 manda Produto desativado e de Vendedor desativado saírem iguais ao indisponível. A tela relê o Pedido depois do 409, `disponivel` do Item vem `false`, o "Tentar pagar de novo" sai, e `impedimentosDaNovaTentativa` (`web/lib/pedido.ts`) escreve "Não há Estoque disponível de {nome} para uma nova Tentativa de Pagamento." com o nome congelado no Item de Pedido — que continua existindo mesmo com o Produto fora do Catálogo.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: RESOLVIDO EM PARTE — a entrada da 5.8 "A superfície 'recusado' da tela do Pedido não é alcançável no sistema rodando": a faixa `,90`–`,94` chega a `PAGAMENTO_RECUSADO` sozinha; a de `,95`–`,99` continua parada em `AGUARDANDO_PAGAMENTO` até a 5.11.
+  evidence: `EmitirConfirmacoesDevidas` passou a emitir o `RECUSADO`, e `aplicarConfirmacao` o aplica com ator `PROVEDOR` e motivo `RECUSADO_PELO_PROVEDOR`, liberando a Reserva. A faixa que nunca confirma continua sem emissão, de propósito: é a expiração que a resolve. O passeio manual da superfície recusada pelo Roteiro B passos 1–4 continua sem ser feito (entrada abaixo).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: O "Tentar pagar de novo" nunca foi aberto num navegador, e o componente não tem teste automatizado — só as funções puras que ele chama.
+  evidence: `podeTentarDeNovo`, `impedimentosDaNovaTentativa` e `desfechoDaNovaTentativa` estão presas em `web/scripts/pedido.test.mjs`, e a matriz de servidor em `api/nova_tentativa_test.go`. O `web/` continua sem bancada de montar componente, então uma reescrita de `tentarDeNovo` em `acompanhamento.tsx` que deixe de chamar a releitura, ou de barrar o segundo clique pelo `useRef`, passaria na suíte. O passeio é o Roteiro B passos 1–4 a 360 e 1440 px, só pelo teclado.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: `Corrente` é calculado na leitura da inbox, fora da trava do Pedido, então uma nova Tentativa que comite entre essa leitura e o `TravarPedido` deixa uma recusa atrasada da Tentativa 1 passar por corrente e liberar a Reserva da 2.
+  evidence: `ConfirmacoesNaoAplicadas` roda sem transação e `aplicarConfirmacao` só reconfere o Status sob a trava (`internal/pedido/pedido.go`, o `if c.Corrente && …`). Hoje é inalcançável no sistema rodando: com o Provedor Simulado, uma confirmação da Tentativa 1 pendente implica o Pedido ainda em `AGUARDANDO_PAGAMENTO`, sem nova Tentativa possível. Fica alcançável com a 5.11 (expirar e tentar de novo antes de uma confirmação tardia chegar) ou com um Provedor real. A correção é reconferir a corrente sob a trava — o número da Tentativa na `Pendente` contra a contagem feita com a linha do Pedido presa, pela porta de `pagamento` —, e mexe na consulta da inbox (Ask First da 5.10).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: A aprovação de uma Tentativa superada com o Pedido ainda ativo (`AGUARDANDO_PAGAMENTO` ou `PAGO` pela Tentativa nova) é sinalizada sem aviso nem leitor — é cobrança duplicada que a 6.5 não enxerga, porque o predicado dela exige `CANCELADO`.
+  evidence: `aplicarConfirmacao` só avisa quando o Pedido travado está `CANCELADO`; a Tentativa superada aprovada cai em `NAO_APLICAVEL_SINALIZADA` calada. Inalcançável com o Simulado (a Tentativa 1 aprovada leva a `PAGO`, e não há nova Tentativa), alcançável com a 5.11 mais um Provedor real. Decidir junto da 6.5 se o sinal ao Administrador cobre também esse caso.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-pagamento-recusado-e-nova-tentativa.md`
+  summary: `TentativasSemConfirmacao` devolve para sempre toda Tentativa sem linha na inbox — as da faixa `,95`–`,99`, as expiradas e as de Pedido cancelado —, e o tique de 1 s as relê todas.
+  evidence: a consulta filtra só por `criada_em <= @ate` e pela ausência de confirmação; a expiração da 5.11 não grava inbox, então nada tira essas Tentativas da lista. Cresce com o histórico. A 5.11 decide a saída (marcar a Tentativa expirada, ou filtrar pela Tentativa corrente do Pedido).
