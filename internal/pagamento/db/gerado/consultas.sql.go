@@ -71,6 +71,19 @@ func (q *Queries) ConfirmacoesNaoAplicadas(ctx context.Context) ([]ConfirmacoesN
 	return items, nil
 }
 
+const contarTentativas = `-- name: ContarTentativas :one
+SELECT count(*)::integer FROM pagamento.tentativa_pagamento WHERE pedido_id = $1
+`
+
+// Quantas Tentativas o Pedido já teve. O teto é de `pagamento`, dono da
+// entidade (AD-8): `pedido` recebe as restantes prontas, e não conta sozinho.
+func (q *Queries) ContarTentativas(ctx context.Context, pedidoID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, contarTentativas, pedidoID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const criarTentativa = `-- name: CriarTentativa :exec
 
 INSERT INTO pagamento.tentativa_pagamento (pedido_id, total_centavos, id_externo, numero)
@@ -134,7 +147,7 @@ func (q *Queries) MarcarConfirmacao(ctx context.Context, arg MarcarConfirmacaoPa
 }
 
 const tentativasSemConfirmacao = `-- name: TentativasSemConfirmacao :many
-SELECT t.id_externo, t.total_centavos
+SELECT t.id_externo, t.total_centavos, t.numero
 FROM pagamento.tentativa_pagamento t
 WHERE t.criada_em <= $1
   AND NOT EXISTS (
@@ -146,6 +159,7 @@ ORDER BY t.criada_em
 type TentativasSemConfirmacaoRow struct {
 	IDExterno     string
 	TotalCentavos int64
+	Numero        int32
 }
 
 // A emissão é derivada, e não marcada (AD-7): Tentativa cujo atraso venceu e
@@ -153,6 +167,8 @@ type TentativasSemConfirmacaoRow struct {
 // POST, e a queda entre uma coisa e outra deixaria a Tentativa órfã para
 // sempre; derivando, reemitir é o comportamento normal e a chave única
 // transforma o reenvio em no-op.
+// O `numero` sai junto porque o Simulado decide pelos centavos só na primeira
+// Tentativa (§7.1, AD-8): da segunda em diante aprova.
 func (q *Queries) TentativasSemConfirmacao(ctx context.Context, ate pgtype.Timestamptz) ([]TentativasSemConfirmacaoRow, error) {
 	rows, err := q.db.Query(ctx, tentativasSemConfirmacao, ate)
 	if err != nil {
@@ -162,7 +178,7 @@ func (q *Queries) TentativasSemConfirmacao(ctx context.Context, ate pgtype.Times
 	var items []TentativasSemConfirmacaoRow
 	for rows.Next() {
 		var i TentativasSemConfirmacaoRow
-		if err := rows.Scan(&i.IDExterno, &i.TotalCentavos); err != nil {
+		if err := rows.Scan(&i.IDExterno, &i.TotalCentavos, &i.Numero); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

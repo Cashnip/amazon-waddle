@@ -170,6 +170,9 @@ func ambiente(t *testing.T) (http.Handler, *redis.Client, *pgxpool.Pool) {
 
 		CarrinhoUnidadesMax:  carrinhoUnidadesMaxDeTeste,
 		FreteIsencaoCentavos: freteIsencaoDeTeste,
+
+		PagamentoTentativasMax:      tentativasMaxDeTeste,
+		PagamentoTentativaExpiracao: expiracaoDaTentativaDeTeste,
 	}
 	return Rotas(cfg, pool, rdb), rdb, pool
 }
@@ -524,6 +527,11 @@ func TestSessaoEProduto(t *testing.T) {
 	// unidade produzem exatamente o Estoque inicial em Pedidos.
 	t.Run("a consistência de Estoque sob concorrência", func(t *testing.T) {
 		consistenciaSobConcorrencia(t, rotas, pool)
+	})
+
+	// A 5.8: o que a tela do Pedido lê numa chamada só (AD-18).
+	t.Run("a tela do Pedido: prazo, tripla, valores, Endereço e histórico", func(t *testing.T) {
+		detalheDoPedido(t, rotas, pool)
 	})
 }
 

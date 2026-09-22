@@ -38,9 +38,9 @@ const (
 	NaoAplicavelSinalizada = "NAO_APLICAVEL_SINALIZADA"
 )
 
-// primeiraTentativa: na Épica 1 há uma Tentativa por Pedido. Nova Tentativa,
-// teto de três e expiração são da Épica 5 — a coluna `numero` já existe para
-// que essa estória só precise incrementá-la.
+// primeiraTentativa é o número da Tentativa que nasce com o Pedido, e o limiar
+// de Decidir: a faixa do §7.1 vale só para ela. A nova Tentativa (5.10) só
+// precisa incrementar `numero`.
 const primeiraTentativa = 1
 
 // Simulado é o Provedor Simulado: decide pelos centavos do total e mais nada.
@@ -54,7 +54,14 @@ type Simulado struct {
 // centavos do total" quer dizer, e é a leitura que resolve a ambiguidade que a
 // 1.1 deixou registrada em `deferred-work.md`: o limiar é o resto dos
 // centavos, nunca um valor em reais.
-func (s Simulado) Decidir(totalCentavos int64) string {
+//
+// A faixa vale só para a primeira Tentativa (AD-8): da segunda em diante o
+// Simulado aprova, senão a nova Tentativa da FR-27 cairia na mesma recusa do
+// mesmo total e não teria o que exercitar.
+func (s Simulado) Decidir(totalCentavos int64, numero int32) string {
+	if numero > primeiraTentativa {
+		return Aprovado
+	}
 	centavos := totalCentavos % 100
 	switch {
 	case centavos <= s.AprovadoAteCentavos:
@@ -148,6 +155,22 @@ func RegistrarConfirmacao(ctx context.Context, bd gerado.DBTX, c Confirmacao) er
 	return nil
 }
 
+// TentativasRestantes diz quantas Tentativas o Pedido ainda pode abrir, com
+// piso zero. O teto chega como valor, da configuração (AD-13), mas a conta é
+// daqui: `pagamento` é dono da Tentativa e do teto (AD-8), e `pedido` só
+// repassa o número à tela (AD-18).
+func TentativasRestantes(ctx context.Context, bd gerado.DBTX, pedidoID string, teto int) (int, error) {
+	var chave pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return 0, fmt.Errorf("identificador de Pedido inválido: %w", err)
+	}
+	feitas, err := gerado.New(bd).ContarTentativas(ctx, chave)
+	if err != nil {
+		return 0, fmt.Errorf("contar as Tentativas do Pedido: %w", err)
+	}
+	return max(teto-int(feitas), 0), nil
+}
+
 // ConfirmacoesNaoAplicadas é a porta por onde a varredura de `pedido` lê a
 // inbox. É esta função que mantém a aresta na direção certa: `pedido` chama
 // `pagamento`, e `pagamento` não sabe que `pedido` existe.
@@ -207,7 +230,7 @@ func EmitirConfirmacoesDevidas(ctx context.Context, bd gerado.DBTX, s Simulado, 
 	}
 	var falhas []error
 	for _, t := range devidas {
-		if s.Decidir(t.TotalCentavos) != Aprovado {
+		if s.Decidir(t.TotalCentavos, t.Numero) != Aprovado {
 			continue
 		}
 		if err := enviar(ctx, Confirmacao{IDExterno: t.IDExterno, Resultado: Aprovado}); err != nil {

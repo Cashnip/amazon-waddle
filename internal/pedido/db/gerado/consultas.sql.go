@@ -34,7 +34,9 @@ func (q *Queries) AvancarStatus(ctx context.Context, arg AvancarStatusParams) (i
 }
 
 const buscarPedidoDoComprador = `-- name: BuscarPedidoDoComprador :one
-SELECT p.id, p.numero, p.status, p.total_centavos,
+SELECT p.id, p.numero, p.status, p.subtotal_centavos, p.frete_centavos, p.total_centavos,
+       p.endereco_destinatario, p.endereco_cep, p.endereco_logradouro, p.endereco_numero,
+       p.endereco_complemento, p.endereco_bairro, p.endereco_cidade, p.endereco_uf,
        -- O cast é carga: sem ele o sqlc não infere o tipo da subconsulta e
        -- devolve ` + "`" + `interface{}` + "`" + `, que só falharia no Scan em tempo de execução.
        (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS atualizado_em
@@ -48,11 +50,21 @@ type BuscarPedidoDoCompradorParams struct {
 }
 
 type BuscarPedidoDoCompradorRow struct {
-	ID            pgtype.UUID
-	Numero        string
-	Status        string
-	TotalCentavos int64
-	AtualizadoEm  pgtype.Timestamptz
+	ID                   pgtype.UUID
+	Numero               string
+	Status               string
+	SubtotalCentavos     int64
+	FreteCentavos        int64
+	TotalCentavos        int64
+	EnderecoDestinatario pgtype.Text
+	EnderecoCep          pgtype.Text
+	EnderecoLogradouro   pgtype.Text
+	EnderecoNumero       pgtype.Text
+	EnderecoComplemento  pgtype.Text
+	EnderecoBairro       pgtype.Text
+	EnderecoCidade       pgtype.Text
+	EnderecoUf           pgtype.Text
+	AtualizadoEm         pgtype.Timestamptz
 }
 
 // A leitura da tela de acompanhamento. O dono entra no WHERE, e não numa
@@ -60,6 +72,9 @@ type BuscarPedidoDoCompradorRow struct {
 // como "nenhuma linha", que é o mesmo 404 — não vaza existência.
 // O instante é o da última transição, absoluto e vindo do servidor: o
 // navegador nunca conta duração.
+// Subtotal, Frete e Endereço são os congelados da 5.6: a tela os exibe como
+// foram gravados, e não os recompõe (AD-9). O Endereço é todo nulo no Pedido
+// do esqueleto — o CHECK `pedido_criacao_completa` garante que nunca pela metade.
 func (q *Queries) BuscarPedidoDoComprador(ctx context.Context, arg BuscarPedidoDoCompradorParams) (BuscarPedidoDoCompradorRow, error) {
 	row := q.db.QueryRow(ctx, buscarPedidoDoComprador, arg.PedidoID, arg.CompradorID)
 	var i BuscarPedidoDoCompradorRow
@@ -67,7 +82,17 @@ func (q *Queries) BuscarPedidoDoComprador(ctx context.Context, arg BuscarPedidoD
 		&i.ID,
 		&i.Numero,
 		&i.Status,
+		&i.SubtotalCentavos,
+		&i.FreteCentavos,
 		&i.TotalCentavos,
+		&i.EnderecoDestinatario,
+		&i.EnderecoCep,
+		&i.EnderecoLogradouro,
+		&i.EnderecoNumero,
+		&i.EnderecoComplemento,
+		&i.EnderecoBairro,
+		&i.EnderecoCidade,
+		&i.EnderecoUf,
 		&i.AtualizadoEm,
 	)
 	return i, err
@@ -211,6 +236,48 @@ func (q *Queries) HistoricoDoPedido(ctx context.Context, pedidoID pgtype.UUID) (
 			&i.Ator,
 			&i.Motivo,
 			&i.OcorridoEm,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const itensDoPedido = `-- name: ItensDoPedido :many
+SELECT produto_id, nome, preco_praticado_centavos, quantidade
+FROM pedido.item_pedido
+WHERE pedido_id = $1
+ORDER BY id
+`
+
+type ItensDoPedidoRow struct {
+	ProdutoID              pgtype.UUID
+	Nome                   string
+	PrecoPraticadoCentavos int64
+	Quantidade             int32
+}
+
+// Os Itens de Pedido como a tela os mostra: o que foi congelado na compra,
+// nunca o preço de hoje (FR-30). Sem dono no WHERE: quem chama já leu o
+// Pedido pelo dono (AD-11). A ordem por `id` é a da criação — uuidv7().
+func (q *Queries) ItensDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]ItensDoPedidoRow, error) {
+	rows, err := q.db.Query(ctx, itensDoPedido, pedidoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ItensDoPedidoRow
+	for rows.Next() {
+		var i ItensDoPedidoRow
+		if err := rows.Scan(
+			&i.ProdutoID,
+			&i.Nome,
+			&i.PrecoPraticadoCentavos,
+			&i.Quantidade,
 		); err != nil {
 			return nil, err
 		}

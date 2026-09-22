@@ -131,9 +131,12 @@ func gestaoDeVendedores(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 		t.Errorf("reservas = %d depois da compra recusada, eram %d", n, reservasAntes)
 	}
 
-	// O Pedido antigo é lido idêntico.
-	if depois := corpoSemCorrelacao(pegarPedido(t, rotas, pedidoID, comprador)); depois != pedidoAntes {
-		t.Errorf("o Pedido mudou com a desativação:\n%s\n%s", pedidoAntes, depois)
+	// O Pedido antigo é lido idêntico no que foi congelado. A única coisa que
+	// muda é derivada, e tem de mudar (5.8): o Item deixou de estar disponível,
+	// porque o Produto de Vendedor inativo é invisível (AD-19).
+	quer := strings.Replace(pedidoAntes, `"disponivel":true`, `"disponivel":false`, 1)
+	if depois := corpoSemCorrelacao(pegarPedido(t, rotas, pedidoID, comprador)); quer == pedidoAntes || depois != quer {
+		t.Errorf("o Pedido mudou com a desativação além do disponível do Item:\n%s\n%s", pedidoAntes, depois)
 	}
 
 	// Remover com Produto: 409, e a mensagem oferece desativar.

@@ -205,7 +205,7 @@ func RemoverEndereco(ctx context.Context, bd gerado.DBTX, enderecoID, compradorI
 
 // uuidDe é o par de uuidTexto: o identificador malformado vira pgx.ErrNoRows, e
 // não um 500 — para quem chama, "não é um uuid" e "não existe" são a mesma
-// coisa (o molde é o de pedido.Buscar).
+// coisa (o molde é o de pedido.Detalhar).
 func uuidDe(texto string) (pgtype.UUID, error) {
 	var u pgtype.UUID
 	if err := u.Scan(texto); err != nil {

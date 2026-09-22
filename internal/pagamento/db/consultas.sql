@@ -43,11 +43,18 @@ WHERE id = @id AND estado = 'PENDENTE';
 -- POST, e a queda entre uma coisa e outra deixaria a Tentativa órfã para
 -- sempre; derivando, reemitir é o comportamento normal e a chave única
 -- transforma o reenvio em no-op.
+-- O `numero` sai junto porque o Simulado decide pelos centavos só na primeira
+-- Tentativa (§7.1, AD-8): da segunda em diante aprova.
 -- name: TentativasSemConfirmacao :many
-SELECT t.id_externo, t.total_centavos
+SELECT t.id_externo, t.total_centavos, t.numero
 FROM pagamento.tentativa_pagamento t
 WHERE t.criada_em <= @ate
   AND NOT EXISTS (
       SELECT 1 FROM pagamento.confirmacao_recebida c WHERE c.tentativa_id = t.id
   )
 ORDER BY t.criada_em;
+
+-- Quantas Tentativas o Pedido já teve. O teto é de `pagamento`, dono da
+-- entidade (AD-8): `pedido` recebe as restantes prontas, e não conta sozinho.
+-- name: ContarTentativas :one
+SELECT count(*)::integer FROM pagamento.tentativa_pagamento WHERE pedido_id = @pedido_id;

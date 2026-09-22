@@ -204,7 +204,7 @@ export function FormularioDeEndereco({
 // texto na lista, no checkout e na Revisão. As linhas são `span` em bloco, e
 // não `p`, para caberem também dentro do `label` da escolha no checkout, que
 // só aceita conteúdo de frase.
-export function LinhasDoEndereco({ endereco }: { endereco: Endereco }) {
+export function LinhasDoEndereco({ endereco }: { endereco: Omit<Endereco, "id"> }) {
   return (
     <>
       <span className="block font-medium">{endereco.destinatario}</span>
@@ -220,7 +220,9 @@ export function LinhasDoEndereco({ endereco }: { endereco: Endereco }) {
   );
 }
 
-export function EnderecoPorExtenso({ endereco }: { endereco: Endereco }) {
+// Sem o `id`: também serve ao Endereço congelado no Pedido (5.8), que é cópia
+// e não tem identificador.
+export function EnderecoPorExtenso({ endereco }: { endereco: Omit<Endereco, "id"> }) {
   return (
     <address className="space-y-1 not-italic">
       <LinhasDoEndereco endereco={endereco} />

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"regexp"
@@ -43,15 +44,118 @@ func saidaDoPedido(p pedido.Pedido) saidaPedido {
 	return saidaPedido{ID: p.ID, Numero: p.Numero, Status: string(p.Status), TotalCentavos: p.TotalCentavos}
 }
 
-// saidaPedidoDetalhe é o que a tela do Pedido em processamento consulta em
-// intervalo. O instante é absoluto e em RFC 3339, vindo do servidor: o
-// navegador exibe, e nunca conta. `terminal` vem de pedido.EstadoTerminal, a
-// única declaração de "acabou" do sistema (AD-18): é ele que manda a tela
-// parar de consultar, e a regra não é redeclarada em JavaScript.
+// saidaPedidoDetalhe é o que a tela do Pedido consulta em intervalo, e carrega
+// tudo que ela deriva (AD-18): a tripla (`status`, `tentativas_restantes`,
+// `disponivel` por Item), `expira_em`, os valores e o Endereço congelados e o
+// histórico. Todo instante é absoluto e em RFC 3339, vindo do servidor: o
+// navegador exibe, e nunca conta — uma duração recomeçaria no recarregamento.
+// `terminal` vem de pedido.EstadoTerminal, a única declaração de "acabou" do
+// sistema: é ele que manda a tela parar de consultar.
+//
+// Nenhuma chave nomeia a Reserva de Estoque: é conceito de domínio, e a
+// EXPERIENCE proíbe expô-lo ao Comprador.
 type saidaPedidoDetalhe struct {
 	saidaPedido
-	AtualizadoEm string `json:"atualizado_em"`
-	Terminal     bool   `json:"terminal"`
+	AtualizadoEm        string                  `json:"atualizado_em"`
+	Terminal            bool                    `json:"terminal"`
+	SubtotalCentavos    int64                   `json:"subtotal_centavos"`
+	FreteCentavos       int64                   `json:"frete_centavos"`
+	ExpiraEm            *string                 `json:"expira_em"`
+	TentativasRestantes int                     `json:"tentativas_restantes"`
+	Endereco            *saidaEnderecoCongelado `json:"endereco"`
+	Itens               []saidaItemPedido       `json:"itens"`
+	Historico           []saidaTransicao        `json:"historico"`
+}
+
+// saidaEnderecoCongelado é o Endereço copiado no Pedido na criação: cópia, e
+// não referência, então sem id. Tem os campos da etiqueta de "Meus endereços",
+// mas tipo próprio — reusar o corpo de entrada daquela rota faria uma mudança
+// nele alterar esta resposta sem ninguém ver. `null` no Pedido do esqueleto.
+type saidaEnderecoCongelado struct {
+	Destinatario string `json:"destinatario"`
+	CEP          string `json:"cep"`
+	Logradouro   string `json:"logradouro"`
+	Numero       string `json:"numero"`
+	Complemento  string `json:"complemento"`
+	Bairro       string `json:"bairro"`
+	Cidade       string `json:"cidade"`
+	UF           string `json:"uf"`
+}
+
+// saidaItemPedido: o preço é o praticado, congelado na compra — nunca o de hoje.
+type saidaItemPedido struct {
+	ProdutoID              string `json:"produto_id"`
+	Nome                   string `json:"nome"`
+	Quantidade             int32  `json:"quantidade"`
+	PrecoPraticadoCentavos int64  `json:"preco_praticado_centavos"`
+	Disponivel             bool   `json:"disponivel"`
+}
+
+// saidaTransicao é uma linha do histórico. `de` é null no nascimento e
+// `motivo` é null quando a transição não tem um — texto vazio seria um motivo
+// sem conteúdo.
+type saidaTransicao struct {
+	De     *string `json:"de"`
+	Para   string  `json:"para"`
+	Ator   string  `json:"ator"`
+	Motivo *string `json:"motivo"`
+	Em     string  `json:"em"`
+}
+
+// instante é a única forma de instante nesta resposta. Nano, e não segundos:
+// duas transições do mesmo Pedido cabem no mesmo segundo, e a tela que compara
+// instantes não teria como distingui-las. RFC3339Nano continua sendo RFC 3339.
+func instante(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+
+// textoOuNulo: o vazio do domínio vira `null` no JSON.
+func textoOuNulo(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func saidaDoDetalhe(d pedido.Detalhe) saidaPedidoDetalhe {
+	saida := saidaPedidoDetalhe{
+		saidaPedido:         saidaDoPedido(d.Pedido),
+		AtualizadoEm:        instante(d.AtualizadoEm),
+		Terminal:            pedido.EstadoTerminal(d.Status),
+		SubtotalCentavos:    d.SubtotalCentavos,
+		FreteCentavos:       d.FreteCentavos,
+		TentativasRestantes: d.TentativasRestantes,
+		// Fatias vazias, e nunca `null`: o mesmo contrato das listas.
+		Itens:     make([]saidaItemPedido, 0, len(d.Itens)),
+		Historico: make([]saidaTransicao, 0, len(d.Historico)),
+	}
+	if d.ExpiraEm != nil {
+		expira := instante(*d.ExpiraEm)
+		saida.ExpiraEm = &expira
+	}
+	if e := d.Endereco; e != nil {
+		saida.Endereco = &saidaEnderecoCongelado{
+			Destinatario: e.Destinatario, CEP: e.CEP, Logradouro: e.Logradouro, Numero: e.Numero,
+			Complemento: e.Complemento, Bairro: e.Bairro, Cidade: e.Cidade, UF: e.UF,
+		}
+	}
+	for _, it := range d.Itens {
+		saida.Itens = append(saida.Itens, saidaItemPedido{
+			ProdutoID:              it.ProdutoID,
+			Nome:                   it.Nome,
+			Quantidade:             it.Quantidade,
+			PrecoPraticadoCentavos: it.PrecoPraticadoCentavos,
+			Disponivel:             it.Disponivel,
+		})
+	}
+	for _, t := range d.Historico {
+		saida.Historico = append(saida.Historico, saidaTransicao{
+			De:     textoOuNulo(string(t.De)),
+			Para:   string(t.Para),
+			Ator:   string(t.Ator),
+			Motivo: textoOuNulo(t.Motivo),
+			Em:     instante(t.Em),
+		})
+	}
+	return saida
 }
 
 // criarPedido é o Confirmar Pedido da Revisão (FR-23, FR-24, NFR-12): o Pedido
@@ -125,8 +229,14 @@ func (s *servidor) criarPedido(w http.ResponseWriter, r *http.Request) {
 	escreverJSON(w, status, saidaDoPedido(novo))
 }
 
-// lerPedido é a terceira rota autenticada. Não abre transação: é uma consulta
-// só, e o pool é a DBTX que `pedido.Buscar` espera.
+// lerPedido é a tela do Pedido (5.8): a consulta que ela repete a cada 3 s
+// enquanto AGUARDANDO_PAGAMENTO e a cada 10 s depois.
+//
+// O Detalhe são várias consultas — Pedido, histórico, Tentativas, Itens,
+// Estoque disponível —, e elas rodam numa transação só leitura em REPEATABLE
+// READ: todas veem o mesmo instante, então o Status nunca chega de um lado da
+// transição e o histórico (de onde sai `expira_em`) do outro. Só leitura não
+// trava ninguém nem sofre falha de serialização; não há o que repetir.
 func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
@@ -136,7 +246,15 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := pedido.Buscar(r.Context(), s.pool, r.PathValue("id"), comprador.ID)
+	tx, err := s.pool.BeginTx(r.Context(), pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+	defer tx.Rollback(context.WithoutCancel(r.Context()))
+
+	d, err := pedido.Detalhar(r.Context(), tx, r.PathValue("id"), comprador.ID,
+		s.cfg.PagamentoTentativaExpiracao, s.cfg.PagamentoTentativasMax)
 	if err != nil {
 		// Pedido de outro Comprador, Pedido inexistente e uuid malformado são
 		// o mesmo 404: responder diferente vazaria a existência do Pedido.
@@ -147,14 +265,7 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
-	escreverJSON(w, http.StatusOK, saidaPedidoDetalhe{
-		saidaPedido: saidaDoPedido(p),
-		// Nano, e não segundos: duas transições do mesmo Pedido cabem no mesmo
-		// segundo, e a tela que compara instantes não teria como distingui-las.
-		// RFC3339Nano continua sendo RFC 3339.
-		AtualizadoEm: p.AtualizadoEm.Format(time.RFC3339Nano),
-		Terminal:     pedido.EstadoTerminal(p.Status),
-	})
+	escreverJSON(w, http.StatusOK, saidaDoDetalhe(d))
 }
 
 // listarPedidos é a tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1

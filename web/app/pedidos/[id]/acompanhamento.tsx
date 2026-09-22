@@ -2,30 +2,38 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
+import { Preco } from "@/components/preco";
+import { freteGratis } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
+import {
+  INTERVALO_AGUARDANDO_MS,
+  intervaloDaConsulta,
+  motivoDaRecusa,
+  superficieDoPedido,
+  tempoRestante,
+  textoDasTentativas,
+  type DetalheDoPedido,
+} from "@/lib/pedido";
+import { formatarPreco } from "@/lib/preco";
 
-// A consulta é de 3 s enquanto o Pedido aguarda pagamento — a janela em que a
-// confirmação chega — e afrouxa para 10 s no resto do caminho, que anda por
-// etapas mais longas. Sem WebSocket (AD-10). Quem diz quando parar é o
-// `terminal` do servidor, e não uma lista de Status repetida aqui.
-const intervaloAguardando = 3000;
-const intervaloAvancando = 10000;
-
-type Pedido = {
-  id: string;
-  numero: string;
-  status: string;
-  total_centavos: number;
-  atualizado_em: string;
-  terminal: boolean;
-};
-
-const aguardando = "AGUARDANDO_PAGAMENTO";
+// A tela do Pedido (5.8) — "Pedido em processamento" enquanto aguarda
+// pagamento, apontada pelo §14 do PRD como o elemento de interface mais
+// arriscado do documento. É estado próprio, não modal e não spinner, e tem
+// três superfícies na mesma página: o relógio enquanto aguarda; o motivo no
+// lugar do relógio quando recusa ou expira; e o Detalhe quando o pagamento
+// passa, sem navegação nova. "Ver o Pedido em Meus pedidos" existe em todas,
+// inclusive carregando e com erro: o Comprador nunca fica preso aqui.
+//
+// Tudo sai de uma consulta só (AD-18). O que ler dela — superfície, ritmo,
+// tempo restante, motivo — mora em `lib/pedido.ts`, testado; aqui só se
+// executa.
 
 // Os rótulos são os termos do glossário, escritos como se lê em tela. Os sete
-// do CHECK estão aqui inteiros, embora recusado e cancelado só passem a ser
-// alcançáveis nas Épicas 5 e 6: é a lista do banco, e não a do que já acontece.
+// do CHECK estão aqui inteiros: é a lista do banco, e não a do que já acontece.
 const rotulo: Record<string, string> = {
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
   PAGAMENTO_RECUSADO: "Pagamento recusado",
@@ -37,8 +45,8 @@ const rotulo: Record<string, string> = {
 };
 
 // O instante vem absoluto e em RFC 3339 do servidor; o `dateTime` guarda essa
-// forma e o que o Comprador lê é a mesma marca em pt-BR. Não há contagem de
-// duração no navegador — só formatação do que o servidor mandou.
+// forma e o que o Comprador lê é a mesma marca em pt-BR. É o sinal, durante a
+// consulta em intervalo, de que o que está na tela é recente.
 function Instante({ valor }: { valor: string }) {
   const data = new Date(valor);
   const texto = Number.isNaN(data.getTime())
@@ -47,20 +55,119 @@ function Instante({ valor }: { valor: string }) {
   return <time dateTime={valor}>{texto}</time>;
 }
 
-function Preco({ centavos }: { centavos: number }) {
-  const reais = Math.floor(centavos / 100);
-  const resto = String(centavos % 100).padStart(2, "0");
+// O relógio re-renderiza a cada segundo, mas não conta nada: cada tique só
+// subtrai o agora do `expira_em` do servidor, então recarregar a página
+// continua do mesmo ponto. O número fica fora de região viva — anunciar um
+// valor a cada segundo afogaria o leitor de tela —, mas a frase do prazo
+// encerrado entra numa região que existe desde a montagem, para ser anunciada
+// uma vez quando aparece.
+function Relogio({ expiraEm }: { expiraEm: string }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => {
+    const tique = setInterval(() => setAgora(Date.now()), 1000);
+    return () => clearInterval(tique);
+  }, []);
+
+  const restante = tempoRestante(expiraEm, agora);
+  if (restante === null) return null;
   return (
-    <p>
-      <span className="preco">R$ {reais.toLocaleString("pt-BR")}</span>
-      <span className="preco-centavos align-super">{resto}</span>
-    </p>
+    <>
+      {!restante.esgotado && (
+        <p className="text-sm">
+          Tempo restante para o pagamento:{" "}
+          {/* `dateTime` de duração (ISO 8601), porque o texto é o que falta,
+              e não o instante do vencimento. */}
+          <time dateTime={`PT${Math.ceil(restante.ms / 1000)}S`} className="font-medium tabular-nums">
+            {restante.texto}
+          </time>
+        </p>
+      )}
+      {/* Zerado e ainda aguardando: quem decide o desfecho é o servidor, e a
+          consulta segue. A frase diz o que aconteceu e não promete quando o
+          Pedido muda — um relógio que para sem dizer por quê é exatamente o
+          risco do §14, e uma promessa que não se cumpre é o outro. */}
+      <p className="text-sm" role="status">
+        {restante.esgotado && "O prazo para o pagamento terminou sem a confirmação chegar."}
+      </p>
+    </>
+  );
+}
+
+// O Detalhe do Pedido como a 5.8 o mostra: Itens com o preço praticado, os
+// valores congelados e o Endereço. A linha do tempo e o cancelamento são da
+// 6.2 e da 6.3, sobre este mesmo componente.
+function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>Itens do Pedido</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul>
+            {pedido.itens.map((item, i) => (
+              <li key={item.produto_id}>
+                {i > 0 && <Separator className="my-4" />}
+                <p className="font-medium">{item.nome}</p>
+                <p className="text-muted-foreground text-sm tabular-nums">
+                  {item.quantidade} × {formatarPreco(item.preco_praticado_centavos)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      {pedido.endereco && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h2>Endereço de entrega</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EnderecoPorExtenso endereco={pedido.endereco} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Os três valores são os congelados no Pedido, como o Go os devolve:
+          a tela não soma nada (NFR-13), e o total fecha com as parcelas
+          porque o banco o exige (AD-9). */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>Valores</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt>Subtotal</dt>
+              <dd className="tabular-nums">{formatarPreco(pedido.subtotal_centavos)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt>Frete</dt>
+              <dd className="tabular-nums">
+                {freteGratis(pedido) ? "Grátis" : formatarPreco(pedido.frete_centavos)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t pt-2 font-medium">
+              <dt>Total</dt>
+              <dd className="tabular-nums">{formatarPreco(pedido.total_centavos)}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
 export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
   const router = useRouter();
-  const [pedido, setPedido] = useState<Pedido | null>(null);
+  const [pedido, setPedido] = useState<DetalheDoPedido | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
@@ -106,69 +213,92 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
         }
         setErro(null);
         setPedido(corpo);
-        // Parar só no estado terminal: a tela existe para acompanhar o Pedido
-        // até ENTREGUE, e quem declara o que é terminal é o servidor (AD-18).
-        if (corpo?.terminal) {
+        const proxima = intervaloDaConsulta(corpo);
+        if (proxima === null) {
           clearInterval(timer);
           return;
         }
-        reprogramar(corpo?.status === aguardando ? intervaloAguardando : intervaloAvancando);
+        reprogramar(proxima);
       } catch {
         if (vivo) setErro("Não foi possível ler o Pedido.");
       }
     }
 
     consultar();
-    reprogramar(intervaloAguardando);
+    reprogramar(INTERVALO_AGUARDANDO_MS);
     return () => {
       vivo = false;
       clearInterval(timer);
     };
   }, [pedidoId, router]);
 
-  // Enquanto não há Pedido lido, o erro é tudo o que a tela tem a mostrar.
-  // Com Pedido em mão, ele entra ao lado — a consulta continua, e sumir com o
-  // Pedido a cada tropeço de rede seria pior que o tropeço.
-  if (erro && !pedido) {
-    return (
-      <p className="text-destructive text-sm" role="alert">
-        {erro}
-      </p>
-    );
-  }
+  const superficie = pedido ? superficieDoPedido(pedido) : null;
 
   return (
-    <Card>
-      <CardContent className="space-y-4">
-        <h1 className="text-2xl font-medium">
-          Pedido {pedido ? pedido.numero : "…"}
-        </h1>
-        {/* A região vive desde o primeiro render e só o conteúdo muda: uma
-            região `role="status"` que entra no DOM junto com o texto costuma
-            não ser anunciada por leitor de tela — e é exatamente esta mudança
-            que o Comprador está esperando ouvir. */}
-        <p className="text-sm" role="status">
-          {pedido && (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-4">
+          <h1 className="text-2xl font-medium">Pedido {pedido ? pedido.numero : "…"}</h1>
+          {/* A região vive desde o primeiro render e só o conteúdo muda: uma
+              região `role="status"` que entra no DOM junto com o texto costuma
+              não ser anunciada por leitor de tela — e é exatamente esta
+              mudança que o Comprador está esperando ouvir. */}
+          <p className="text-sm" role="status">
+            {pedido ? (
+              <>
+                Status: <span className="font-medium">{rotulo[pedido.status] ?? pedido.status}</span>
+                {/* O motivo mora na região viva: é ele que o Comprador
+                    precisa ouvir quando a tela troca o relógio. */}
+                {superficie === "recusado" && (
+                  <span className="block font-medium">{motivoDaRecusa(pedido.historico)}</span>
+                )}
+              </>
+            ) : (
+              !erro && "Carregando o Pedido…"
+            )}
+          </p>
+
+          {pedido && superficie === "processando" && (
             <>
-              Status: <span className="font-medium">{rotulo[pedido.status] ?? pedido.status}</span>
-              {pedido.status === aguardando && " — a confirmação do pagamento chega sozinha."}
+              <p className="text-sm">
+                A confirmação do pagamento chega sozinha, e você não precisa ficar nesta tela.
+              </p>
+              {pedido.expira_em && <Relogio key={pedido.expira_em} expiraEm={pedido.expira_em} />}
+              <Preco centavos={pedido.total_centavos} />
             </>
           )}
-        </p>
-        {pedido && (
-          <>
-            <Preco centavos={pedido.total_centavos} />
+
+          {pedido && superficie === "recusado" && (
+            <>
+              <p className="text-sm">{textoDasTentativas(pedido.tentativas_restantes)}</p>
+              <p className="text-muted-foreground text-sm">
+                Os Itens de Pedido continuam no próprio Pedido.
+              </p>
+            </>
+          )}
+
+          {pedido && (
             <p className="text-muted-foreground text-sm">
               Última atualização: <Instante valor={pedido.atualizado_em} />
             </p>
-          </>
-        )}
-        {erro && (
-          <p className="text-destructive text-sm" role="alert">
-            {erro}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+          )}
+
+          {erro && (
+            <p className="text-destructive text-sm" role="alert">
+              {erro}
+            </p>
+          )}
+
+          <Button asChild variant="outline">
+            <a href="/pedidos">Ver o Pedido em Meus pedidos</a>
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Recusado também mostra o que o Pedido contém (EXPERIENCE, "Pagamento
+          recusado" e "Tentativa expirada" são estados do Detalhe): o
+          Comprador vê o que continua no Pedido. Só o relógio o esconde. */}
+      {pedido && superficie !== "processando" && <Detalhe pedido={pedido} />}
+    </div>
   );
 }

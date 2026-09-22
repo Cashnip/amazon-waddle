@@ -377,3 +377,11 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-consistencia-de-estoque-sob-concorrencia.md`
   summary: A bancada da 5.7 não prende o `TOTAL_DIVERGENTE` do passo 5 nem os dois caminhos de recuperação do duplo clique (`ON CONFLICT DO NOTHING` e a releitura em `recusar`).
   evidence: Duas entradas anteriores apontavam a bancada da 5.7 como o lugar deles. Ela não serve: pela mesma fila do contador, as criações paralelas não se sobrepõem dentro de `pedido.Criar`, então nem o `UPDATE` de preço comitando na janela entre o `INSERT` e a trava, nem a colisão de chave no índice único acontecem por disparar N requisições juntas. Os três continuam sem teste determinístico e pedem gancho dentro de `pedido.Criar` — ou a numeração movida, que reabriria a janela de verdade.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento.md`
+  summary: RESOLVIDO — a entrada da 5.6 "A resposta do Pedido (`saidaPedido`) não expõe subtotal, Frete nem Endereço congelados" foi fechada pela 5.8.
+  evidence: `pedido.Detalhar` substituiu `pedido.Buscar`, e `GET /api/v1/pedidos/{id}` passou a carregar `subtotal_centavos`, `frete_centavos`, `endereco` (`null` no Pedido do esqueleto), `itens[]` a preço praticado, `historico[]`, `expira_em` e `tentativas_restantes`, provados contra o que está gravado em `api/pedido_detalhe_test.go`. A lista de "Meus pedidos" continua com os quatro campos, que é decisão da 6.1.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento.md`
+  summary: A superfície "recusado" da tela do Pedido não é alcançável no sistema rodando até a 5.10 (aplicar a recusa) e a 5.11 (expirar), e um total de `,90`–`,99` na primeira Tentativa fica em `AGUARDANDO_PAGAMENTO` com o relógio zerado.
+  evidence: A 5.8 não emite recusa (aplicá-la é da 5.10) nem expira Tentativa (5.11); só o teste de Go chega a `PAGAMENTO_RECUSADO`, por `Transicionar` direto. O relógio zerado diz apenas que o prazo terminou, sem prometer atualização. O passeio manual da superfície recusada fica para quando a 5.10 ou a 5.11 existir; até lá ela é provada pelas funções puras de `web/lib/pedido.ts` e pela matriz de servidor.

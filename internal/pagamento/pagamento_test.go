@@ -20,8 +20,24 @@ func TestSimuladoDecidePelosCentavosDoTotal(t *testing.T) {
 		{1095, SemConfirmacao},
 		{1099, SemConfirmacao},
 	} {
-		if tem := s.Decidir(caso.total); tem != caso.quer {
-			t.Errorf("Decidir(%d) = %s, quero %s", caso.total, tem, caso.quer)
+		if tem := s.Decidir(caso.total, 1); tem != caso.quer {
+			t.Errorf("Decidir(%d, 1) = %s, quero %s", caso.total, tem, caso.quer)
+		}
+	}
+}
+
+// A faixa do §7.1 vale só para a primeira Tentativa (AD-8). Da segunda em
+// diante o Simulado aprova — inclusive nos centavos que recusam e nos que
+// nunca confirmam —, senão a nova Tentativa da FR-27 repetiria a recusa do
+// mesmo total para sempre.
+func TestSimuladoAprovaDaSegundaTentativaEmDiante(t *testing.T) {
+	s := Simulado{AprovadoAteCentavos: 89, RecusadoAteCentavos: 94}
+
+	for _, total := range []int64{100, 1090, 1094, 1095, 1099} {
+		for _, numero := range []int32{2, 3} {
+			if tem := s.Decidir(total, numero); tem != Aprovado {
+				t.Errorf("Decidir(%d, %d) = %s, quero %s", total, numero, tem, Aprovado)
+			}
 		}
 	}
 }

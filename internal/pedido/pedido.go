@@ -337,32 +337,147 @@ func decidirPelaChave(ctx context.Context, q *gerado.Queries, comprador, chave p
 	return original, true, nil
 }
 
-// Buscar é a leitura da tela de acompanhamento. O dono entra no WHERE: Pedido
-// de outro Comprador, Pedido inexistente e identificador malformado saem os
-// três como pgx.ErrNoRows, que `api/` traduz no mesmo 404 — não vaza
-// existência.
-func Buscar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string) (Pedido, error) {
+// Endereco é o Endereço congelado no Pedido na criação (5.6): cópia, e não
+// referência — o Endereço do Comprador pode mudar ou sumir depois.
+type Endereco struct {
+	Destinatario, CEP, Logradouro, Numero, Complemento, Bairro, Cidade, UF string
+}
+
+// ItemDoPedido é o Item de Pedido como a tela o mostra: o que foi congelado na
+// compra, mais `Disponivel`, que diz se o Estoque disponível de agora cobre a
+// quantidade. Enquanto a Reserva do próprio Pedido está ativa ela conta contra
+// ele; só `PAGAMENTO_RECUSADO`, com a Reserva já liberada, usa o campo para
+// derivar ação (EXPERIENCE, a tripla).
+type ItemDoPedido struct {
+	ProdutoID              string
+	Nome                   string
+	Quantidade             int32
+	PrecoPraticadoCentavos int64
+	Disponivel             bool
+}
+
+// Detalhe é tudo que a tela do Pedido deriva, numa leitura só (AD-18): a
+// tripla (Status, tentativas restantes, disponível por Item), o instante de
+// expiração, os valores e o Endereço congelados, e o histórico. Nenhum campo
+// nomeia a Reserva de Estoque.
+type Detalhe struct {
+	Pedido
+	SubtotalCentavos int64
+	FreteCentavos    int64
+	// Endereco é nil no Pedido do esqueleto, que nasceu sem Endereço.
+	Endereco *Endereco
+	// ExpiraEm é nil fora de AGUARDANDO_PAGAMENTO: só a Tentativa aberta tem
+	// prazo correndo.
+	ExpiraEm            *time.Time
+	TentativasRestantes int
+	Itens               []ItemDoPedido
+	Historico           []Transicao
+}
+
+// ExpiraEm é o instante em que a Tentativa aberta vence: a última transição
+// *para* AGUARDANDO_PAGAMENTO mais o prazo. Sai do histórico, e não de relógio
+// em memória (AD-6) — reiniciar o contêiner ou recarregar a tela não recomeça
+// a contagem. A nova Tentativa (5.10) volta a AGUARDANDO_PAGAMENTO e, com
+// isso, recomeça o prazo sem código novo aqui.
+//
+// Fora de AGUARDANDO_PAGAMENTO não há prazo: devolve false.
+func ExpiraEm(status Status, historico []Transicao, prazo time.Duration) (time.Time, bool) {
+	if status != StatusAguardandoPagamento {
+		return time.Time{}, false
+	}
+	for i := len(historico) - 1; i >= 0; i-- {
+		if historico[i].Para == StatusAguardandoPagamento {
+			return historico[i].Em.Add(prazo), true
+		}
+	}
+	return time.Time{}, false
+}
+
+// Detalhar é a leitura da tela do Pedido. O dono entra no WHERE: Pedido de
+// outro Comprador, Pedido inexistente e identificador malformado saem os três
+// como pgx.ErrNoRows, que `api/` traduz no mesmo 404 — não vaza existência.
+//
+// A tripla é montada aqui, a partir de `pagamento` (tentativas restantes, cujo
+// teto é dele — AD-8) e de `catalogo` (disponível), para que a tela nunca faça
+// mais de uma chamada para derivar uma ação (AD-18). São várias consultas: quem
+// quer que elas vejam o mesmo instante passa uma transação em `bd`.
+func Detalhar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string, prazo time.Duration, teto int) (Detalhe, error) {
 	var chave, comprador pgtype.UUID
 	if err := chave.Scan(pedidoID); err != nil {
-		return Pedido{}, pgx.ErrNoRows
+		return Detalhe{}, pgx.ErrNoRows
 	}
 	if err := comprador.Scan(compradorID); err != nil {
-		return Pedido{}, pgx.ErrNoRows
+		return Detalhe{}, pgx.ErrNoRows
 	}
-	linha, err := gerado.New(bd).BuscarPedidoDoComprador(ctx, gerado.BuscarPedidoDoCompradorParams{
+	q := gerado.New(bd)
+	linha, err := q.BuscarPedidoDoComprador(ctx, gerado.BuscarPedidoDoCompradorParams{
 		PedidoID:    chave,
 		CompradorID: comprador,
 	})
 	if err != nil {
-		return Pedido{}, err
+		return Detalhe{}, err
 	}
-	return Pedido{
-		ID:            linha.ID.String(),
-		Numero:        linha.Numero,
-		Status:        Status(linha.Status),
-		TotalCentavos: linha.TotalCentavos,
-		AtualizadoEm:  linha.AtualizadoEm.Time.UTC(),
-	}, nil
+	d := Detalhe{
+		Pedido: Pedido{
+			ID:            linha.ID.String(),
+			Numero:        linha.Numero,
+			Status:        Status(linha.Status),
+			TotalCentavos: linha.TotalCentavos,
+			AtualizadoEm:  linha.AtualizadoEm.Time.UTC(),
+		},
+		SubtotalCentavos: linha.SubtotalCentavos,
+		FreteCentavos:    linha.FreteCentavos,
+	}
+	// Tudo ou nada, pelo CHECK `pedido_criacao_completa`: basta uma coluna.
+	if linha.EnderecoCep.Valid {
+		d.Endereco = &Endereco{
+			Destinatario: linha.EnderecoDestinatario.String,
+			CEP:          linha.EnderecoCep.String,
+			Logradouro:   linha.EnderecoLogradouro.String,
+			Numero:       linha.EnderecoNumero.String,
+			Complemento:  linha.EnderecoComplemento.String,
+			Bairro:       linha.EnderecoBairro.String,
+			Cidade:       linha.EnderecoCidade.String,
+			UF:           linha.EnderecoUf.String,
+		}
+	}
+
+	if d.Historico, err = Historico(ctx, bd, d.ID); err != nil {
+		return Detalhe{}, fmt.Errorf("ler o histórico do Pedido: %w", err)
+	}
+	if expira, ok := ExpiraEm(d.Status, d.Historico, prazo); ok {
+		d.ExpiraEm = &expira
+	}
+	if d.TentativasRestantes, err = pagamento.TentativasRestantes(ctx, bd, d.ID, teto); err != nil {
+		return Detalhe{}, err
+	}
+
+	itens, err := q.ItensDoPedido(ctx, chave)
+	if err != nil {
+		return Detalhe{}, fmt.Errorf("ler os Itens do Pedido: %w", err)
+	}
+	ids := make([]string, len(itens))
+	for i, it := range itens {
+		ids[i] = it.ProdutoID.String()
+	}
+	disponivel, err := catalogo.Disponivel(ctx, bd, ids)
+	if err != nil {
+		return Detalhe{}, fmt.Errorf("ler o Estoque disponível dos Itens: %w", err)
+	}
+	// Um Item por Produto: o Pedido nasce do Carrinho, que tem UNIQUE
+	// (carrinho_id, produto_id), então comparar cada Item sozinho com o
+	// disponível do Produto não esquece unidade de outra linha.
+	d.Itens = make([]ItemDoPedido, len(itens))
+	for i, it := range itens {
+		d.Itens[i] = ItemDoPedido{
+			ProdutoID:              ids[i],
+			Nome:                   it.Nome,
+			Quantidade:             it.Quantidade,
+			PrecoPraticadoCentavos: it.PrecoPraticadoCentavos,
+			Disponivel:             disponivel[ids[i]] >= int(it.Quantidade),
+		}
+	}
+	return d, nil
 }
 
 // Listar é a leitura da tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1

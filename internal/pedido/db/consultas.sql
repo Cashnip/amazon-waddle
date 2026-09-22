@@ -94,13 +94,27 @@ ORDER BY ocorrido_em, id;
 -- como "nenhuma linha", que é o mesmo 404 — não vaza existência.
 -- O instante é o da última transição, absoluto e vindo do servidor: o
 -- navegador nunca conta duração.
+-- Subtotal, Frete e Endereço são os congelados da 5.6: a tela os exibe como
+-- foram gravados, e não os recompõe (AD-9). O Endereço é todo nulo no Pedido
+-- do esqueleto — o CHECK `pedido_criacao_completa` garante que nunca pela metade.
 -- name: BuscarPedidoDoComprador :one
-SELECT p.id, p.numero, p.status, p.total_centavos,
+SELECT p.id, p.numero, p.status, p.subtotal_centavos, p.frete_centavos, p.total_centavos,
+       p.endereco_destinatario, p.endereco_cep, p.endereco_logradouro, p.endereco_numero,
+       p.endereco_complemento, p.endereco_bairro, p.endereco_cidade, p.endereco_uf,
        -- O cast é carga: sem ele o sqlc não infere o tipo da subconsulta e
        -- devolve `interface{}`, que só falharia no Scan em tempo de execução.
        (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS atualizado_em
 FROM pedido.pedido p
 WHERE p.id = @pedido_id AND p.comprador_id = @comprador_id;
+
+-- Os Itens de Pedido como a tela os mostra: o que foi congelado na compra,
+-- nunca o preço de hoje (FR-30). Sem dono no WHERE: quem chama já leu o
+-- Pedido pelo dono (AD-11). A ordem por `id` é a da criação — uuidv7().
+-- name: ItensDoPedido :many
+SELECT produto_id, nome, preco_praticado_centavos, quantidade
+FROM pedido.item_pedido
+WHERE pedido_id = @pedido_id
+ORDER BY id;
 
 -- A listagem da tela "Meus pedidos" (2.6). O dono entra no WHERE, e não numa
 -- checagem depois (AD-11): a rota nunca lê Pedido de outro Comprador para
