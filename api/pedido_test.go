@@ -411,57 +411,192 @@ func ultimaTransicao(t *testing.T, pool *pgxpool.Pool, pedidoID string) time.Tim
 	return quando.UTC()
 }
 
-// meusPedidosListaPorDono é a 2.6, no molde de enderecosDoComprador
+// primeiraTransicao é a irmã de ultimaTransicao, e é o nascimento do Pedido:
+// `Criar` grava esta linha na mesma transação do INSERT.
+func primeiraTransicao(t *testing.T, pool *pgxpool.Pool, pedidoID string) time.Time {
+	t.Helper()
+	var quando time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT min(ocorrido_em) FROM pedido.transicao_status WHERE pedido_id = $1::uuid`,
+		pedidoID).Scan(&quando); err != nil {
+		t.Fatalf("ler a primeira transição: %v", err)
+	}
+	return quando.UTC()
+}
+
+// avancarParaPago dá ao Pedido a segunda linha de histórico, pelo caminho de
+// produção: `Transicionar`, e não um UPDATE à mão (AD-3).
+func avancarParaPago(t *testing.T, pool *pgxpool.Pool, pedidoID string) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if err := pedido.Transicionar(ctx, tx, pedidoID,
+		pedido.StatusAguardandoPagamento, pedido.StatusPago, pedido.AtorProvedor, ""); err != nil {
+		t.Fatalf("pôr o Pedido %s em PAGO: %v", pedidoID, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit do avanço para PAGO: %v", err)
+	}
+}
+
+// envelopeDeMeusPedidos é o AD-18 com o item de "Meus pedidos".
+type envelopeDeMeusPedidos struct {
+	Itens     []map[string]any `json:"itens"`
+	Pagina    int              `json:"pagina"`
+	PorPagina int              `json:"por_pagina"`
+	Total     int              `json:"total"`
+}
+
+// meusPedidosListaPorDono é a matriz da 6.1, no molde de enderecosDoComprador
 // (endereco_test.go): conta própria, para o vazio da matriz ser observável
 // antes de qualquer Pedido existir — cookieValido, reaproveitado pelos
 // subtestes acima, já chega aqui com Pedidos seus. O AD-11 entra na própria
-// consulta (ListarPedidosDoComprador), e a ordem é `id DESC`: a chave é
-// uuidv7(), ordenada no tempo por construção, então o Pedido criado por
-// último sai primeiro sem depender de relógio nenhum.
-func meusPedidosListaPorDono(t *testing.T, rotas http.Handler) {
+// consulta (ListarPedidosDoComprador), e a ordem é o nascimento gravado no
+// histórico, `min(ocorrido_em)`, terminando em `id`.
+//
+// O Pedido mais antigo é levado a PAGO: com duas transições, `min` e `max`
+// deixam de coincidir, e trocar um pelo outro na consulta vira falha em dois
+// lugares — a ordem da página 1 inverte e a data deixa de bater com a
+// primeira transição. Para em PAGO de propósito: `SEPARANDO → ENVIADO`
+// consolida a Reserva e baixaria o `estoque_total` de produtoSemeado, com que
+// simulacaoDeEntrega conta intacto.
+func meusPedidosListaPorDono(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	cookie := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Nara Bastos","email":"nara-pedidos@exemplo.br","senha":"senha-da-nara-1"}`), http.StatusCreated)
 
-	// Listar sem nenhum: 200 com `[]`, e não `null` — o mesmo contrato de
-	// Meus Endereços (2.5): o estado vazio é da tela.
-	vazia := pegarPedidos(t, rotas, cookie)
-	if vazia.Code != http.StatusOK {
-		t.Fatalf("listar sem nenhum = %d (%s), quero 200", vazia.Code, vazia.Body.String())
-	}
-	if v := vazia.Header().Get("Cache-Control"); v != "no-store" {
-		t.Errorf("Cache-Control da listagem = %q, quero no-store", v)
-	}
-	if corpo := strings.TrimSpace(vazia.Body.String()); corpo != "[]" {
-		t.Errorf("lista vazia = %s, quero []", corpo)
+	// Toda listagem passa por aqui: status, `no-store` e `itens` não-nulo são
+	// contrato de todas elas, e não de uma requisição escolhida a dedo.
+	listar := func(consulta string, c *http.Cookie) envelopeDeMeusPedidos {
+		t.Helper()
+		resp := pegarPedidos(t, rotas, consulta, c)
+		var env envelopeDeMeusPedidos
+		if err := json.Unmarshal(resp.Body.Bytes(), &env); resp.Code != http.StatusOK || err != nil {
+			t.Fatalf("listar %q = %d (%s)", consulta, resp.Code, resp.Body.String())
+		}
+		if v := resp.Header().Get("Cache-Control"); v != "no-store" {
+			t.Errorf("listar %q: Cache-Control = %q, quero no-store", consulta, v)
+		}
+		if env.Itens == nil {
+			t.Fatalf("listar %q: itens = null, quero [] — o estado vazio é da tela", consulta)
+		}
+		return env
 	}
 
+	// Comprador sem Pedido: envelope com `itens: []` e total 0, e nunca
+	// `null` — o mesmo contrato de Meus Endereços (2.5).
+	if env := listar("", cookie); env.Total != 0 || len(env.Itens) != 0 || env.Pagina != 1 || env.PorPagina != paginaTamanhoDeTeste {
+		t.Errorf("lista vazia = %+v, quero total 0, pagina 1 e por_pagina %d", env, paginaTamanhoDeTeste)
+	}
+
+	// Dois Pedidos, e não vinte: o Estoque do Produto semeado é compartilhado
+	// com os outros subtestes, e a paginação se prova com `por_pagina=1` —
+	// quem garante que 20 é o padrão é `paginacaoDe`, coberto na Vitrine.
 	primeiro := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1), http.StatusCreated)
 	segundo := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoSemeado, 1), http.StatusCreated)
 
 	// Outro Comprador cria um terceiro Pedido: a lista de Nara não pode
 	// trazê-lo — o dono entra na própria consulta, e não numa checagem
-	// depois (AD-11).
+	// depois (AD-11). A resposta da criação é a prova do `omitempty`: quem
+	// não lê o nascimento não inventa um — sem ele, as três respostas que
+	// compartilham `saidaPedido` sairiam com o ano 1 dentro.
 	outro := cookieDe(t, postarCadastro(t, rotas,
 		`{"nome":"Otelo Farias","email":"otelo-pedidos@exemplo.br","senha":"senha-do-otelo-1"}`), http.StatusCreated)
-	if resp := pedidoPeloCheckout(t, rotas, outro, produtoSemeado, 1); resp.Code != http.StatusCreated {
-		t.Fatalf("Pedido do outro Comprador = %d (%s), quero 201", resp.Code, resp.Body.String())
+	criacao := pedidoPeloCheckout(t, rotas, outro, produtoSemeado, 1)
+	alheio := idDe(t, criacao, http.StatusCreated)
+	if _, tem := decodificar(t, criacao)["criado_em"]; tem {
+		t.Errorf("a criação trouxe criado_em (%s); quero o campo ausente, e nunca o ano 1", criacao.Body.String())
 	}
 
-	lista := pegarPedidos(t, rotas, cookie)
-	if lista.Code != http.StatusOK {
-		t.Fatalf("listar com dois = %d (%s), quero 200", lista.Code, lista.Body.String())
+	// O mais antigo ganha a segunda transição, pelo caminho de produção
+	// (AD-3): um UPDATE à mão deixaria o histórico do teste divergir do real.
+	avancarParaPago(t, pool, primeiro)
+
+	idsDe := func(env envelopeDeMeusPedidos) []string {
+		var ids []string
+		for _, p := range env.Itens {
+			ids = append(ids, fmt.Sprint(p["id"]))
+		}
+		return ids
 	}
-	var ids []string
-	for _, p := range decodificarLista(t, lista) {
-		ids = append(ids, fmt.Sprint(p["id"]))
+
+	// Primeira página: só os de Nara, do mais recente para o mais antigo, com
+	// os quatro campos que a tela mostra. Fatal, e não Errorf: tudo abaixo
+	// indexa `Itens[0]`, e a página vazia viraria pânico no lugar do sinal.
+	env := listar("", cookie)
+	if env.Total != 2 || !slices.Equal(idsDe(env), []string{segundo, primeiro}) {
+		t.Fatalf("página 1 = total %d, ids %v; quero 2 e [%s %s] — só os de Nara, pelo nascimento",
+			env.Total, idsDe(env), segundo, primeiro)
 	}
-	if !slices.Equal(ids, []string{segundo, primeiro}) {
-		t.Errorf("ids = %v, quero [%s, %s] — mais recente primeiro, só os de Nara", ids, segundo, primeiro)
+	if slices.Contains(idsDe(env), alheio) {
+		t.Errorf("o Pedido %s do outro Comprador apareceu na lista de Nara", alheio)
+	}
+	for _, campo := range []string{"numero", "criado_em", "total_centavos", "status"} {
+		if _, ok := env.Itens[0][campo]; !ok {
+			t.Errorf("item sem %s: %v", campo, env.Itens[0])
+		}
+	}
+	// A data é o nascimento, e não a última transição: o Pedido avançado tem
+	// duas linhas no histórico, e só `min(ocorrido_em)` bate com a primeira.
+	texto := fmt.Sprint(env.Itens[1]["criado_em"])
+	nascimento, err := time.Parse(time.RFC3339Nano, texto)
+	if err != nil {
+		t.Fatalf("criado_em = %q não é RFC 3339: %v", texto, err)
+	}
+	if quero := primeiraTransicao(t, pool, primeiro); !nascimento.Equal(quero) {
+		t.Errorf("criado_em = %s, quero a PRIMEIRA transição %s (a última é %s)",
+			nascimento, quero, ultimaTransicao(t, pool, primeiro))
+	}
+
+	// Paginação: cada Pedido exatamente uma vez, na ordem declarada, e a
+	// página além do total é vazia com o total real (sem consultar linhas). O
+	// teto do laço existe para o servidor que ignorasse o OFFSET falhar aqui,
+	// e não no timeout do `go test`.
+	const tetoDePaginas = 5 // dois Pedidos de 1 em 1 acabam na terceira
+	var paginados []string
+	terminou := false
+	for pagina := 1; pagina <= tetoDePaginas && !terminou; pagina++ {
+		env := listar(fmt.Sprintf("?pagina=%d&por_pagina=1", pagina), cookie)
+		if len(env.Itens) == 0 {
+			terminou = true
+			break
+		}
+		if env.Total != 2 {
+			t.Errorf("página %d: total = %d, quero 2 — a contagem repete o WHERE da lista", pagina, env.Total)
+		}
+		paginados = append(paginados, idsDe(env)...)
+	}
+	if !terminou {
+		t.Fatalf("a paginação de 1 em 1 não terminou em %d páginas (%v): o OFFSET não anda",
+			tetoDePaginas, paginados)
+	}
+	if !slices.Equal(paginados, []string{segundo, primeiro}) {
+		t.Errorf("paginado de 1 em 1 = %v, quero [%s %s] sem repetir nem perder",
+			paginados, segundo, primeiro)
+	}
+	if env := listar("?pagina=9", cookie); env.Pagina != 9 || len(env.Itens) != 0 || env.Total != 2 {
+		t.Errorf("além do total = %+v, quero pagina 9, sem itens e total 2", env)
+	}
+
+	// Teto: `por_pagina` acima do máximo é rebaixado, e não recusado.
+	if env := listar("?por_pagina=999", cookie); env.PorPagina != paginaTamanhoMaxDeTeste {
+		t.Errorf("por_pagina=999 = %d, quero o teto %d", env.PorPagina, paginaTamanhoMaxDeTeste)
+	}
+	// Fora de faixa: erro em linha no campo, como na Vitrine.
+	for _, campo := range []string{"pagina", "por_pagina"} {
+		for _, valor := range []string{"0", "-1", "abc"} {
+			confereErro(t, pegarPedidos(t, rotas, "?"+campo+"="+valor, cookie),
+				http.StatusBadRequest, "CAMPO_INVALIDO", campo)
+		}
 	}
 
 	// Sem Sessão: 401 SESSAO_INVALIDA, a mesma guarda das outras rotas
-	// autenticadas do Comprador.
-	semCookie := pegarPedidos(t, rotas, nil)
+	// autenticadas do Comprador — e antes da paginação, para a rota não
+	// contar como pagina a quem não entrou.
+	semCookie := pegarPedidos(t, rotas, "?pagina=abc", nil)
 	if semCookie.Code != http.StatusUnauthorized {
 		t.Fatalf("sem cookie: status = %d, quero 401", semCookie.Code)
 	}
@@ -470,9 +605,9 @@ func meusPedidosListaPorDono(t *testing.T, rotas http.Handler) {
 	}
 }
 
-func pegarPedidos(t *testing.T, rotas http.Handler, cookie *http.Cookie) *httptest.ResponseRecorder {
+func pegarPedidos(t *testing.T, rotas http.Handler, consulta string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
-	return pegarCom(t, rotas, "/api/v1/pedidos", cookie)
+	return pegarCom(t, rotas, "/api/v1/pedidos"+consulta, cookie)
 }
 
 func pegarPedido(t *testing.T, rotas http.Handler, id string, cookie *http.Cookie) *httptest.ResponseRecorder {

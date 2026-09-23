@@ -187,3 +187,24 @@ export function textoDasTentativas(restantes: number): string {
   if (restantes === 1) return "Resta 1 Tentativa de Pagamento para este Pedido.";
   return `Restam ${restantes} Tentativas de Pagamento para este Pedido.`;
 }
+
+// Os sete Status do CHECK do banco, escritos como se leem em tela. Ponto
+// único de rótulo: sem ele, uma renomeação deixaria uma superfície mostrando
+// o identificador cru. Aqui mora só o texto — o selo (cor e forma) é da 6.7,
+// que o fecha nas três superfícies de uma vez.
+const rotulosDoStatus: Record<string, string> = {
+  AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
+  PAGAMENTO_RECUSADO: "Pagamento recusado",
+  PAGO: "Pago",
+  SEPARANDO: "Separando",
+  ENVIADO: "Enviado",
+  ENTREGUE: "Entregue",
+  CANCELADO: "Cancelado",
+};
+
+// O rótulo de um Status. Status que a tela não conhece sai cru: um Status novo
+// no banco aparece feio, e não invisível. `hasOwn`, e não a indexação crua —
+// um "constructor" vindo do servidor acharia o herdado de Object.prototype.
+export function rotuloDoStatus(status: string): string {
+  return Object.hasOwn(rotulosDoStatus, status) ? rotulosDoStatus[status] : status;
+}

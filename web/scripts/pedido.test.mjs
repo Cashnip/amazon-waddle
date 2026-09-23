@@ -14,6 +14,7 @@ const {
   motivoDaRecusa,
   podeTentarDeNovo,
   rotaDaNovaTentativa,
+  rotuloDoStatus,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -167,4 +168,18 @@ test("a resposta da nova Tentativa: relê no sucesso e nas recusas do Pedido, e 
     tipo: "erro",
     mensagem: FALHA_NA_NOVA_TENTATIVA,
   });
+});
+
+test("os sete Status têm rótulo; o que a tela não conhece sai cru", () => {
+  assert.equal(rotuloDoStatus("AGUARDANDO_PAGAMENTO"), "Aguardando pagamento");
+  assert.equal(rotuloDoStatus("PAGAMENTO_RECUSADO"), "Pagamento recusado");
+  assert.equal(rotuloDoStatus("PAGO"), "Pago");
+  assert.equal(rotuloDoStatus("SEPARANDO"), "Separando");
+  assert.equal(rotuloDoStatus("ENVIADO"), "Enviado");
+  assert.equal(rotuloDoStatus("ENTREGUE"), "Entregue");
+  assert.equal(rotuloDoStatus("CANCELADO"), "Cancelado");
+  // Status que o banco ganhe amanhã aparece feio, e não invisível — e o
+  // herdado de Object.prototype não vira rótulo.
+  assert.equal(rotuloDoStatus("DEVOLVIDO"), "DEVOLVIDO");
+  assert.equal(rotuloDoStatus("constructor"), "constructor");
 });

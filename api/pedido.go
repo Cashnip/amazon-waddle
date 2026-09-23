@@ -33,15 +33,24 @@ var formaDaChave = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F
 // saidaPedido é o que a criação e as leituras devolvem. O total sai cru, em
 // centavos int64 (AD-9), e o `numero` é o legível do AD-6 — o uuid vai junto
 // porque é dele que a tela do Pedido parte.
+//
+// `criado_em` é o instante de nascimento em RFC 3339, e só a listagem o
+// carrega — `omitempty` e não `null`: a criação e o Detalhe não o leem, e um
+// campo presente com o ano 1 dentro seria uma data errada, não uma ausência.
 type saidaPedido struct {
 	ID            string `json:"id"`
 	Numero        string `json:"numero"`
 	Status        string `json:"status"`
 	TotalCentavos int64  `json:"total_centavos"`
+	CriadoEm      string `json:"criado_em,omitempty"`
 }
 
 func saidaDoPedido(p pedido.Pedido) saidaPedido {
-	return saidaPedido{ID: p.ID, Numero: p.Numero, Status: string(p.Status), TotalCentavos: p.TotalCentavos}
+	s := saidaPedido{ID: p.ID, Numero: p.Numero, Status: string(p.Status), TotalCentavos: p.TotalCentavos}
+	if !p.CriadoEm.IsZero() {
+		s.CriadoEm = instante(p.CriadoEm)
+	}
+	return s
 }
 
 // saidaPedidoDetalhe é o que a tela do Pedido consulta em intervalo, e carrega
@@ -318,9 +327,10 @@ func (s *servidor) lerPedido(w http.ResponseWriter, r *http.Request) {
 	escreverJSON(w, http.StatusOK, saidaDoDetalhe(d))
 }
 
-// listarPedidos é a tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1
-// substitui: sem filtro por Status, sem paginação, sem Skeleton. O dono entra
-// na consulta (AD-11), e não numa checagem depois.
+// listarPedidos é a tela "Meus pedidos" (6.1), no envelope único do AD-18. O
+// dono entra na consulta (AD-11), e não numa checagem depois. A Sessão é
+// conferida antes da paginação: quem não tem Sessão leva 401, e não um 400
+// que contaria que a rota existe e como ela pagina.
 func (s *servidor) listarPedidos(w http.ResponseWriter, r *http.Request) {
 	semCache(w)
 
@@ -329,17 +339,21 @@ func (s *servidor) listarPedidos(w http.ResponseWriter, r *http.Request) {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
+	pagina, porPagina, ok := paginacaoDe(w, r, s.cfg)
+	if !ok {
+		return
+	}
 
-	pedidos, err := pedido.Listar(r.Context(), s.pool, comprador.ID)
+	pedidos, total, err := pedido.Listar(r.Context(), s.pool, comprador.ID, pagina, porPagina)
 	if err != nil {
 		erro.Escrever(r.Context(), w, err, nil)
 		return
 	}
 	// Fatia vazia, e nunca `null`: o mesmo contrato de Meus Endereços (2.5) —
 	// o estado vazio é da tela.
-	saidas := make([]saidaPedido, 0, len(pedidos))
+	itens := make([]saidaPedido, 0, len(pedidos))
 	for _, p := range pedidos {
-		saidas = append(saidas, saidaDoPedido(p))
+		itens = append(itens, saidaDoPedido(p))
 	}
-	escreverJSON(w, http.StatusOK, saidas)
+	escreverJSON(w, http.StatusOK, listagem[saidaPedido]{itens, pagina, porPagina, total})
 }

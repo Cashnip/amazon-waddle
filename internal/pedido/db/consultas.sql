@@ -116,16 +116,43 @@ FROM pedido.item_pedido
 WHERE pedido_id = @pedido_id
 ORDER BY id;
 
--- A listagem da tela "Meus pedidos" (2.6). O dono entra no WHERE, e não numa
+-- A listagem da tela "Meus pedidos" (6.1). O dono entra no WHERE, e não numa
 -- checagem depois (AD-11): a rota nunca lê Pedido de outro Comprador para
--- descartar depois. `id DESC` e não por data: a chave é uuidv7(), ordenada no
--- tempo por construção, então o mais recente já sai no topo sem JOIN em
--- transicao_status nem coluna nova — é o esboço que a Estória 6.1 substitui.
+-- descartar depois.
+--
+-- A data é o nascimento já gravado no histórico: `pedido.Criar` registra a
+-- primeira transição com `status_anterior` vazio na mesma transação do
+-- INSERT, então `min(ocorrido_em)` É o instante de nascimento, e não uma
+-- aproximação — nenhuma coluna nova, nenhuma migração. O cast é carga, pelo
+-- mesmo motivo de BuscarPedidoDoComprador: sem ele o sqlc devolve
+-- `interface{}` e a falha só apareceria no Scan.
+--
+-- A ordem é o nascimento, do mais recente para o mais antigo, terminando em
+-- `id` para o OFFSET ser estável: duas transações concorrentes podem empatar
+-- no instante, e aí quem desempata é a chave — uuidv7(), já cronológica por
+-- construção. NULLS LAST porque DESC é NULLS FIRST no PostgreSQL: Pedido sem
+-- linha em transicao_status é inalcançável pelo aplicativo (Criar grava a
+-- primeira na mesma transação), mas se existisse iria ao topo da página 1 e
+-- sairia sem data nenhuma.
+--
+-- ponytail: a subconsulta por linha na ordenação. O índice
+-- `transicao_status (pedido_id, ocorrido_em)` da 5.1 já a serve; o que
+-- pagaria mais é `criado_em` denormalizado no Pedido, e isso mentiria sobre
+-- os Pedidos já gravados.
 -- name: ListarPedidosDoComprador :many
-SELECT id, numero, status, total_centavos
-FROM pedido.pedido
-WHERE comprador_id = @comprador_id
-ORDER BY id DESC;
+SELECT p.id, p.numero, p.status, p.total_centavos,
+       (SELECT min(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS criado_em
+FROM pedido.pedido p
+WHERE p.comprador_id = @comprador_id
+ORDER BY criado_em DESC NULLS LAST, p.id DESC
+LIMIT @limite OFFSET @deslocamento;
+
+-- O total da mesma listagem, com o WHERE dela palavra por palavra: um filtro
+-- que divergisse aqui paginaria sobre um total que não é o da lista.
+-- name: ContarPedidosDoComprador :one
+SELECT count(*)
+FROM pedido.pedido p
+WHERE p.comprador_id = @comprador_id;
 
 -- A leitura travada da varredura. SKIP LOCKED porque o tique que encontra o
 -- Pedido já travado não tem o que esperar: o outro caminho está aplicando, e

@@ -405,7 +405,7 @@ func TestSessaoEProduto(t *testing.T) {
 	// — ele já tem Pedidos dos subtestes acima. Entra antes da simulação de
 	// entrega, que é a única que conta com o `estoque_total` intacto até ali.
 	t.Run("Meus pedidos: lista só os do dono, mais recente primeiro", func(t *testing.T) {
-		meusPedidosListaPorDono(t, rotas)
+		meusPedidosListaPorDono(t, rotas, pool)
 	})
 	// Depois de todos: é o único subteste que baixa o `estoque_total` de
 	// produtoSemeado, e os que compram esse mesmo Produto contam com o total

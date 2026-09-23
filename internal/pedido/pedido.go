@@ -54,6 +54,10 @@ type Pedido struct {
 	Numero        string
 	Status        Status
 	TotalCentavos int64
+	// CriadoEm é o instante de nascimento — a primeira linha do histórico,
+	// gravada na mesma transação do INSERT (ver Criar). Só a listagem o
+	// preenche; zero é "esta leitura não o trouxe", e não "nasceu no ano 1".
+	CriadoEm time.Time
 	// AtualizadoEm é o instante da última transição, e só a leitura o
 	// preenche: é ele que a tela de acompanhamento exibe, absoluto e vindo do
 	// servidor — o navegador nunca conta duração.
@@ -542,34 +546,51 @@ func Detalhar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string,
 	return d, nil
 }
 
-// Listar é a leitura da tela "Meus pedidos" (2.6) — o esboço que a Estória 6.1
-// substitui (filtro por Status, ordenação e Skeleton ficam para ela). O dono
-// entra no WHERE, e não numa checagem depois (AD-11): a consulta nunca traz
-// Pedido de outro Comprador para descartar depois. A ordem é `id DESC`: a
-// chave é uuidv7(), ordenada no tempo por construção, e por isso o mais
-// recente já sai no topo sem somar um JOIN em transicao_status.
-func Listar(ctx context.Context, bd gerado.DBTX, compradorID string) ([]Pedido, error) {
+// Listar é a leitura da tela "Meus pedidos" (6.1): a página pedida do
+// histórico do Comprador, do mais recente para o mais antigo, e o total dele.
+// O dono entra no WHERE, e não numa checagem depois (AD-11): a consulta nunca
+// traz Pedido de outro Comprador para descartar depois. A data vem do
+// nascimento gravado no histórico, sem coluna nova.
+//
+// Conta primeiro e curto-circuita a página além do total, no mesmo molde de
+// busca.Listar: pedir a página 9 de 25 Pedidos não vale uma consulta de
+// linhas que já se sabe vazia.
+func Listar(ctx context.Context, bd gerado.DBTX, compradorID string, pagina, porPagina int) ([]Pedido, int64, error) {
 	var comprador pgtype.UUID
 	if err := comprador.Scan(compradorID); err != nil {
-		return nil, fmt.Errorf("identificador de Comprador inválido: %w", err)
+		return nil, 0, fmt.Errorf("identificador de Comprador inválido: %w", err)
 	}
-	linhas, err := gerado.New(bd).ListarPedidosDoComprador(ctx, comprador)
+	q := gerado.New(bd)
+	total, err := q.ContarPedidosDoComprador(ctx, comprador)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	// Fatia vazia, e não nil: a lista sem nenhum Pedido serializa em `[]`, e
 	// não em `null` — o estado vazio é da tela, e um `null` a obrigaria a
 	// defender-se do formato (o mesmo contrato de Meus Endereços, 2.5).
-	pedidos := make([]Pedido, 0, len(linhas))
+	pedidos := []Pedido{}
+	// Comparado antes de multiplicar: uma `pagina` enorme não transborda.
+	if int64(pagina-1) >= (total+int64(porPagina)-1)/int64(porPagina) {
+		return pedidos, total, nil
+	}
+	linhas, err := q.ListarPedidosDoComprador(ctx, gerado.ListarPedidosDoCompradorParams{
+		CompradorID:  comprador,
+		Limite:       int32(porPagina),
+		Deslocamento: int32((pagina - 1) * porPagina),
+	})
+	if err != nil {
+		return nil, 0, err
+	}
 	for _, linha := range linhas {
 		pedidos = append(pedidos, Pedido{
 			ID:            linha.ID.String(),
 			Numero:        linha.Numero,
 			Status:        Status(linha.Status),
 			TotalCentavos: linha.TotalCentavos,
+			CriadoEm:      linha.CriadoEm.Time.UTC(),
 		})
 	}
-	return pedidos, nil
+	return pedidos, total, nil
 }
 
 // Varrer é o passo "aplicar" do tique: lê a inbox de `pagamento` e aplica o
