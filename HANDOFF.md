@@ -59,7 +59,7 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 6.1** (Meus pedidos) — a Épica 5 está inteira em `main`. A 5.11 está em `main`, a 5.10 em `main` (`22500bf`), a 5.9 em `main` (`577a6aa`), a 5.8 em `main` (`e421de8`), a 5.7
+`bmad-build` na **Estória 6.1** (Meus pedidos) — a Épica 5 está inteira em `main`. A 5.11 está em `main` (`8a3dfd0`), a 5.10 em `main` (`22500bf`), a 5.9 em `main` (`577a6aa`), a 5.8 em `main` (`e421de8`), a 5.7
 em `main` (`7cd26ac`), a 5.6 em `main` (`9174f88`), a 5.5 em `main` (`f3cc0ff`), a 5.4 em `main` (`6e5984f`), a 5.3 em `main` (`dbcb2b8`) e a 5.2 em
 `main` (`400861b`), as dez em `review` no `sprint-status.yaml`: falta a leitura humana
 (`bmad-checkpoint-preview`) e o passeio da seção Verification das specs — 360 e 1440 px, só pelo
