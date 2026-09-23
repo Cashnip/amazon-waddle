@@ -2,7 +2,7 @@
 title: 'Estória 6.4 — Painel de Pedidos do Administrador'
 type: 'feature'
 created: '2026-09-23'
-status: 'in-review'
+status: 'done'
 baseline_commit: '4b12ac36188e5d659c506a7adc1abe6c638335d7'
 route: 'dispatch'
 review_loop_iteration: 0
