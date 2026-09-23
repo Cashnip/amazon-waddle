@@ -471,9 +471,14 @@ type Endereco struct {
 // quantidade. Enquanto a Reserva do próprio Pedido está ativa ela conta contra
 // ele; só `PAGAMENTO_RECUSADO`, com a Reserva já liberada, usa o campo para
 // derivar ação (EXPERIENCE, a tripla).
+//
+// VendedorNome é o Vendedor congelado na compra, como o nome e o preço: quem
+// vendeu, e não quem hoje estaria ligado ao Produto. Só o Detalhe
+// administrativo o exibe (FR-32) — a resposta do Comprador não o serializa.
 type ItemDoPedido struct {
 	ProdutoID              string
 	Nome                   string
+	VendedorNome           string
 	Quantidade             int32
 	PrecoPraticadoCentavos int64
 	Disponivel             bool
@@ -595,6 +600,7 @@ func Detalhar(ctx context.Context, bd gerado.DBTX, pedidoID, compradorID string,
 		d.Itens[i] = ItemDoPedido{
 			ProdutoID:              ids[i],
 			Nome:                   it.Nome,
+			VendedorNome:           it.VendedorNome,
 			Quantidade:             it.Quantidade,
 			PrecoPraticadoCentavos: it.PrecoPraticadoCentavos,
 			Disponivel:             disponivel[ids[i]] >= int(it.Quantidade),
@@ -648,6 +654,192 @@ func Listar(ctx context.Context, bd gerado.DBTX, compradorID string, pagina, por
 		})
 	}
 	return pedidos, total, nil
+}
+
+// As duas ordenações da Tabela de Pedidos do Administrador (FR-32), por data
+// de nascimento. `recentes` é o padrão, como na loja.
+const (
+	OrdenacaoRecentes = "recentes"
+	OrdenacaoAntigos  = "antigos"
+)
+
+// FiltroAdmin é o que a Tabela do Administrador pede além da página. O Status
+// vazio é "todos"; a ordenação vazia vale OrdenacaoRecentes. Quem valida os
+// dois contra as listas fechadas é `api/`.
+type FiltroAdmin struct {
+	Status    Status
+	Ordenacao string
+}
+
+// ListarParaAdministrador é a Tabela de Pedidos do Administrador (6.4, FR-32):
+// a página pedida de TODOS os Pedidos, de todos os Compradores. Não há dono no
+// WHERE — é o que a distingue de Listar, e é por isso que são duas consultas.
+//
+// Conta primeiro e curto-circuita a página além do total, no mesmo molde de
+// Listar e de busca.Listar. A contagem repete o WHERE da lista palavra por
+// palavra: um filtro que divergisse pagina sobre um total que não é o da lista.
+func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin, pagina, porPagina int) ([]Pedido, int64, error) {
+	var status pgtype.Text
+	if f.Status != "" {
+		status = pgtype.Text{String: string(f.Status), Valid: true}
+	}
+	ordenacao := f.Ordenacao
+	if ordenacao == "" {
+		ordenacao = OrdenacaoRecentes
+	}
+	q := gerado.New(bd)
+	total, err := q.ContarPedidosAdmin(ctx, status)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Fatia vazia, e não nil: a lista sem Pedido nenhum serializa em `[]`.
+	pedidos := []Pedido{}
+	// Comparado antes de multiplicar: uma `pagina` enorme não transborda.
+	if int64(pagina-1) >= (total+int64(porPagina)-1)/int64(porPagina) {
+		return pedidos, total, nil
+	}
+	linhas, err := q.ListarPedidosAdmin(ctx, gerado.ListarPedidosAdminParams{
+		Status:       status,
+		Ordenacao:    ordenacao,
+		Limite:       int32(porPagina),
+		Deslocamento: int32((pagina - 1) * porPagina),
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, linha := range linhas {
+		pedidos = append(pedidos, Pedido{
+			ID:            linha.ID.String(),
+			Numero:        linha.Numero,
+			Status:        Status(linha.Status),
+			TotalCentavos: linha.TotalCentavos,
+			CriadoEm:      linha.CriadoEm.Time.UTC(),
+		})
+	}
+	return pedidos, total, nil
+}
+
+// DetalheAdmin é o Detalhe de um Pedido como o Administrador o vê (FR-32):
+// quem comprou, o que foi comprado com o Vendedor congelado de cada Item, os
+// valores e o Endereço congelados, e o histórico.
+//
+// Tipo próprio, e não o Detalhe do Comprador: aquele carrega a tripla
+// (`TentativasRestantes`, `Disponivel` por Item) e `ExpiraEm`, que são da
+// decisão do Comprador e não da operação da loja. Duas leituras, dois públicos.
+type DetalheAdmin struct {
+	Pedido
+	Comprador        identidade.Conta
+	SubtotalCentavos int64
+	FreteCentavos    int64
+	// Endereco é nil no Pedido do esqueleto, que nasceu sem Endereço.
+	Endereco  *Endereco
+	Itens     []ItemDoPedido
+	Historico []Transicao
+}
+
+// DetalharParaAdministrador é a leitura do Detalhe administrativo. Sem dono no
+// WHERE: o Administrador alcança o Pedido de qualquer Comprador, e o
+// identificador malformado e o inexistente saem os dois como pgx.ErrNoRows,
+// que `api/` traduz no mesmo 404.
+//
+// São várias consultas; quem quer que elas vejam o mesmo instante passa uma
+// transação em `bd`. O Comprador vem de `identidade` pela porta do módulo
+// (AD-1), e não de um JOIN entre schemas, que o AD-2 proíbe.
+func DetalharParaAdministrador(ctx context.Context, bd gerado.DBTX, pedidoID string) (DetalheAdmin, error) {
+	var chave pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return DetalheAdmin{}, pgx.ErrNoRows
+	}
+	q := gerado.New(bd)
+	linha, err := q.BuscarPedidoParaAdministrador(ctx, chave)
+	if err != nil {
+		return DetalheAdmin{}, err
+	}
+	d := DetalheAdmin{
+		Pedido: Pedido{
+			ID:            linha.ID.String(),
+			Numero:        linha.Numero,
+			Status:        Status(linha.Status),
+			TotalCentavos: linha.TotalCentavos,
+			AtualizadoEm:  linha.AtualizadoEm.Time.UTC(),
+		},
+		SubtotalCentavos: linha.SubtotalCentavos,
+		FreteCentavos:    linha.FreteCentavos,
+	}
+	// Tudo ou nada, pelo CHECK `pedido_criacao_completa`: basta uma coluna.
+	if linha.EnderecoCep.Valid {
+		d.Endereco = &Endereco{
+			Destinatario: linha.EnderecoDestinatario.String,
+			CEP:          linha.EnderecoCep.String,
+			Logradouro:   linha.EnderecoLogradouro.String,
+			Numero:       linha.EnderecoNumero.String,
+			Complemento:  linha.EnderecoComplemento.String,
+			Bairro:       linha.EnderecoBairro.String,
+			Cidade:       linha.EnderecoCidade.String,
+			UF:           linha.EnderecoUf.String,
+		}
+	}
+	// O Pedido do esqueleto (1.6) nasceu sem Comprador de verdade; um Pedido
+	// cujo dono sumiu não tira o Detalhe do ar — o resto continua legível.
+	if d.Comprador, err = identidade.BuscarComprador(ctx, bd, linha.CompradorID.String()); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return DetalheAdmin{}, fmt.Errorf("ler o Comprador do Pedido: %w", err)
+	}
+	if d.Historico, err = Historico(ctx, bd, d.ID); err != nil {
+		return DetalheAdmin{}, fmt.Errorf("ler o histórico do Pedido: %w", err)
+	}
+	itens, err := q.ItensDoPedido(ctx, chave)
+	if err != nil {
+		return DetalheAdmin{}, fmt.Errorf("ler os Itens do Pedido: %w", err)
+	}
+	// Sem `Disponivel`: o Estoque de agora não entra em decisão nenhuma do
+	// Administrador aqui, e lê-lo seria uma consulta a `catalogo` por um campo
+	// que a resposta não carrega.
+	d.Itens = make([]ItemDoPedido, 0, len(itens))
+	for _, it := range itens {
+		d.Itens = append(d.Itens, ItemDoPedido{
+			ProdutoID:              it.ProdutoID.String(),
+			Nome:                   it.Nome,
+			VendedorNome:           it.VendedorNome,
+			Quantidade:             it.Quantidade,
+			PrecoPraticadoCentavos: it.PrecoPraticadoCentavos,
+		})
+	}
+	return d, nil
+}
+
+// TransicionarPeloAdministrador é a transição das três linhas de
+// AtorAdministrador (FR-32), no molde de Cancelar: lê o Pedido TRAVADO e só
+// então aplica Transicionar, dentro da transação que `api/` abriu (AD-4).
+//
+// O `esperado` vem da tela, e não da leitura: é o Status que o Administrador
+// viu, e é ele que faz o compare-and-swap distinguir "o Pedido já avançou" de
+// "esta transição não existe". Lido no servidor, a corrida com a simulação
+// sumiria — a transição sairia aplicada a partir de um estado que ninguém viu.
+//
+// Com a linha presa, o Status lido é o que o CAS vai ver, e o Pedido devolvido
+// o carrega: na recusa por corrida é ele que a borda leva em `dados.status`,
+// para a tela dizer em que Status o Pedido está. Pedido inexistente e
+// identificador malformado saem como pgx.ErrNoRows, o 404 de sempre.
+func TransicionarPeloAdministrador(ctx context.Context, tx pgx.Tx, pedidoID string, esperado, novo Status) (Pedido, error) {
+	var chave pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return Pedido{}, pgx.ErrNoRows
+	}
+	linha, err := gerado.New(tx).TravarPedidoParaAdministrador(ctx, chave)
+	if err != nil {
+		return Pedido{}, err
+	}
+	p := Pedido{
+		ID:            linha.ID.String(),
+		Numero:        linha.Numero,
+		Status:        Status(linha.Status),
+		TotalCentavos: linha.TotalCentavos,
+	}
+	if err := Transicionar(ctx, tx, p.ID, esperado, novo, AtorAdministrador, ""); err != nil {
+		return p, err
+	}
+	p.Status = novo
+	return p, nil
 }
 
 // Varrer é o passo "aplicar" do tique: lê a inbox de `pagamento` e aplica o

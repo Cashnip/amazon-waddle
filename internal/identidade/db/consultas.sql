@@ -15,6 +15,16 @@ SELECT id, nome, email, senha_hash
 FROM identidade.administrador
 WHERE email = $1;
 
+-- O Comprador pelo identificador, e não pelo e-mail: quem chama já tem o
+-- `comprador_id` de uma linha que o aponta (o Pedido, no painel do
+-- Administrador da 6.4). Sem `senha_hash`: esta consulta não autentica
+-- ninguém, e trazer o hash para uma leitura de exibição seria carga a mais
+-- num caminho que nunca a usa.
+-- name: BuscarCompradorPorID :one
+SELECT id, nome, email
+FROM identidade.comprador
+WHERE id = $1;
+
 -- O e-mail chega já normalizado: quem grava é identidade.Cadastrar, e a coluna
 -- tem CHECK (email = lower(email)). A duplicidade sai da violação do UNIQUE —
 -- um SELECT antes do INSERT deixaria dois cadastros simultâneos passarem.

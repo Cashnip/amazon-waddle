@@ -28,6 +28,14 @@ const (
 	StatusCancelado           Status = "CANCELADO"
 )
 
+// Statuses são os sete, na ordem em que o Pedido os percorre. Existe para que
+// o filtro da Tabela do Administrador (6.4) valide contra a lista da máquina,
+// e não contra uma oitava cópia dos nomes em `api/`.
+var Statuses = []Status{
+	StatusAguardandoPagamento, StatusPagamentoRecusado, StatusPago,
+	StatusSeparando, StatusEnviado, StatusEntregue, StatusCancelado,
+}
+
 // Ator é quem provocou a transição, como o histórico a grava. São cinco, e o
 // CHECK de pedido.transicao_status conhece os mesmos cinco.
 type Ator string

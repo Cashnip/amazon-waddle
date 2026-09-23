@@ -563,6 +563,13 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o cancelamento pelo Comprador", func(t *testing.T) {
 		cancelamentoPeloComprador(t, rotas, pool)
 	})
+	// A 6.4, com contas, Vendedor, Categoria e Produto próprios: o painel de
+	// Pedidos do Administrador. Fica por ÚLTIMO de propósito: a Tabela sem
+	// filtro é global, e o que ela confere é que os Pedidos desta estória são
+	// os mais recentes da loja.
+	t.Run("o painel de Pedidos do Administrador", func(t *testing.T) {
+		painelDePedidosDoAdministrador(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

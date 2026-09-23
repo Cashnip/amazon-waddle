@@ -202,6 +202,14 @@ func guardaDoPrefixoAdministrativo(t *testing.T, rotas http.Handler, rdb *redis.
 		{"Comprador no admin", "/api/v1/admin/sessao", cookieComprador},
 		{"sem Sessão no admin", "/api/v1/admin/sessao", nil},
 		{"Comprador em rota administrativa qualquer", "/api/v1/admin/qualquer-coisa", cookieComprador},
+		// O painel de Pedidos (6.4): as rotas de leitura entram na tabela de
+		// negação como qualquer outra do prefixo. A de transição é POST e
+		// está logo abaixo, e a igualdade com a rota inexistente vale para as
+		// três — é ela que faz a área não APARECER (UX-DR9).
+		{"Comprador na Tabela de Pedidos", "/api/v1/admin/pedidos", cookieComprador},
+		{"sem Sessão na Tabela de Pedidos", "/api/v1/admin/pedidos", nil},
+		{"Comprador no Detalhe administrativo", "/api/v1/admin/pedidos/" + uuidNuncaUsado, cookieComprador},
+		{"sem Sessão no Detalhe administrativo", "/api/v1/admin/pedidos/" + uuidNuncaUsado, nil},
 		// Sem a barra final: o ServeMux redirecionaria com 307 e corpo HTML
 		// antes da guarda, e o redirecionamento sozinho já confirmaria a
 		// subárvore a quem nunca entrou.
@@ -209,6 +217,28 @@ func guardaDoPrefixoAdministrativo(t *testing.T, rotas http.Handler, rdb *redis.
 		{"prefixo sem a barra final, sem Sessão", "/api/v1/admin", nil},
 	} {
 		resp := pegarCom(t, rotas, caso.rota, caso.cookie)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("%s: status = %d (%s), quero 404", caso.nome, resp.Code, resp.Body.String())
+		}
+		if corpoSemCorrelacao(resp) != corpoSemCorrelacao(inexistente) {
+			t.Errorf("%s: a resposta se distingue da rota inexistente:\n%s\n%s",
+				caso.nome, corpoSemCorrelacao(resp), corpoSemCorrelacao(inexistente))
+		}
+	}
+
+	// A transição do painel (6.4) é escrita, e o POST tem de ser negado pelo
+	// mesmo 404 — um 401 aqui contaria que a rota existe, e um handler que
+	// gravasse antes de a guarda decidir moveria o Pedido de qualquer um.
+	for _, caso := range []struct {
+		nome   string
+		cookie *http.Cookie
+	}{
+		{"Comprador na transição administrativa", cookieComprador},
+		{"sem Sessão na transição administrativa", nil},
+	} {
+		resp := comCorpo(t, rotas, http.MethodPost,
+			"/api/v1/admin/pedidos/"+uuidNuncaUsado+"/transicoes",
+			`{"de":"PAGO","para":"SEPARANDO"}`, "application/json", caso.cookie)
 		if resp.Code != http.StatusNotFound {
 			t.Fatalf("%s: status = %d (%s), quero 404", caso.nome, resp.Code, resp.Body.String())
 		}

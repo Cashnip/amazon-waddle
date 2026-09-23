@@ -98,6 +98,84 @@ func (q *Queries) BuscarPedidoDoComprador(ctx context.Context, arg BuscarPedidoD
 	return i, err
 }
 
+const buscarPedidoParaAdministrador = `-- name: BuscarPedidoParaAdministrador :one
+SELECT p.id, p.numero, p.status, p.comprador_id,
+       p.subtotal_centavos, p.frete_centavos, p.total_centavos,
+       p.endereco_destinatario, p.endereco_cep, p.endereco_logradouro, p.endereco_numero,
+       p.endereco_complemento, p.endereco_bairro, p.endereco_cidade, p.endereco_uf,
+       -- O cast é carga, pelo mesmo motivo de BuscarPedidoDoComprador.
+       (SELECT max(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS atualizado_em
+FROM pedido.pedido p
+WHERE p.id = $1
+`
+
+type BuscarPedidoParaAdministradorRow struct {
+	ID                   pgtype.UUID
+	Numero               string
+	Status               string
+	CompradorID          pgtype.UUID
+	SubtotalCentavos     int64
+	FreteCentavos        int64
+	TotalCentavos        int64
+	EnderecoDestinatario pgtype.Text
+	EnderecoCep          pgtype.Text
+	EnderecoLogradouro   pgtype.Text
+	EnderecoNumero       pgtype.Text
+	EnderecoComplemento  pgtype.Text
+	EnderecoBairro       pgtype.Text
+	EnderecoCidade       pgtype.Text
+	EnderecoUf           pgtype.Text
+	AtualizadoEm         pgtype.Timestamptz
+}
+
+// O Detalhe administrativo (6.4). É BuscarPedidoDoComprador sem o dono no
+// WHERE e com o `comprador_id` a mais: o Administrador vê o Pedido de
+// qualquer Comprador, e é por esse identificador que `identidade` devolve o
+// nome e o e-mail de quem comprou.
+//
+// Consulta própria, e não um parâmetro nulo em BuscarPedidoDoComprador: o
+// dono no WHERE é a garantia do AD-11, e um `@comprador_id IS NULL OR …`
+// deixaria a leitura do Comprador a uma linha de distância de virar leitura
+// de todo mundo.
+func (q *Queries) BuscarPedidoParaAdministrador(ctx context.Context, pedidoID pgtype.UUID) (BuscarPedidoParaAdministradorRow, error) {
+	row := q.db.QueryRow(ctx, buscarPedidoParaAdministrador, pedidoID)
+	var i BuscarPedidoParaAdministradorRow
+	err := row.Scan(
+		&i.ID,
+		&i.Numero,
+		&i.Status,
+		&i.CompradorID,
+		&i.SubtotalCentavos,
+		&i.FreteCentavos,
+		&i.TotalCentavos,
+		&i.EnderecoDestinatario,
+		&i.EnderecoCep,
+		&i.EnderecoLogradouro,
+		&i.EnderecoNumero,
+		&i.EnderecoComplemento,
+		&i.EnderecoBairro,
+		&i.EnderecoCidade,
+		&i.EnderecoUf,
+		&i.AtualizadoEm,
+	)
+	return i, err
+}
+
+const contarPedidosAdmin = `-- name: ContarPedidosAdmin :one
+SELECT count(*)
+FROM pedido.pedido p
+WHERE ($1::text IS NULL OR p.status = $1::text)
+`
+
+// O total da mesma listagem, com o WHERE dela palavra por palavra: um filtro
+// que divergisse aqui paginaria sobre um total que não é o da lista.
+func (q *Queries) ContarPedidosAdmin(ctx context.Context, status pgtype.Text) (int64, error) {
+	row := q.db.QueryRow(ctx, contarPedidosAdmin, status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const contarPedidosDoComprador = `-- name: ContarPedidosDoComprador :one
 SELECT count(*)
 FROM pedido.pedido p
@@ -263,7 +341,7 @@ func (q *Queries) HistoricoDoPedido(ctx context.Context, pedidoID pgtype.UUID) (
 }
 
 const itensDoPedido = `-- name: ItensDoPedido :many
-SELECT produto_id, nome, preco_praticado_centavos, quantidade
+SELECT produto_id, nome, vendedor_nome, preco_praticado_centavos, quantidade
 FROM pedido.item_pedido
 WHERE pedido_id = $1
 ORDER BY id
@@ -272,6 +350,7 @@ ORDER BY id
 type ItensDoPedidoRow struct {
 	ProdutoID              pgtype.UUID
 	Nome                   string
+	VendedorNome           string
 	PrecoPraticadoCentavos int64
 	Quantidade             int32
 }
@@ -279,6 +358,11 @@ type ItensDoPedidoRow struct {
 // Os Itens de Pedido como a tela os mostra: o que foi congelado na compra,
 // nunca o preço de hoje (FR-30). Sem dono no WHERE: quem chama já leu o
 // Pedido pelo dono (AD-11). A ordem por `id` é a da criação — uuidv7().
+// O `vendedor_nome` é o congelado na criação, como o `nome` e o preço: é o
+// Vendedor que vendeu, e não o que hoje estaria ligado ao Produto. Sai nesta
+// consulta, e não numa segunda só para o Administrador, porque a coluna já
+// está na tabela e a linha já é lida — quem não o exibe (o Comprador) só não
+// o serializa.
 func (q *Queries) ItensDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]ItensDoPedidoRow, error) {
 	rows, err := q.db.Query(ctx, itensDoPedido, pedidoID)
 	if err != nil {
@@ -291,6 +375,7 @@ func (q *Queries) ItensDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]It
 		if err := rows.Scan(
 			&i.ProdutoID,
 			&i.Nome,
+			&i.VendedorNome,
 			&i.PrecoPraticadoCentavos,
 			&i.Quantidade,
 		); err != nil {
@@ -370,6 +455,88 @@ func (q *Queries) ListarFaixasDeFrete(ctx context.Context) ([]ListarFaixasDeFret
 			&i.Regiao,
 			&i.ValorCentavos,
 			&i.Padrao,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listarPedidosAdmin = `-- name: ListarPedidosAdmin :many
+SELECT p.id, p.numero, p.status, p.total_centavos,
+       (SELECT min(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id)::timestamptz AS criado_em
+FROM pedido.pedido p
+WHERE ($1::text IS NULL OR p.status = $1::text)
+ORDER BY
+  CASE WHEN $2::text = 'recentes'
+       THEN (SELECT min(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id) END DESC NULLS LAST,
+  CASE WHEN $2::text = 'antigos'
+       THEN (SELECT min(t.ocorrido_em) FROM pedido.transicao_status t WHERE t.pedido_id = p.id) END ASC,
+  p.id
+LIMIT $4 OFFSET $3
+`
+
+type ListarPedidosAdminParams struct {
+	Status       pgtype.Text
+	Ordenacao    string
+	Deslocamento int32
+	Limite       int32
+}
+
+type ListarPedidosAdminRow struct {
+	ID            pgtype.UUID
+	Numero        string
+	Status        string
+	TotalCentavos int64
+	CriadoEm      pgtype.Timestamptz
+}
+
+// A Tabela de Pedidos do Administrador (6.4): todos os Compradores, filtrável
+// por Status e ordenável por data. Sem dono no WHERE — é justamente o que
+// distingue esta listagem da do Comprador.
+//
+// O filtro é opcional por `IS NULL OR`, no molde de `busca`, e a data é o
+// nascimento do histórico, como em ListarPedidosDoComprador — nenhuma coluna
+// nova. A subconsulta se repete no ORDER BY porque o PostgreSQL não deixa
+// usar o apelido da lista de seleção dentro de uma expressão.
+//
+// Uma chave por ordenação; a que não vale vira NULL e empata. `recentes` é
+// DESC com NULLS LAST pelo motivo de ListarPedidosDoComprador, e o desempate
+// final é sempre `id` (AD-18).
+//
+// ponytail: a subconsulta correlacionada sai TRÊS vezes por linha — uma na
+// lista de seleção e uma em cada chave de ordenação —, sobre varredura
+// sequencial de `pedido.pedido` sem o dono no WHERE que estreita a do
+// Comprador. Teto: o índice `transicao_status (pedido_id, ocorrido_em)` da 5.1
+// serve as três, e o volume do MVP (dezenas de Pedidos) as torna invisíveis; o
+// que dói primeiro é a ordenação, que roda sobre a tabela inteira antes do
+// LIMIT. A saída barata é uma `CROSS JOIN LATERAL` calculando `criado_em` uma
+// vez e ordenando pela coluna dela; a cara, e que mentiria sobre os Pedidos já
+// gravados, é `criado_em` denormalizado no Pedido.
+func (q *Queries) ListarPedidosAdmin(ctx context.Context, arg ListarPedidosAdminParams) ([]ListarPedidosAdminRow, error) {
+	rows, err := q.db.Query(ctx, listarPedidosAdmin,
+		arg.Status,
+		arg.Ordenacao,
+		arg.Deslocamento,
+		arg.Limite,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListarPedidosAdminRow
+	for rows.Next() {
+		var i ListarPedidosAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Numero,
+			&i.Status,
+			&i.TotalCentavos,
+			&i.CriadoEm,
 		); err != nil {
 			return nil, err
 		}
@@ -656,6 +823,40 @@ type TravarPedidoDoCompradorRow struct {
 func (q *Queries) TravarPedidoDoComprador(ctx context.Context, arg TravarPedidoDoCompradorParams) (TravarPedidoDoCompradorRow, error) {
 	row := q.db.QueryRow(ctx, travarPedidoDoComprador, arg.PedidoID, arg.CompradorID)
 	var i TravarPedidoDoCompradorRow
+	err := row.Scan(
+		&i.ID,
+		&i.Numero,
+		&i.Status,
+		&i.TotalCentavos,
+	)
+	return i, err
+}
+
+const travarPedidoParaAdministrador = `-- name: TravarPedidoParaAdministrador :one
+SELECT p.id, p.numero, p.status, p.total_centavos
+FROM pedido.pedido p
+WHERE p.id = $1
+FOR UPDATE
+`
+
+type TravarPedidoParaAdministradorRow struct {
+	ID            pgtype.UUID
+	Numero        string
+	Status        string
+	TotalCentavos int64
+}
+
+// A leitura travada da transição pelo Administrador (6.4). É
+// TravarPedidoDoComprador sem o dono: o Administrador alcança o Pedido de
+// qualquer Comprador, e a trava serve a outra coisa — prender a linha antes
+// do compare-and-swap para que o Status lido seja o que o CAS vai ver.
+//
+// FOR UPDATE que ESPERA, e não o SKIP LOCKED da varredura: o Administrador
+// clicou num botão e precisa do desfecho. É a trava que faz a corrida com a
+// simulação sair como "o Pedido já está em X", e não como transição inválida.
+func (q *Queries) TravarPedidoParaAdministrador(ctx context.Context, pedidoID pgtype.UUID) (TravarPedidoParaAdministradorRow, error) {
+	row := q.db.QueryRow(ctx, travarPedidoParaAdministrador, pedidoID)
+	var i TravarPedidoParaAdministradorRow
 	err := row.Scan(
 		&i.ID,
 		&i.Numero,

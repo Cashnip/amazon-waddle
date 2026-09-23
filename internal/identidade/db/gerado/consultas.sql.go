@@ -148,6 +148,30 @@ func (q *Queries) BuscarCompradorPorEmail(ctx context.Context, email string) (Id
 	return i, err
 }
 
+const buscarCompradorPorID = `-- name: BuscarCompradorPorID :one
+SELECT id, nome, email
+FROM identidade.comprador
+WHERE id = $1
+`
+
+type BuscarCompradorPorIDRow struct {
+	ID    pgtype.UUID
+	Nome  string
+	Email string
+}
+
+// O Comprador pelo identificador, e não pelo e-mail: quem chama já tem o
+// `comprador_id` de uma linha que o aponta (o Pedido, no painel do
+// Administrador da 6.4). Sem `senha_hash`: esta consulta não autentica
+// ninguém, e trazer o hash para uma leitura de exibição seria carga a mais
+// num caminho que nunca a usa.
+func (q *Queries) BuscarCompradorPorID(ctx context.Context, id pgtype.UUID) (BuscarCompradorPorIDRow, error) {
+	row := q.db.QueryRow(ctx, buscarCompradorPorID, id)
+	var i BuscarCompradorPorIDRow
+	err := row.Scan(&i.ID, &i.Nome, &i.Email)
+	return i, err
+}
+
 const buscarEndereco = `-- name: BuscarEndereco :one
 SELECT id, destinatario, cep, logradouro, numero, complemento, bairro, cidade, uf
 FROM identidade.endereco

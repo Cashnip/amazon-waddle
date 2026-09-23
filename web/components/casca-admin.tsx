@@ -25,6 +25,7 @@ const DESTINOS = [
   { href: "/admin/vendedores", rotulo: "Vendedores" },
   { href: "/admin/categorias", rotulo: "Categorias" },
   { href: "/admin/produtos", rotulo: "Produtos" },
+  { href: "/admin/pedidos", rotulo: "Pedidos" },
 ];
 
 export function CascaAdmin({ children }: { children: React.ReactNode }) {

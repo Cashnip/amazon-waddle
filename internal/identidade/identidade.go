@@ -144,6 +144,26 @@ func Cadastrar(ctx context.Context, bd gerado.DBTX, nome, email, senha string) (
 	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Email: normalizarEmail(email), Papel: PapelComprador}, nil
 }
 
+// BuscarComprador devolve o Comprador pelo identificador — a porta que o
+// painel do Administrador (6.4) usa para pôr nome e e-mail no Detalhe de um
+// Pedido que não é dele. Não autentica ninguém: quem chama já provou o papel
+// na guarda do prefixo administrativo.
+//
+// O identificador malformado sai como pgx.ErrNoRows, e não como erro próprio:
+// para quem chama, "não é uuid" e "não existe" são a mesma ausência, e o
+// `api/` já traduz ErrNoRows no 404 de sempre (AD-11).
+func BuscarComprador(ctx context.Context, bd gerado.DBTX, id string) (Conta, error) {
+	var chave pgtype.UUID
+	if err := chave.Scan(id); err != nil {
+		return Conta{}, pgx.ErrNoRows
+	}
+	linha, err := gerado.New(bd).BuscarCompradorPorID(ctx, chave)
+	if err != nil {
+		return Conta{}, err
+	}
+	return Conta{ID: uuidTexto(linha.ID), Nome: linha.Nome, Email: linha.Email, Papel: PapelComprador}, nil
+}
+
 // normalizarEmail é a forma canônica do e-mail dentro do módulo: a coluna tem
 // `CHECK (email = lower(email))` e o UNIQUE só vale sobre ela. Fica numa função
 // porque o contador de tentativas do bloqueio chaveia pela MESMA forma — duas

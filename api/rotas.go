@@ -123,6 +123,13 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// O ajuste do Estoque total (3.4), em rota própria e com a guarda das
 	// Reservas ativas.
 	admin.HandleFunc("PUT /api/v1/admin/produtos/{id}/estoque", s.ajustarEstoque)
+	// O painel de Pedidos (6.4, FR-32): a Tabela de todos os Compradores, o
+	// Detalhe de qualquer Pedido e as três transições que cabem ao
+	// Administrador — `de` e `para` no corpo, e o CAS decide. Não há rota de
+	// cancelamento administrativo: o Administrador não cancela.
+	admin.HandleFunc("GET /api/v1/admin/pedidos", s.listarPedidosAdmin)
+	admin.HandleFunc("GET /api/v1/admin/pedidos/{id}", s.lerPedidoAdmin)
+	admin.HandleFunc("POST /api/v1/admin/pedidos/{id}/transicoes", s.transicionarPedidoAdmin)
 	// As imagens que um Produto pode usar: as de media/, embutidas.
 	admin.HandleFunc("GET /api/v1/admin/midias", listarMidias)
 	admin.HandleFunc("/", naoEncontrado)

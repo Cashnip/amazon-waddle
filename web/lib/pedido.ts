@@ -312,3 +312,200 @@ const rotulosDoStatus: Record<string, string> = {
 export function rotuloDoStatus(status: string): string {
   return Object.hasOwn(rotulosDoStatus, status) ? rotulosDoStatus[status] : status;
 }
+
+// Os sete, para o filtro da Tabela do Administrador (6.4). Derivados do mapa
+// de rótulos, e não digitados de novo: uma oitava lista divergiria dele.
+export const STATUS = Object.keys(rotulosDoStatus);
+
+// ————— O painel de Pedidos do Administrador (6.4, FR-32) —————
+//
+// Tudo que as duas telas derivam vem pronto do Go, numa chamada só (AD-18):
+// `permitidas` — os destinos que o Administrador alcança a partir do Status
+// atual — e `terminal`. Nenhuma tabela de transições é redeclarada aqui
+// (AD-10); aqui mora só a leitura dessa resposta, em funções puras.
+
+export type PedidoNaTabela = {
+  id: string;
+  numero: string;
+  status: string;
+  total_centavos: number;
+  criado_em?: string;
+  terminal: boolean;
+  permitidas: string[];
+};
+
+export type ItemDoPedidoAdmin = {
+  produto_id: string;
+  nome: string;
+  vendedor_nome: string;
+  quantidade: number;
+  preco_praticado_centavos: number;
+};
+
+export type DetalheAdmin = PedidoNaTabela & {
+  atualizado_em: string;
+  comprador: { id: string; nome: string; email: string };
+  subtotal_centavos: number;
+  frete_centavos: number;
+  endereco: Record<Campo, string> | null;
+  itens: ItemDoPedidoAdmin[];
+  historico: Transicao[];
+};
+
+// As duas ordenações por data, como a URL e o Go as escrevem.
+export const RECENTES = "recentes";
+export const ANTIGOS = "antigos";
+export const ORDENACOES = [RECENTES, ANTIGOS];
+
+// O rótulo do botão de cada destino. Não é "Marcar como {Status}": o que o
+// Administrador faz é a operação, e é ela que o botão nomeia (Voice and Tone).
+// Destino que a tela não conhece — uma linha nova na tabela do AD-3 — aparece
+// com o rótulo do Status, feio e não invisível, como em `rotuloDoStatus`.
+const rotulosDaAcao: Record<string, string> = {
+  SEPARANDO: "Iniciar a separação",
+  ENVIADO: "Registrar o envio",
+  ENTREGUE: "Registrar a entrega",
+};
+
+export function rotuloDaAcao(destino: string): string {
+  return Object.hasOwn(rotulosDaAcao, destino) ? rotulosDaAcao[destino] : `Mudar para ${rotuloDoStatus(destino)}`;
+}
+
+export function rotaDaTransicao(pedidoId: string): string {
+  return `/api/v1/admin/pedidos/${encodeURIComponent(pedidoId)}/transicoes`;
+}
+
+export const FALHA_NA_TRANSICAO = "Não foi possível mudar o Status do Pedido.";
+
+// O Alert do desfecho, nas duas superfícies. A variante é o que a EXPERIENCE
+// separa: a transição fora da tabela é defeito de quem chamou e sai
+// `destructive`; o Pedido que outro ator já moveu é informação, e sai neutro —
+// dizer "transição inválida" ali reportaria causa falsa.
+export type AlertaDaTransicao = { variante: "destrutivo" | "informativo"; texto: string };
+
+export type DesfechoDaTransicao =
+  | { tipo: "releitura"; alerta: AlertaDaTransicao | null }
+  | { tipo: "semSessao" }
+  | { tipo: "erro"; mensagem: string };
+
+// O que o bloco de ação reporta à superfície que o monta. O desfecho NÃO pode
+// ficar dentro da linha: com a Tabela filtrada por Status, a releitura tira o
+// Pedido da lista e o componente desmonta junto com o Alert — o Administrador
+// ficaria sem saber o que aconteceu, que é justamente o Critério de Aceite da
+// corrida. Quem renderiza é a superfície, fora da linha.
+export type RelatoDaTransicao = { alerta: AlertaDaTransicao | null; erro: string | null };
+
+export const SEM_RELATO: RelatoDaTransicao = { alerta: null, erro: null };
+
+// A frase do Alert destrutivo: nomeia a transição tentada e as permitidas que
+// o Go devolveu em `dados.permitidas`. Sem nenhuma permitida — um Pedido
+// terminal — a frase diz isso, em vez de terminar numa lista vazia.
+function fraseDaTransicaoInvalida(de: string, para: string, permitidas: string[]): string {
+  const tentada = `Não é possível ir de ${rotuloDoStatus(de)} para ${rotuloDoStatus(para)}.`;
+  if (permitidas.length === 0) return `${tentada} Este Pedido não tem mudanças de Status disponíveis.`;
+  return `${tentada} A partir de ${rotuloDoStatus(de)}, só: ${permitidas.map(rotuloDoStatus).join(", ")}.`;
+}
+
+// O que fazer com a resposta de `POST .../transicoes`. O 200 relê: é a leitura
+// que traz o Status novo, o `permitidas` novo e a linha do histórico. As duas
+// recusas da máquina também releem — nas duas o Pedido não é mais o que a tela
+// mostrava —, cada uma com o seu Alert. 404 é o do prefixo administrativo: a
+// Sessão acabou, e a tela vai ao login (o mesmo desvio de `/admin/produtos`).
+export function desfechoDaTransicao(
+  r: { resposta: { ok: boolean; status: number }; json: unknown },
+  tentada: { de: string; para: string },
+): DesfechoDaTransicao {
+  const { ok, status } = r.resposta;
+  if (status === 404) return { tipo: "semSessao" };
+  if (ok) return { tipo: "releitura", alerta: null };
+  const erro = (r.json as { erro?: { codigo?: string; mensagem?: string; dados?: Record<string, unknown> } } | null)?.erro;
+  const codigo = erro?.codigo ?? "";
+  const dados = erro?.dados ?? {};
+  if (status === 409 && codigo === "TRANSICAO_INVALIDA") {
+    const permitidas = Array.isArray(dados.permitidas) ? (dados.permitidas as string[]) : [];
+    return {
+      tipo: "releitura",
+      alerta: { variante: "destrutivo", texto: fraseDaTransicaoInvalida(tentada.de, tentada.para, permitidas) },
+    };
+  }
+  if (status === 409 && codigo === "ESTADO_JA_AVANCADO") {
+    const atual = typeof dados.status === "string" ? dados.status : "";
+    return {
+      tipo: "releitura",
+      alerta: {
+        variante: "informativo",
+        texto: `Este Pedido já está em ${rotuloDoStatus(atual)}. A linha foi atualizada.`,
+      },
+    };
+  }
+  return { tipo: "erro", mensagem: erro?.mensagem ?? FALHA_NA_TRANSICAO };
+}
+
+// O estado inteiro da Tabela mora na URL: recarregar, voltar pelo histórico do
+// navegador ou compartilhar o endereço reproduzem a mesma lista.
+export type FiltroDaTabela = { status: string; ordenacao: string; pagina: number };
+
+// O que a URL diz, com o que ela não diz valendo o padrão. Valor fora das
+// listas fechadas cai no padrão em vez de viajar ao Go para levar 400: o que
+// chega aqui é o que o usuário digitou na barra de endereços.
+export function filtroDaURL(params: { get(chave: string): string | null }): FiltroDaTabela {
+  const status = params.get("status") ?? "";
+  const ordenacao = params.get("ordenacao") ?? "";
+  const pagina = Number.parseInt(params.get("pagina") ?? "1", 10);
+  return {
+    status: STATUS.includes(status) ? status : "",
+    ordenacao: ORDENACOES.includes(ordenacao) ? ordenacao : RECENTES,
+    pagina: Number.isSafeInteger(pagina) ? Math.max(1, pagina) : 1,
+  };
+}
+
+// A query da URL e a da API saem da mesma função: uma segunda montagem
+// divergiria, e a lista exibida deixaria de ser a que o endereço nomeia. O
+// padrão fica de fora da URL — `?ordenacao=recentes&pagina=1` é ruído.
+export function consultaDaTabela(f: FiltroDaTabela): string {
+  const q = new URLSearchParams();
+  if (f.status) q.set("status", f.status);
+  if (f.ordenacao !== RECENTES) q.set("ordenacao", f.ordenacao);
+  if (f.pagina > 1) q.set("pagina", String(f.pagina));
+  return q.toString();
+}
+
+export function enderecoDaTabela(f: FiltroDaTabela): string {
+  const q = consultaDaTabela(f);
+  return q ? `/admin/pedidos?${q}` : "/admin/pedidos";
+}
+
+export function rotaDaTabela(f: FiltroDaTabela): string {
+  const q = consultaDaTabela(f);
+  return q ? `/api/v1/admin/pedidos?${q}` : "/api/v1/admin/pedidos";
+}
+
+// De quanto em quanto reler a Tabela, ou null para parar: 10 s enquanto a
+// página listar Pedido não terminal. Quem diz que acabou é o `terminal` do Go
+// — uma cópia de "ENTREGUE ou CANCELADO" aqui divergiria da máquina.
+export function intervaloDaTabela(itens: readonly Pick<PedidoNaTabela, "terminal">[]): number | null {
+  return itens.some((p) => !p.terminal) ? INTERVALO_AVANCANDO_MS : null;
+}
+
+// O anúncio da consulta em intervalo: só os Pedidos cujo Status mudou desde a
+// leitura anterior, cada um nomeado pelo número. Uma região viva para a Tabela
+// inteira, e não uma por linha — uma por linha anunciaria "Separando" sem
+// dizer de qual Pedido, e criaria tantas regiões quantas forem as linhas.
+// Vazio quando nada mudou, para o leitor de tela não reler o que já leu; e
+// Pedido que ainda não estava na leitura anterior não é mudança, é chegada.
+export function anuncioDaTabela(
+  anteriores: Record<string, string>,
+  itens: readonly Pick<PedidoNaTabela, "id" | "numero" | "status">[],
+): string {
+  return itens
+    .filter((p) => Object.hasOwn(anteriores, p.id) && anteriores[p.id] !== p.status)
+    .map((p) => `Pedido ${p.numero}: ${rotuloDoStatus(p.status)}.`)
+    .join(" ");
+}
+
+// Os Status da leitura atual, para a próxima comparar com eles.
+export function statusPorPedido(
+  itens: readonly Pick<PedidoNaTabela, "id" | "status">[],
+): Record<string, string> {
+  return Object.fromEntries(itens.map((p) => [p.id, p.status]));
+}

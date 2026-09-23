@@ -29,6 +29,21 @@ const {
   tempoRestante,
   textoDasTentativas,
   textosDoCancelamento,
+  ANTIGOS,
+  FALHA_NA_TRANSICAO,
+  ORDENACOES,
+  RECENTES,
+  STATUS,
+  consultaDaTabela,
+  desfechoDaTransicao,
+  enderecoDaTabela,
+  filtroDaURL,
+  intervaloDaTabela,
+  rotaDaTabela,
+  rotaDaTransicao,
+  rotuloDaAcao,
+  anuncioDaTabela,
+  statusPorPedido,
 } = await import(new URL("../lib/pedido.ts", import.meta.url).href);
 
 test("cada Status abre a sua superfície; o Detalhe cobre todo o resto", () => {
@@ -320,4 +335,146 @@ test("nenhum texto do cancelamento nomeia a Reserva nem promete reembolso", () =
   for (const texto of textos) {
     assert.doesNotMatch(texto, /reserva|reembolso|devolu|estorno/i, texto);
   }
+});
+
+// ————— O painel de Pedidos do Administrador (6.4) —————
+
+test("o botão nomeia a operação, e o destino desconhecido aparece feio, não invisível", () => {
+  assert.equal(rotuloDaAcao("SEPARANDO"), "Iniciar a separação");
+  assert.equal(rotuloDaAcao("ENVIADO"), "Registrar o envio");
+  assert.equal(rotuloDaAcao("ENTREGUE"), "Registrar a entrega");
+  // Uma linha nova na tabela do AD-3 ainda rende um botão legível.
+  assert.equal(rotuloDaAcao("DEVOLVIDO"), "Mudar para DEVOLVIDO");
+  assert.equal(rotuloDaAcao("CANCELADO"), "Mudar para Cancelado");
+  assert.equal(rotaDaTransicao("2026 000042/x"), "/api/v1/admin/pedidos/2026%20000042%2Fx/transicoes");
+});
+
+test("a transição inválida é Alert destrutivo, e o Pedido que já avançou é informativo", () => {
+  const resposta = (status, codigo, mensagem, dados = null) => ({
+    resposta: { ok: status >= 200 && status < 300, status },
+    json: { erro: { codigo, mensagem, dados, correlacao: "c" } },
+  });
+  const tentada = { de: "PAGO", para: "ENTREGUE" };
+
+  // 200: relê, sem Alert nenhum — a releitura traz o Status e o permitidas novos.
+  assert.deepEqual(
+    desfechoDaTransicao({ resposta: { ok: true, status: 200 }, json: {} }, tentada),
+    { tipo: "releitura", alerta: null },
+  );
+
+  // Fora da tabela: nomeia a tentada E as permitidas que o Go devolveu.
+  const invalida = desfechoDaTransicao(
+    resposta(409, "TRANSICAO_INVALIDA", "Esta mudança…", { permitidas: ["SEPARANDO"] }),
+    tentada,
+  );
+  assert.equal(invalida.tipo, "releitura");
+  assert.equal(invalida.alerta.variante, "destrutivo");
+  assert.equal(
+    invalida.alerta.texto,
+    "Não é possível ir de Pago para Entregue. A partir de Pago, só: Separando.",
+  );
+  // Sem saída nenhuma (Pedido terminal) a frase não termina numa lista vazia.
+  assert.match(
+    desfechoDaTransicao(resposta(409, "TRANSICAO_INVALIDA", "m", { permitidas: [] }), {
+      de: "ENTREGUE",
+      para: "ENVIADO",
+    }).alerta.texto,
+    /não tem mudanças de Status disponíveis\.$/,
+  );
+  // `dados` sem `permitidas` não estoura: cai na mesma frase.
+  assert.match(
+    desfechoDaTransicao(resposta(409, "TRANSICAO_INVALIDA", "m", {}), tentada).alerta.texto,
+    /não tem mudanças de Status disponíveis\.$/,
+  );
+
+  // A corrida com a simulação: informativo, com o Status atual, e NUNCA a
+  // palavra "inválida" — é ela que reportaria causa falsa (EXPERIENCE).
+  const avancou = desfechoDaTransicao(
+    resposta(409, "ESTADO_JA_AVANCADO", "O Pedido já avançou de estado.", { status: "SEPARANDO" }),
+    { de: "PAGO", para: "SEPARANDO" },
+  );
+  assert.deepEqual(avancou, {
+    tipo: "releitura",
+    alerta: { variante: "informativo", texto: "Este Pedido já está em Separando. A linha foi atualizada." },
+  });
+  assert.doesNotMatch(avancou.alerta.texto, /inválid/i);
+
+  // A Sessão administrativa acabou: o prefixo responde 404, e a tela vai ao login.
+  assert.deepEqual(desfechoDaTransicao(resposta(404, "NAO_ENCONTRADO", "m"), tentada), { tipo: "semSessao" });
+  // Qualquer outro desfecho é erro de verdade, com a mensagem do envelope.
+  assert.deepEqual(desfechoDaTransicao(resposta(400, "CAMPO_INVALIDO", "Campo."), tentada), {
+    tipo: "erro",
+    mensagem: "Campo.",
+  });
+  assert.deepEqual(desfechoDaTransicao({ resposta: { ok: false, status: 500 }, json: null }, tentada), {
+    tipo: "erro",
+    mensagem: FALHA_NA_TRANSICAO,
+  });
+});
+
+test("o filtro e a ordenação vivem na URL, e o que não vale cai no padrão", () => {
+  const url = (busca) => new URLSearchParams(busca);
+  assert.deepEqual(filtroDaURL(url("")), { status: "", ordenacao: RECENTES, pagina: 1 });
+  assert.deepEqual(filtroDaURL(url("status=PAGO&ordenacao=antigos&pagina=3")), {
+    status: "PAGO",
+    ordenacao: ANTIGOS,
+    pagina: 3,
+  });
+  // Digitado à mão na barra de endereços: cai no padrão, sem ir ao Go levar 400.
+  assert.deepEqual(filtroDaURL(url("status=INVENTADO&ordenacao=preco_asc&pagina=0")), {
+    status: "",
+    ordenacao: RECENTES,
+    pagina: 1,
+  });
+  assert.equal(filtroDaURL(url("pagina=abc")).pagina, 1);
+  assert.equal(filtroDaURL(url("pagina=-9")).pagina, 1);
+
+  // A URL e a chamada saem da mesma montagem, e o padrão não vira ruído.
+  assert.equal(consultaDaTabela({ status: "", ordenacao: RECENTES, pagina: 1 }), "");
+  assert.equal(enderecoDaTabela({ status: "", ordenacao: RECENTES, pagina: 1 }), "/admin/pedidos");
+  assert.equal(rotaDaTabela({ status: "", ordenacao: RECENTES, pagina: 1 }), "/api/v1/admin/pedidos");
+  const f = { status: "PAGO", ordenacao: ANTIGOS, pagina: 2 };
+  assert.equal(consultaDaTabela(f), "status=PAGO&ordenacao=antigos&pagina=2");
+  assert.equal(enderecoDaTabela(f), "/admin/pedidos?status=PAGO&ordenacao=antigos&pagina=2");
+  assert.equal(rotaDaTabela(f), "/api/v1/admin/pedidos?status=PAGO&ordenacao=antigos&pagina=2");
+  // E a volta fecha: o que a URL montou é o que ela lê.
+  assert.deepEqual(filtroDaURL(url(consultaDaTabela(f))), f);
+});
+
+test("o filtro oferece os sete Status do ponto único de rótulo, e as duas ordenações", () => {
+  assert.equal(STATUS.length, 7);
+  for (const s of STATUS) assert.notEqual(rotuloDoStatus(s), s, s);
+  assert.deepEqual(ORDENACOES, [RECENTES, ANTIGOS]);
+});
+
+test("a Tabela consulta em intervalo só enquanto listar Pedido não terminal", () => {
+  assert.equal(intervaloDaTabela([]), null);
+  assert.equal(intervaloDaTabela([{ terminal: true }, { terminal: true }]), null);
+  assert.equal(intervaloDaTabela([{ terminal: true }, { terminal: false }]), INTERVALO_AVANCANDO_MS);
+});
+
+test("a Tabela anuncia só quem mudou de Status, nomeando o Pedido", () => {
+  const linha = (id, numero, status) => ({ id, numero, status });
+  const antes = [linha("a", "2026-000001", "PAGO"), linha("b", "2026-000002", "SEPARANDO")];
+  const mapa = statusPorPedido(antes);
+  assert.deepEqual(mapa, { a: "PAGO", b: "SEPARANDO" });
+
+  // Nada mudou: nada a anunciar — o leitor de tela não relê o que já leu.
+  assert.equal(anuncioDaTabela(mapa, antes), "");
+  // Um mudou: o anúncio nomeia o Pedido, e não só o Status.
+  assert.equal(
+    anuncioDaTabela(mapa, [linha("a", "2026-000001", "SEPARANDO"), antes[1]]),
+    "Pedido 2026-000001: Separando.",
+  );
+  // Dois mudaram: uma frase por Pedido, na mesma região.
+  assert.equal(
+    anuncioDaTabela(mapa, [linha("a", "2026-000001", "SEPARANDO"), linha("b", "2026-000002", "ENVIADO")]),
+    "Pedido 2026-000001: Separando. Pedido 2026-000002: Enviado.",
+  );
+  // Pedido que ainda não estava na leitura anterior é chegada, e não mudança.
+  assert.equal(anuncioDaTabela(mapa, [...antes, linha("c", "2026-000003", "PAGO")]), "");
+  // A primeira leitura não anuncia a lista inteira.
+  assert.equal(anuncioDaTabela({}, antes), "");
+  // Chave herdada de Object.prototype não conta como Status anterior.
+  assert.equal(anuncioDaTabela({}, [linha("constructor", "2026-000004", "PAGO")]), "");
 });
