@@ -1,30 +1,28 @@
 package pedido
 
 import (
+	"maps"
 	"testing"
 	"time"
 )
 
-// O caminho da entrega é uma fila fechada: três avanços, e mais nada. O que
-// este teste protege é o "mais nada" — acrescentar uma quarta entrada ao mapa
-// é o jeito fácil de a simulação passar a mexer num Status que não é dela.
-func TestProximoDaSimulacao(t *testing.T) {
-	avanca := map[Status]Status{
+// Os dois mapas do tempo são listas fechadas: a entrega é uma fila de três
+// avanços, a expiração é uma linha só, e o que este teste protege é o "e mais
+// nada" — acrescentar uma entrada é o jeito fácil de um passo do tempo passar
+// a mexer num Status que não é dele. `avancarUm` lê os mapas direto, então é
+// deles que a prova tem de sair.
+func TestOsMapasDoTempo(t *testing.T) {
+	quero := map[Status]Status{
 		StatusPago:      StatusSeparando,
 		StatusSeparando: StatusEnviado,
 		StatusEnviado:   StatusEntregue,
 	}
-	for de, quero := range avanca {
-		proximo, ok := proximoDaSimulacao(de)
-		if !ok || proximo != quero {
-			t.Errorf("proximoDaSimulacao(%s) = %s, %v; quero %s, true", de, proximo, ok, quero)
-		}
+	if !maps.Equal(simulacao, quero) {
+		t.Errorf("simulacao = %v; quero %v", simulacao, quero)
 	}
-	// Nenhum destes é movido pela simulação, por mais tempo que passe.
-	for _, parado := range []Status{StatusAguardandoPagamento, StatusPagamentoRecusado, StatusEntregue, StatusCancelado} {
-		if proximo, ok := proximoDaSimulacao(parado); ok {
-			t.Errorf("proximoDaSimulacao(%s) = %s; a simulação não move este Status", parado, proximo)
-		}
+	// A expiração move um Status só, e é o único em que há Tentativa correndo.
+	if !maps.Equal(expiracao, map[Status]Status{StatusAguardandoPagamento: StatusPagamentoRecusado}) {
+		t.Errorf("expiracao = %v; quero só AGUARDANDO_PAGAMENTO -> PAGAMENTO_RECUSADO", expiracao)
 	}
 }
 
@@ -35,6 +33,13 @@ func TestSimulacaoCabeNaTabela(t *testing.T) {
 	for de, para := range simulacao {
 		if _, ok := regra(de, para, AtorSimulacao, ""); !ok {
 			t.Errorf("a simulação leva %s a %s, e a tabela não deixa a SIMULACAO fazer isso", de, para)
+		}
+	}
+	// O mesmo para a expiração, com o ator e o motivo dela: TEMPO_ESGOTADO é
+	// motivo reservado, e só a linha da FR-34 o aceita.
+	for de, para := range expiracao {
+		if _, ok := regra(de, para, AtorVarredura, MotivoTempoEsgotado); !ok {
+			t.Errorf("a expiração leva %s a %s, e a tabela não deixa a VARREDURA fazer isso com TEMPO_ESGOTADO", de, para)
 		}
 	}
 }

@@ -45,14 +45,34 @@ WHERE id = @id AND estado = 'PENDENTE';
 -- transforma o reenvio em no-op.
 -- O `numero` sai junto porque o Simulado decide pelos centavos só na primeira
 -- Tentativa (§7.1, AD-8): da segunda em diante aprova.
+--
+-- A janela tem os dois lados. O piso `criada_em > @desde` é o prazo da
+-- expiração (FR-34): passado ele a Tentativa está morta — a varredura já
+-- encerrou o Pedido —, e emitir sobre ela não teria efeito nenhum. Sem o piso,
+-- a faixa que nunca confirma seria relida a cada tique para sempre. Continua
+-- derivada, e não marcada (AD-7): nada é escrito para sair da lista.
 -- name: TentativasSemConfirmacao :many
 SELECT t.id_externo, t.total_centavos, t.numero
 FROM pagamento.tentativa_pagamento t
 WHERE t.criada_em <= @ate
+  AND t.criada_em > @desde
   AND NOT EXISTS (
       SELECT 1 FROM pagamento.confirmacao_recebida c WHERE c.tentativa_id = t.id
   )
 ORDER BY t.criada_em;
+
+-- A porta da FR-34: existe confirmação ainda PENDENTE para este Pedido?
+-- A expiração a chama com a linha do Pedido já presa, e desiste se houver uma:
+-- a ordem do tique sozinha não basta — `aplicar` pode ter falhado, o SKIP LOCKED
+-- pode ter pulado a linha, e a confirmação pode ter chegado entre os dois passos.
+-- Em todos, o Comprador pagou no prazo e perderia a Reserva de Estoque.
+-- name: TemConfirmacaoPendente :one
+SELECT EXISTS (
+    SELECT 1
+    FROM pagamento.confirmacao_recebida c
+    JOIN pagamento.tentativa_pagamento t ON t.id = c.tentativa_id
+    WHERE t.pedido_id = @pedido_id AND c.estado = 'PENDENTE'
+)::boolean;
 
 -- Quantas Tentativas o Pedido já teve. O teto é de `pagamento`, dono da
 -- entidade (AD-8): `pedido` recebe as restantes prontas, e não conta sozinho.

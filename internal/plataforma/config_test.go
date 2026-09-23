@@ -54,6 +54,23 @@ func TestConfigComSenhaMinAcimaDaMaxFalha(t *testing.T) {
 	}
 }
 
+// O outro par cruzado, e o mais mudo de todos: com o atraso da confirmação
+// alcançando o prazo da expiração, a janela `criada_em <= ate AND criada_em >
+// desde` nunca casa — confirmação nenhuma é emitida, todo Pedido expira por
+// TEMPO_ESGOTADO, e não há erro nem log em lugar nenhum. O arranque é a única
+// hora em que dá para ver.
+func TestConfigComAtrasoAlcancandoAExpiracaoFalha(t *testing.T) {
+	t.Setenv("AZAMON_POSTGRES_DSN", "postgres://azamon@postgres:5432/azamon")
+	t.Setenv("AZAMON_REDIS_URL", "redis://redis:6379/0")
+	t.Setenv("AZAMON_WEBHOOK_SEGREDO", "segredo-de-teste")
+	t.Setenv("AZAMON_PAGAMENTO_TENTATIVA_EXPIRACAO", "60s")
+	t.Setenv("AZAMON_CONFIRMACAO_ATRASO", "60s")
+
+	if _, err := CarregarConfig(); err == nil {
+		t.Fatal("AZAMON_CONFIRMACAO_ATRASO igual à expiração devia falhar")
+	}
+}
+
 // Sem DSN não há como migrar: credencial não tem padrão no código.
 func TestConfigSemDSNFalha(t *testing.T) {
 	t.Setenv("AZAMON_POSTGRES_DSN", "")

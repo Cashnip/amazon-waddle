@@ -458,11 +458,16 @@ type PedidosParaAvancarParams struct {
 	Ate    pgtype.Timestamptz
 }
 
-// Os candidatos da simulação de entrega, lidos FORA da transação: quem decide
-// é a releitura travada de TravarPedido, e selecionar já travando faria uma
-// transação por tique em vez de uma por Pedido. O avanço deriva do histórico —
-// "está neste estado desde quando" —, nunca de estado em memória, e é por isso
-// que reiniciar o contêiner retoma cada Pedido de onde parou.
+// Os candidatos dos dois passos do tempo — a expiração da Tentativa de
+// Pagamento (FR-34) e a simulação de entrega —, lidos FORA da transação: quem
+// decide é a releitura travada de TravarPedido, e selecionar já travando faria
+// uma transação por tique em vez de uma por Pedido. O avanço deriva do
+// histórico — "está neste estado desde quando" —, nunca de estado em memória, e
+// é por isso que reiniciar o contêiner retoma cada Pedido de onde parou.
+//
+// É a mesma conta que `pedido.ExpiraEm` mostra na tela: para um Pedido em
+// AGUARDANDO_PAGAMENTO, max(ocorrido_em) É a última transição para esse Status,
+// porque qualquer linha posterior o teria tirado de lá.
 //
 // ponytail: varredura sequencial de pedido.pedido a cada tique. O
 // max(ocorrido_em) correlacionado já tem `transicao_status (pedido_id,

@@ -23,6 +23,21 @@ const (
 	tentativasMaxDeTeste        = 3
 )
 
+// janelaDeEmissaoDeTeste é o prazo que os testes passam a
+// EmitirConfirmacoesDevidas como piso da janela (5.11). Largo de propósito:
+// aqui se prova a emissão, e não o piso — quem prova o piso é
+// `expiracaoDaTentativa`, com um prazo curto e Tentativa própria.
+const janelaDeEmissaoDeTeste = time.Hour
+
+// atrasoDeTeste é o `atraso` dos mesmos chamadores: "tudo que já existe é
+// devido". Negativo, e não zero, e não por capricho — o corte sai do relógio
+// do host e `criada_em`, do relógio do contêiner do Postgres. Com zero, a
+// Tentativa recém-criada cai fora da janela sempre que o contêiner estiver um
+// instante à frente, e a suíte pisca (visto antes desta estória, na emissão da
+// faixa `,95`). Um minuto de folga é mais que qualquer deriva plausível e não
+// alcança nada que o subteste não tenha acabado de criar.
+const atrasoDeTeste = -time.Minute
+
 // detalheDoPedido é a matriz de servidor da 5.8: o que `GET /api/v1/pedidos/{id}`
 // carrega para a tela derivar tudo numa chamada só (AD-18) — `expira_em` do
 // histórico, a tripla, os valores e o Endereço congelados, o histórico — e que
@@ -265,7 +280,7 @@ func detalheDoPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 			return nil
 		}
 		simulado := pagamento.Simulado{AprovadoAteCentavos: 89, RecusadoAteCentavos: 94}
-		if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simulado, 0, enviar); err != nil {
+		if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simulado, atrasoDeTeste, janelaDeEmissaoDeTeste, enviar); err != nil {
 			t.Fatalf("emitir: %v", err)
 		}
 		if r, tem := emitidas[primeira]; tem {

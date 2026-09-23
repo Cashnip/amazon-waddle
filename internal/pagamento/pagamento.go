@@ -220,6 +220,25 @@ func ConfirmacoesNaoAplicadas(ctx context.Context, bd gerado.DBTX) ([]Pendente, 
 	return pendentes, nil
 }
 
+// TemConfirmacaoPendente é a outra porta por onde `pedido` lê a inbox, e
+// existe para a FR-34: antes de expirar, a varredura pergunta se ainda há
+// confirmação por aplicar para aquele Pedido. Quem chama já segura a linha do
+// Pedido, então a resposta não envelhece entre a pergunta e a transição.
+//
+// A aresta continua na direção do AD-7: `pedido` pergunta a `pagamento`, e
+// `pagamento` segue sem saber que `pedido` existe.
+func TemConfirmacaoPendente(ctx context.Context, bd gerado.DBTX, pedidoID string) (bool, error) {
+	var chave pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return false, fmt.Errorf("identificador de Pedido inválido: %w", err)
+	}
+	tem, err := gerado.New(bd).TemConfirmacaoPendente(ctx, chave)
+	if err != nil {
+		return false, fmt.Errorf("ler a inbox do Pedido: %w", err)
+	}
+	return tem, nil
+}
+
 // Marcar leva a confirmação ao estado terminal, na mesma transação em que a
 // varredura aplicou (ou decidiu não aplicar) o efeito.
 func Marcar(ctx context.Context, bd gerado.DBTX, confirmacaoID, estado string) error {
@@ -247,13 +266,25 @@ func Marcar(ctx context.Context, bd gerado.DBTX, confirmacaoID, estado string) e
 //
 // Emite o aprovado e o recusado (5.10). A faixa em que a confirmação nunca
 // chega não emite nada, de propósito: é ela que a expiração existe para
-// resolver (FR-34), e a Tentativa fica na lista até lá.
-func EmitirConfirmacoesDevidas(ctx context.Context, bd gerado.DBTX, s Simulado, atraso time.Duration, enviar Enviar) error {
-	var ate pgtype.Timestamptz
-	if err := ate.Scan(time.Now().Add(-atraso)); err != nil {
+// resolver (FR-34), e a Tentativa fica na lista até o `prazo` vencer.
+//
+// O `prazo` é o mesmo da expiração, e fecha o outro lado da janela: passado
+// ele a varredura já encerrou o Pedido, e emitir sobre uma Tentativa morta não
+// teria efeito. Sem ele a faixa `,95`–`,99` seria relida a cada tique para
+// sempre.
+func EmitirConfirmacoesDevidas(ctx context.Context, bd gerado.DBTX, s Simulado, atraso, prazo time.Duration, enviar Enviar) error {
+	var ate, desde pgtype.Timestamptz
+	agora := time.Now()
+	if err := ate.Scan(agora.Add(-atraso)); err != nil {
 		return fmt.Errorf("calcular o vencimento do atraso: %w", err)
 	}
-	devidas, err := gerado.New(bd).TentativasSemConfirmacao(ctx, ate)
+	if err := desde.Scan(agora.Add(-prazo)); err != nil {
+		return fmt.Errorf("calcular o piso da janela de emissão: %w", err)
+	}
+	devidas, err := gerado.New(bd).TentativasSemConfirmacao(ctx, gerado.TentativasSemConfirmacaoParams{
+		Ate:   ate,
+		Desde: desde,
+	})
 	if err != nil {
 		return fmt.Errorf("listar as Tentativas sem confirmação: %w", err)
 	}

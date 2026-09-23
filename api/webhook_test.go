@@ -78,7 +78,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 		}
 		return nil
 	}
-	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, 0, enviar); err != nil {
+	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, atrasoDeTeste, janelaDeEmissaoDeTeste, enviar); err != nil {
 		t.Fatalf("emitir = %v", err)
 	}
 	if len(enviadas) != 1 || enviadas[0].Resultado != pagamento.Aprovado {
@@ -116,7 +116,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	// Com linha na inbox, a emissão derivada para sozinha — é o que impede o
 	// tique de 1 s de reenviar para sempre.
 	enviadas, emitidas = nil, nil
-	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, 0, enviar); err != nil {
+	if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, atrasoDeTeste, janelaDeEmissaoDeTeste, enviar); err != nil {
 		t.Fatalf("segunda emissão = %v", err)
 	}
 	if len(enviadas) != 0 {

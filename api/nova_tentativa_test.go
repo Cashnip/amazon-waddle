@@ -68,7 +68,7 @@ func recusaENovaTentativa(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) 
 			}
 			return nil
 		}
-		if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, 0, enviar); err != nil {
+		if err := pagamento.EmitirConfirmacoesDevidas(ctx, pool, simuladoDeTeste, atrasoDeTeste, janelaDeEmissaoDeTeste, enviar); err != nil {
 			t.Fatalf("emitir: %v", err)
 		}
 	}

@@ -550,6 +550,13 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a recusa do pagamento e a nova Tentativa", func(t *testing.T) {
 		recusaENovaTentativa(t, rotas, pool)
 	})
+	// A 5.11, com contas e Produtos próprios: a Tentativa de Pagamento que
+	// vence sem confirmação (FR-34). A expiração é global como a emissão, mas
+	// o prazo é largo e só os Pedidos dela são envelhecidos — os dos subtestes
+	// acima não vencem.
+	t.Run("a expiração da Tentativa de Pagamento", func(t *testing.T) {
+		expiracaoDaTentativa(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

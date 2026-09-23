@@ -146,6 +146,13 @@ func carregar(l *leitor) Config {
 	if c.ProvedorAprovadoAteCentavos >= c.ProvedorRecusadoAteCentavos {
 		l.erros = append(l.erros, "AZAMON_PROVEDOR_APROVADO_ATE_CENTAVOS tem de vir antes de AZAMON_PROVEDOR_RECUSADO_ATE_CENTAVOS")
 	}
+	// A janela de emissão é `criada_em <= agora - atraso` E `criada_em > agora
+	// - prazo` (FR-34): com o atraso alcançando o prazo ela fica vazia, e o
+	// desfecho é mudo — confirmação nenhuma é emitida, todo Pedido expira, sem
+	// erro e sem log. Recusar aqui é a única hora em que dá para ver.
+	if c.ConfirmacaoAtraso >= c.PagamentoTentativaExpiracao {
+		l.erros = append(l.erros, "AZAMON_CONFIRMACAO_ATRASO tem de ser menor que AZAMON_PAGAMENTO_TENTATIVA_EXPIRACAO")
+	}
 	// A coluna `estoque_total` é integer: um teto acima de int32 deixaria
 	// passar um valor que dá a volta na conversão e grava Estoque negativo.
 	if c.ProdutoEstoqueMax > math.MaxInt32 {

@@ -3,8 +3,9 @@
 // Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
 // importa (AD-1), junto com maquina.go, que guarda a tabela de transições do
 // AD-3 e o Transicionar, e frete.go, que guarda a Regra de Frete (AD-17).
-// Aqui moram o nascimento do Pedido a partir do Carrinho, as leituras e os dois passos da varredura — aplicar a
-// confirmação e simular a entrega até ENTREGUE.
+// Aqui moram o nascimento do Pedido a partir do Carrinho, as leituras e os três
+// passos da varredura que são de `pedido` — aplicar a confirmação, expirar a
+// Tentativa vencida e simular a entrega até ENTREGUE.
 package pedido
 
 import (
@@ -14,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -39,12 +39,12 @@ var simulacao = map[Status]Status{
 	StatusEnviado:   StatusEntregue,
 }
 
-// proximoDaSimulacao devolve para onde a simulação leva este Status, e false
-// para todo Status que ela não move — AGUARDANDO_PAGAMENTO, PAGAMENTO_RECUSADO,
-// CANCELADO e o próprio ENTREGUE, independentemente do tempo decorrido.
-func proximoDaSimulacao(status Status) (Status, bool) {
-	proximo, ok := simulacao[status]
-	return proximo, ok
+// expiracao é o avanço do passo `expirar` (FR-34), e é uma linha só: a
+// Tentativa vencida leva o Pedido pelo caminho da recusa. Mora ao lado da
+// `simulacao` pelo mesmo motivo dela — é a lista única de onde saem tanto os
+// candidatos da consulta quanto o Status de destino.
+var expiracao = map[Status]Status{
+	StatusAguardandoPagamento: StatusPagamentoRecusado,
 }
 
 // Pedido é o que a criação devolve e as leituras mostram.
@@ -631,6 +631,19 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 	// — não há pagamento aprovado a perder.
 	aprovadaSobreCancelado := c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusCancelado
 
+	// O gêmeo da FR-34: a aprovação que chega depois de uma expiração legítima.
+	// O Comprador pagou tarde, a Reserva já voltou para a prateleira, e o
+	// dinheiro foi aprovado assim mesmo — pelo mesmo motivo de cima, não pode
+	// ser perda silenciosa. Só a expiração conta: a recusa do Provedor não é
+	// dinheiro aprovado que se perdeu, é dinheiro que nunca entrou.
+	aprovadaSobreExpirado := false
+	if c.Resultado == pagamento.Aprovado && Status(travado.Status) == StatusPagamentoRecusado {
+		aprovadaSobreExpirado, err = expirouPorTempoEsgotado(ctx, tx, chave)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Só é aplicada a confirmação que pertence à Tentativa corrente e cujo
 	// Pedido ainda aguarda pagamento: a aprovada leva a PAGO, e a recusada, a
 	// PAGAMENTO_RECUSADO, liberando a Reserva dentro de Transicionar. Todo o
@@ -672,7 +685,28 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 		slog.WarnContext(ctx, "pagamento aprovado sobre Pedido cancelado",
 			"pedido", c.PedidoID, "confirmacao", c.ID)
 	}
+	if aprovadaSobreExpirado {
+		slog.WarnContext(ctx, "pagamento aprovado sobre Tentativa de Pagamento expirada",
+			"pedido", c.PedidoID, "confirmacao", c.ID)
+	}
 	return nil
+}
+
+// expirouPorTempoEsgotado diz se a última transição do Pedido é a da FR-34 —
+// PAGAMENTO_RECUSADO por TEMPO_ESGOTADO, e não pela recusa do Provedor. Lê o
+// histórico que já existe, sob a mesma trava: consulta nova para isto seria
+// pagar por uma linha que `HistoricoDoPedido` já traz, e a lista é curta por
+// construção (o teto de Tentativas a limita).
+func expirouPorTempoEsgotado(ctx context.Context, tx pgx.Tx, id pgtype.UUID) (bool, error) {
+	historico, err := gerado.New(tx).HistoricoDoPedido(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("ler o histórico do Pedido: %w", err)
+	}
+	if len(historico) == 0 {
+		return false, nil
+	}
+	ultima := historico[len(historico)-1]
+	return Status(ultima.StatusNovo) == StatusPagamentoRecusado && ultima.Motivo.String == MotivoTempoEsgotado, nil
 }
 
 // SimularEntrega é o passo "simular" do tique: leva o Pedido PAGO até ENTREGUE,
@@ -682,16 +716,67 @@ func aplicarConfirmacao(ctx context.Context, pool *pgxpool.Pool, c pagamento.Pen
 // O que decide não é estado em memória: é o histórico de pedido.transicao_status
 // dizendo desde quando o Pedido está neste Status. Por isso o contêiner
 // derrubado no meio retoma cada Pedido de onde parou, sem intervenção.
-//
-// Os candidatos são lidos fora da transação e reconferidos dentro dela, no
-// molde do Varrer: uma transação por Pedido, e não uma por tique.
 func SimularEntrega(ctx context.Context, pool *pgxpool.Pool, intervalo time.Duration) error {
+	return avancarPeloTempo(ctx, pool, intervalo, passoDoTempo{
+		rotulo:  "intervalo da entrega simulada",
+		avancos: simulacao,
+		ator:    AtorSimulacao,
+	})
+}
+
+// Expirar é o passo "expirar" do tique (FR-34): a Tentativa de Pagamento que
+// passou do prazo sem confirmação leva o Pedido a PAGAMENTO_RECUSADO com
+// TEMPO_ESGOTADO. A Reserva de Estoque é liberada pelo efeito da linha do AD-3,
+// dentro de Transicionar — quem chama aqui não invoca catalogo.Liberar.
+//
+// O instante é o mesmo que a tela mostra em `ExpiraEm`, e não uma segunda
+// conta: para um Pedido em AGUARDANDO_PAGAMENTO, o `desde` do TravarPedido
+// (max(ocorrido_em)) É a última transição *para* esse Status, porque qualquer
+// linha posterior o teria tirado de lá. Por isso a nova Tentativa (5.10)
+// recomeça o prazo sozinha, sem código novo aqui.
+//
+// Não é desligável: o interruptor de `cmd/azamon` é da simulação de entrega, e
+// a FR-34 não tem um.
+//
+// O que protege quem pagou no prazo não é a ordem do tique, e sim a inbox lida
+// com a linha do Pedido já presa (`conferirInbox` abaixo): a ordem sozinha
+// deixa três furos — `Varrer` que falhou e não aplicou nada, a linha que o
+// SKIP LOCKED pulou, e a confirmação que chegou entre os dois passos.
+func Expirar(ctx context.Context, pool *pgxpool.Pool, prazo time.Duration) error {
+	return avancarPeloTempo(ctx, pool, prazo, passoDoTempo{
+		rotulo:        "prazo da Tentativa de Pagamento",
+		avancos:       expiracao,
+		ator:          AtorVarredura,
+		motivo:        MotivoTempoEsgotado,
+		conferirInbox: true,
+	})
+}
+
+// passoDoTempo é o que distingue os dois passos da varredura que decidem pelo
+// relógio — `expirar` e `simular` (AD-6). A casca é a mesma e mora abaixo;
+// muda só de onde para onde se avança, com que ator e motivo o histórico
+// registra, e se a inbox é conferida antes de transitar.
+type passoDoTempo struct {
+	// rotulo nomeia o relógio deste passo nas mensagens de erro: quem falhou
+	// foi o corte, e dizer "VARREDURA" mandaria procurar o ator.
+	rotulo  string
+	avancos map[Status]Status
+	ator    Ator
+	motivo  string
+	// conferirInbox é só da expiração. A simulação de entrega não o usa: ela
+	// move Pedido já pago, onde não há confirmação por aplicar que se perca.
+	conferirInbox bool
+}
+
+// avancarPeloTempo lê os candidatos FORA da transação e os reconfere dentro
+// dela, no molde do Varrer: uma transação por Pedido, e não uma por tique.
+func avancarPeloTempo(ctx context.Context, pool *pgxpool.Pool, decorrido time.Duration, passo passoDoTempo) error {
 	var ate pgtype.Timestamptz
-	if err := ate.Scan(time.Now().Add(-intervalo)); err != nil {
-		return fmt.Errorf("calcular o corte do intervalo de entrega: %w", err)
+	if err := ate.Scan(time.Now().Add(-decorrido)); err != nil {
+		return fmt.Errorf("calcular o corte do %s: %w", passo.rotulo, err)
 	}
-	var origens []string
-	for de := range maps.Keys(simulacao) {
+	origens := make([]string, 0, len(passo.avancos))
+	for de := range passo.avancos {
 		origens = append(origens, string(de))
 	}
 	candidatos, err := gerado.New(pool).PedidosParaAvancar(ctx, gerado.PedidosParaAvancarParams{
@@ -703,17 +788,17 @@ func SimularEntrega(ctx context.Context, pool *pgxpool.Pool, intervalo time.Dura
 	}
 	var falhas []error
 	for _, id := range candidatos {
-		if err := avancarEntrega(ctx, pool, id, ate); err != nil {
+		if err := avancarUm(ctx, pool, id, ate, passo); err != nil {
 			falhas = append(falhas, fmt.Errorf("avançar o Pedido %s: %w", id.String(), err))
 		}
 	}
 	return errors.Join(falhas...)
 }
 
-// avancarEntrega é a transação de um Pedido só. A releitura travada é o que
+// avancarUm é a transação de um Pedido só. A releitura travada é o que
 // torna inofensiva a corrida entre dois tiques sobrepostos: quem chega depois
 // ou não trava a linha, ou reencontra um Status que já não é candidato.
-func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate pgtype.Timestamptz) error {
+func avancarUm(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate pgtype.Timestamptz, passo passoDoTempo) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -729,10 +814,11 @@ func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate
 		return fmt.Errorf("travar o Pedido: %w", err)
 	}
 	atual := Status(travado.Status)
-	proximo, ok := proximoDaSimulacao(atual)
+	proximo, ok := passo.avancos[atual]
 	// A decisão é reconferida com a trava na mão, e não só na seleção: entre a
 	// leitura dos candidatos e esta linha, outro caminho pode ter avançado o
-	// Pedido — e aí o intervalo recomeça a contar do Status novo.
+	// Pedido — a aprovação aplicada pelo passo `aplicar` do mesmo tique, por
+	// exemplo — e aí o prazo recomeça a contar do Status novo.
 	//
 	// `Desde` é anulável, e um NULL lê como instante zero, que nunca é posterior
 	// ao corte: sem o teste de validade, Pedido sem histórico nenhum passaria
@@ -742,14 +828,33 @@ func avancarEntrega(ctx context.Context, pool *pgxpool.Pool, id pgtype.UUID, ate
 		return nil
 	}
 
-	// O efeito sobre o Estoque — a consolidação em SEPARANDO → ENVIADO — é
-	// do próprio Transicionar, que o aplica depois do CAS e na mesma
-	// transação (AD-3): a simulação não tem como esquecê-lo.
-	switch err := Transicionar(ctx, tx, id.String(), atual, proximo, AtorSimulacao, ""); {
+	// A inbox, já com a linha do Pedido presa: havendo confirmação por
+	// aplicar, quem pagou pagou dentro do prazo e o tique seguinte a aplica —
+	// expirar aqui tiraria a Reserva de Estoque de quem pagou. É esta leitura,
+	// e não a ordem `aplicar` → `expirar`, que dá a garantia: a ordem não cobre
+	// o `Varrer` que falhou, a linha que o SKIP LOCKED pulou nem a confirmação
+	// que chegou entre os dois passos.
+	if passo.conferirInbox {
+		pendente, err := pagamento.TemConfirmacaoPendente(ctx, tx, id.String())
+		if err != nil {
+			return err
+		}
+		if pendente {
+			slog.InfoContext(ctx, "expiração adiada: confirmação por aplicar",
+				"pedido", id.String())
+			return nil
+		}
+	}
+
+	// O efeito sobre o Estoque — a consolidação em SEPARANDO → ENVIADO, a
+	// liberação da Reserva na expiração — é do próprio Transicionar, que o
+	// aplica depois do CAS e na mesma transação (AD-3): o passo do tempo não
+	// tem como esquecê-lo.
+	switch err := Transicionar(ctx, tx, id.String(), atual, proximo, passo.ator, passo.motivo); {
 	case errors.Is(err, ErrEstadoJaAvancado):
 		// Desfecho esperado, e não erro: alguém chegou primeiro.
-		slog.InfoContext(ctx, "a simulação chegou depois do avanço",
-			"pedido", id.String(), "de", string(atual))
+		slog.InfoContext(ctx, "o passo do tempo chegou depois do avanço",
+			"pedido", id.String(), "de", string(atual), "ator", string(passo.ator))
 		return nil
 	case err != nil:
 		return err
