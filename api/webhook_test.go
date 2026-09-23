@@ -241,9 +241,10 @@ func confirmacaoAprovadaSobrePedidoCancelado(t *testing.T, rotas http.Handler, p
 
 	pedidoID := idDe(t, pedidoPeloCheckout(t, rotas, cookie, produtoAprovado, 1), http.StatusCreated)
 
-	// O Comprador cancela. A tela do cancelamento é da 6.3, então o caminho é
-	// `Transicionar` — e não um UPDATE à mão, que deixaria o histórico e a
-	// Reserva do teste divergirem dos de produção.
+	// O Comprador cancela. O caminho é `Transicionar` — e não um UPDATE à
+	// mão, que deixaria o histórico e a Reserva do teste divergirem dos de
+	// produção. A mesma corrida pela rota de cancelamento da 6.3 está em
+	// api/cancelamento_test.go.
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatalf("abrir a transação: %v", err)

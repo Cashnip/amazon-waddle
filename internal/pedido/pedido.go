@@ -380,6 +380,63 @@ func NovaTentativa(ctx context.Context, tx pgx.Tx, pedidoID, compradorID string,
 	return p, nil
 }
 
+// Cancelar é o "Cancelar Pedido" do Comprador (FR-31), na transação que `api/`
+// abriu (AD-4). Não há rota administrativa que o chame: o Administrador não
+// cancela (FR-32).
+//
+// **A ordem é o contrato:**
+//
+//  1. o Pedido do dono, lido JÁ TRAVADO (FOR UPDATE que espera) — de outro
+//     Comprador, inexistente ou malformado sai como pgx.ErrNoRows, o mesmo 404
+//     (AD-11). É a primeira trava do AD-4; os Produtos vêm depois, dentro de
+//     Liberar;
+//  2. CANCELADO é sucesso sem efeito: nenhuma linha no histórico, nenhuma
+//     Reserva tocada, e nenhum erro (FR-31) — é o que o segundo clique lê,
+//     porque esperou o primeiro comitar na trava;
+//  3. qualquer outro Status vai a Transicionar(atual → CANCELADO, COMPRADOR),
+//     que decide a janela pela tabela do AD-3 e libera a Reserva como efeito,
+//     incondicional (AD-5). Cancelar não chama Liberar nem pergunta por
+//     Reserva: PAGAMENTO_RECUSADO já não tem Reserva ativa, e Liberar sem
+//     Reserva é nil.
+//
+// Com a linha presa, o Status lido é o que o compare-and-swap vê: a corrida com
+// quem avançou o Pedido (a simulação levando a ENVIADO, o Provedor levando a
+// PAGO) já se resolveu antes da leitura, e o desfecho é o do Status em que o
+// Pedido está — ENVIADO sai ErrForaDaJanelaDeCancelamento, PAGO cancela.
+//
+// O Pedido devolvido traz o Status em que o Pedido ficou: CANCELADO no
+// sucesso, e o Status lido na recusa, que é o que a borda devolve em `dados`.
+func Cancelar(ctx context.Context, tx pgx.Tx, pedidoID, compradorID string) (Pedido, error) {
+	var chave, comprador pgtype.UUID
+	if err := chave.Scan(pedidoID); err != nil {
+		return Pedido{}, pgx.ErrNoRows
+	}
+	if err := comprador.Scan(compradorID); err != nil {
+		return Pedido{}, pgx.ErrNoRows
+	}
+	linha, err := gerado.New(tx).TravarPedidoDoComprador(ctx, gerado.TravarPedidoDoCompradorParams{
+		PedidoID:    chave,
+		CompradorID: comprador,
+	})
+	if err != nil {
+		return Pedido{}, err
+	}
+	p := Pedido{
+		ID:            linha.ID.String(),
+		Numero:        linha.Numero,
+		Status:        Status(linha.Status),
+		TotalCentavos: linha.TotalCentavos,
+	}
+	if p.Status == StatusCancelado {
+		return p, nil
+	}
+	if err := Transicionar(ctx, tx, p.ID, p.Status, StatusCancelado, AtorComprador, ""); err != nil {
+		return p, err
+	}
+	p.Status = StatusCancelado
+	return p, nil
+}
+
 // decidirPelaChave é o passo 1 de Criar. `achou` falso é chave livre; `achou`
 // verdadeiro devolve o Pedido original, com ErrChaveReutilizada quando o corpo
 // difere.

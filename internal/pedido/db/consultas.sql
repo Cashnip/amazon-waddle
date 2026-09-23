@@ -167,6 +167,24 @@ FROM pedido.pedido p
 WHERE p.id = @pedido_id
 FOR UPDATE SKIP LOCKED;
 
+-- A leitura travada do cancelamento pelo Comprador (6.3). O dono entra no
+-- WHERE, como em BuscarPedidoDoComprador: alheio e inexistente saem os dois
+-- como "nenhuma linha", o mesmo 404 (AD-11) — e o Pedido alheio nem chega a
+-- ser travado.
+--
+-- FOR UPDATE que ESPERA, e não o SKIP LOCKED da varredura: o Comprador que
+-- cancela precisa do desfecho, e não de "tente no próximo tique". Com a linha
+-- presa, o Status lido é o que o compare-and-swap de Transicionar vai ver — é
+-- isso que faz o segundo clique ler CANCELADO (e sair sucesso sem efeito) em
+-- vez de perder o CAS e sair FORA_DA_JANELA_DE_CANCELAMENTO de um
+-- cancelamento que deu certo. É também a primeira trava do AD-4: a linha do
+-- Pedido antes dos Produtos, que Liberar trava depois.
+-- name: TravarPedidoDoComprador :one
+SELECT p.id, p.numero, p.status, p.total_centavos
+FROM pedido.pedido p
+WHERE p.id = @pedido_id AND p.comprador_id = @comprador_id
+FOR UPDATE;
+
 -- Os candidatos dos dois passos do tempo — a expiração da Tentativa de
 -- Pagamento (FR-34) e a simulação de entrega —, lidos FORA da transação: quem
 -- decide é a releitura travada de TravarPedido, e selecionar já travando faria

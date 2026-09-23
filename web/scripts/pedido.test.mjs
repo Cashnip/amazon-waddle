@@ -5,22 +5,30 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  CORRIDA_DO_CANCELAMENTO,
   FALHA_NA_NOVA_TENTATIVA,
+  FALHA_NO_CANCELAMENTO,
   INTERVALO_AGUARDANDO_MS,
   INTERVALO_AVANCANDO_MS,
+  PRAZO_DO_CANCELAMENTO_MS,
   desfechoDaNovaTentativa,
+  desfechoDoCancelamento,
   fraseDoMotivo,
+  fraseSemCancelamento,
   impedimentosDaNovaTentativa,
   intervaloDaConsulta,
   linhaDoTempo,
   motivoDaRecusa,
+  podeCancelar,
   podeTentarDeNovo,
   porQueNaoCancela,
   rotaDaNovaTentativa,
+  rotaDoCancelamento,
   rotuloDoStatus,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
+  textosDoCancelamento,
 } = await import(new URL("../lib/pedido.ts", import.meta.url).href);
 
 test("cada Status abre a sua superfície; o Detalhe cobre todo o resto", () => {
@@ -218,5 +226,98 @@ test("a frase de sem cancelamento só existe depois que o Pedido saiu para entre
   assert.equal(porQueNaoCancela("ENTREGUE"), "Este Pedido já foi entregue e não pode mais ser cancelado.");
   for (const status of ["AGUARDANDO_PAGAMENTO", "PAGAMENTO_RECUSADO", "PAGO", "SEPARANDO", "CANCELADO", "constructor"]) {
     assert.equal(porQueNaoCancela(status), null, status);
+  }
+});
+
+test("o botão de cancelar segue o pode_cancelar do Go, e não o Status", () => {
+  // A janela é do Go: a tela não redeclara os quatro Status. Um Status da
+  // janela com `pode_cancelar` falso não mostra o botão, e o contrário mostra.
+  assert.equal(podeCancelar({ status: "SEPARANDO", pode_cancelar: true }), true);
+  assert.equal(podeCancelar({ status: "SEPARANDO", pode_cancelar: false }), false);
+  assert.equal(podeCancelar({ status: "ENVIADO", pode_cancelar: false }), false);
+  assert.equal(podeCancelar({ status: "NOVO", pode_cancelar: true }), true);
+  // Resposta sem o campo (um Go mais antigo): sem botão, e não um botão que
+  // a rota recusaria.
+  assert.equal(podeCancelar({ status: "PAGO" }), false);
+});
+
+test("o prazo do cancelamento é o do Confirmar Pedido", async () => {
+  const { PRAZO_DA_CONFIRMACAO_MS } = await import(new URL("../lib/checkout.ts", import.meta.url).href);
+  assert.equal(PRAZO_DO_CANCELAMENTO_MS, PRAZO_DA_CONFIRMACAO_MS);
+});
+
+test("a rota do cancelamento é a do próprio Pedido", () => {
+  assert.equal(rotaDoCancelamento("0190-a/b"), "/api/v1/pedidos/0190-a%2Fb/cancelamento");
+});
+
+test("a resposta do cancelamento: relê no sucesso e nas corridas, e só a de fora da janela explica", () => {
+  const resposta = (status, codigo, mensagem, dados = null) => ({
+    resposta: { ok: status < 300, status },
+    json: codigo ? { erro: { codigo, mensagem, dados } } : { id: "x", status: "CANCELADO" },
+  });
+  // O 200 é também o segundo clique, sobre o Pedido já cancelado.
+  assert.deepEqual(desfechoDoCancelamento(resposta(200)), { tipo: "releitura", aviso: null });
+  assert.deepEqual(desfechoDoCancelamento(resposta(409, "ESTADO_JA_AVANCADO", "m")), { tipo: "releitura", aviso: null });
+  // A corrida perdida troca a frase do Status pela que diz o que aconteceu, e
+  // não mostra a mensagem crua do Go.
+  assert.deepEqual(
+    desfechoDoCancelamento(resposta(409, "FORA_DA_JANELA_DE_CANCELAMENTO", "Este Pedido não pode mais ser cancelado.", { status: "ENVIADO" })),
+    { tipo: "releitura", aviso: CORRIDA_DO_CANCELAMENTO },
+  );
+  assert.equal(
+    CORRIDA_DO_CANCELAMENTO,
+    "Este Pedido foi enviado enquanto você estava nesta tela e não pode mais ser cancelado.",
+  );
+  assert.deepEqual(desfechoDoCancelamento(resposta(401, "SESSAO_INVALIDA", "m")), { tipo: "semSessao" });
+  assert.deepEqual(desfechoDoCancelamento(resposta(404, "NAO_ENCONTRADO", "Recurso não encontrado.")), {
+    tipo: "erro",
+    mensagem: "Recurso não encontrado.",
+  });
+  // Um 409 que não é do cancelamento, ou uma resposta sem envelope, diz que
+  // falhou em vez de reler calado.
+  assert.deepEqual(desfechoDoCancelamento(resposta(409, "TRANSICAO_INVALIDA", "Esta mudança…")), {
+    tipo: "erro",
+    mensagem: "Esta mudança…",
+  });
+  assert.deepEqual(desfechoDoCancelamento({ resposta: { ok: false, status: 500 }, json: null }), {
+    tipo: "erro",
+    mensagem: FALHA_NO_CANCELAMENTO,
+  });
+});
+
+test("sem o botão, a frase é a da corrida quando houve, e senão a do Status", () => {
+  for (const status of ["AGUARDANDO_PAGAMENTO", "PAGAMENTO_RECUSADO", "PAGO", "SEPARANDO"]) {
+    assert.equal(fraseSemCancelamento({ status, pode_cancelar: true }, null), null, status);
+    // Com o botão na tela, nem a frase da corrida aparece.
+    assert.equal(fraseSemCancelamento({ status, pode_cancelar: true }, CORRIDA_DO_CANCELAMENTO), null, status);
+  }
+  const fora = (status) => ({ status, pode_cancelar: false });
+  assert.equal(fraseSemCancelamento(fora("ENVIADO"), null), porQueNaoCancela("ENVIADO"));
+  assert.equal(fraseSemCancelamento(fora("ENTREGUE"), null), porQueNaoCancela("ENTREGUE"));
+  assert.equal(fraseSemCancelamento(fora("CANCELADO"), null), null);
+  assert.equal(fraseSemCancelamento(fora("ENVIADO"), CORRIDA_DO_CANCELAMENTO), CORRIDA_DO_CANCELAMENTO);
+});
+
+test("o Dialog nomeia o Pedido pelo número", () => {
+  assert.deepEqual(textosDoCancelamento("2026-000042"), {
+    botao: "Cancelar Pedido",
+    titulo: "Cancelar o Pedido 2026-000042?",
+    descricao: "Depois de cancelado, o Pedido não volta a andar.",
+    manter: "Manter o Pedido",
+    confirmar: "Cancelar Pedido",
+    enviando: "Cancelando o Pedido…",
+  });
+});
+
+test("nenhum texto do cancelamento nomeia a Reserva nem promete reembolso", () => {
+  const textos = [
+    CORRIDA_DO_CANCELAMENTO,
+    FALHA_NO_CANCELAMENTO,
+    porQueNaoCancela("ENVIADO"),
+    porQueNaoCancela("ENTREGUE"),
+    ...Object.values(textosDoCancelamento("2026-000042")),
+  ];
+  for (const texto of textos) {
+    assert.doesNotMatch(texto, /reserva|reembolso|devolu|estorno/i, texto);
   }
 });

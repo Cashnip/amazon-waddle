@@ -60,6 +60,10 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// A nova Tentativa de Pagamento do Pedido recusado (FR-27), a partir do
 	// próprio Pedido: sem corpo, e nada vem do Carrinho.
 	mux.HandleFunc("POST /api/v1/pedidos/{id}/tentativas", s.novaTentativa)
+	// O cancelamento pelo Comprador (FR-31): POST sobre o recurso
+	// "cancelamento" do Pedido, sem corpo. Não há rota administrativa de
+	// cancelamento — o Administrador não cancela (FR-32).
+	mux.HandleFunc("POST /api/v1/pedidos/{id}/cancelamento", s.cancelarPedido)
 	// "Meus pedidos" (2.6), no molde de "Escolher" Endereço: a lista do dono,
 	// mais recente primeiro — o esboço que a Estória 6.1 substitui.
 	mux.HandleFunc("GET /api/v1/pedidos", s.listarPedidos)

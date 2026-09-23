@@ -31,6 +31,7 @@ export type DetalheDoPedido = {
   total_centavos: number;
   atualizado_em: string;
   terminal: boolean;
+  pode_cancelar: boolean;
   subtotal_centavos: number;
   frete_centavos: number;
   expira_em: string | null;
@@ -133,8 +134,8 @@ export function linhaDoTempo(historico: readonly Transicao[]): LinhaDoTempo[] {
 }
 
 // Por que não há "Cancelar Pedido" (UX-DR11, ausente com frase): só depois
-// que o Pedido saiu para entrega. Nos quatro canceláveis a 6.3 põe o botão; em
-// CANCELADO não há o que explicar.
+// que o Pedido saiu para entrega. Nos quatro canceláveis há o botão
+// (`podeCancelar`); em CANCELADO não há o que explicar.
 const frasesSemCancelamento: Record<string, string> = {
   ENVIADO: "Este Pedido já saiu para entrega e não pode mais ser cancelado.",
   ENTREGUE: "Este Pedido já foi entregue e não pode mais ser cancelado.",
@@ -142,6 +143,79 @@ const frasesSemCancelamento: Record<string, string> = {
 
 export function porQueNaoCancela(status: string): string | null {
   return Object.hasOwn(frasesSemCancelamento, status) ? frasesSemCancelamento[status] : null;
+}
+
+// Se o botão "Cancelar Pedido" aparece. A janela (FR-31) é do Go, que manda
+// `pode_cancelar` pronto, tirado da tabela do AD-3: uma cópia dos quatro Status
+// aqui seria regra de negócio no Node (AD-10), e divergiria em silêncio da
+// tabela na primeira mudança. Quem recusa continua sendo a rota.
+export function podeCancelar(p: Pick<DetalheDoPedido, "pode_cancelar">): boolean {
+  return p.pode_cancelar === true;
+}
+
+export function rotaDoCancelamento(pedidoId: string): string {
+  return `/api/v1/pedidos/${encodeURIComponent(pedidoId)}/cancelamento`;
+}
+
+export const FALHA_NO_CANCELAMENTO = "Não foi possível cancelar o Pedido.";
+
+// O prazo do cancelamento, o mesmo do Confirmar Pedido
+// (`PRAZO_DA_CONFIRMACAO_MS`, em lib/checkout.ts). Durante o envio o Dialog não
+// fecha, então uma requisição pendurada o prenderia aberto para sempre;
+// esgotado o prazo, a tela solta a guarda e mostra a falha no Dialog. Tentar
+// de novo é seguro: sobre o Pedido já cancelado, a rota responde 200 sem efeito.
+export const PRAZO_DO_CANCELAMENTO_MS = 30_000;
+
+// Os textos do botão e do Dialog de confirmação, que nomeia o Pedido pelo
+// número (FR-31). Nenhum nomeia a Reserva de Estoque — o Comprador vê o efeito
+// na Vitrine — e nenhum promete reembolso: o MVP não tem.
+export function textosDoCancelamento(numero: string) {
+  return {
+    botao: "Cancelar Pedido",
+    titulo: `Cancelar o Pedido ${numero}?`,
+    descricao: "Depois de cancelado, o Pedido não volta a andar.",
+    manter: "Manter o Pedido",
+    confirmar: "Cancelar Pedido",
+    enviando: "Cancelando o Pedido…",
+  };
+}
+
+// A corrida perdida (EXPERIENCE, "cancelamento recusado porque o estado
+// mudou"): o Pedido saiu da janela entre a tela e o clique. Ela fica no lugar
+// da frase de `porQueNaoCancela`, e não num Toast nem num erro — o Comprador
+// não errou nada, e a tela relida já mostra o Status novo.
+export const CORRIDA_DO_CANCELAMENTO =
+  "Este Pedido foi enviado enquanto você estava nesta tela e não pode mais ser cancelado.";
+
+export type DesfechoDoCancelamento = DesfechoDaNovaTentativa;
+
+// O que fazer com a resposta de `POST .../cancelamento`. O 200 relê: é a
+// leitura do Detalhe que traz o Status novo e a linha no histórico — e é 200
+// também o segundo clique, sobre o Pedido já cancelado. ESTADO_JA_AVANCADO
+// relê calado, como na nova Tentativa: o Pedido já anda, e a tela relida o
+// mostra andando. FORA_DA_JANELA_DE_CANCELAMENTO relê e explica.
+export function desfechoDoCancelamento(r: { resposta: { ok: boolean; status: number }; json: unknown }): DesfechoDoCancelamento {
+  const { ok, status } = r.resposta;
+  if (status === 401) return { tipo: "semSessao" };
+  if (ok) return { tipo: "releitura", aviso: null };
+  const erro = (r.json as { erro?: { codigo?: string; mensagem?: string } } | null)?.erro;
+  const codigo = erro?.codigo ?? "";
+  if (status === 409 && codigo === "ESTADO_JA_AVANCADO") return { tipo: "releitura", aviso: null };
+  if (status === 409 && codigo === "FORA_DA_JANELA_DE_CANCELAMENTO") {
+    return { tipo: "releitura", aviso: CORRIDA_DO_CANCELAMENTO };
+  }
+  return { tipo: "erro", mensagem: erro?.mensagem ?? FALHA_NO_CANCELAMENTO };
+}
+
+// A frase de quando não há "Cancelar Pedido": a da corrida perdida, se houve,
+// e senão a do Status. Com o botão na tela não há frase nenhuma — a corrida
+// só acontece saindo da janela, e de lá o Pedido não volta.
+export function fraseSemCancelamento(
+  p: Pick<DetalheDoPedido, "status" | "pode_cancelar">,
+  avisoDaCorrida: string | null,
+): string | null {
+  if (podeCancelar(p)) return null;
+  return avisoDaCorrida ?? porQueNaoCancela(p.status);
 }
 
 // A ação da tripla do AD-18 (EXPERIENCE, "A ação disponível é derivada"):

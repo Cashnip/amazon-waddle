@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,8 +43,16 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 
 	// O dono lê o próprio Pedido: sem esta linha, uma regressão que negasse
 	// tudo passaria pelas outras duas.
-	if resp := pegarPedido(t, rotas, pedidoID, cookieDono); resp.Code != http.StatusOK {
-		t.Fatalf("o dono = %d (%s), quero 200", resp.Code, resp.Body.String())
+	dono := pegarPedido(t, rotas, pedidoID, cookieDono)
+	if dono.Code != http.StatusOK {
+		t.Fatalf("o dono = %d (%s), quero 200", dono.Code, dono.Body.String())
+	}
+	statusDoDono := decodificar(t, dono)["status"]
+	// O Pedido do dono tem de estar na janela de cancelamento: fora dela, o
+	// POST de B sairia recusado de qualquer jeito, e "o Status não mudou"
+	// passaria sem provar a posse.
+	if !slices.Contains([]any{"AGUARDANDO_PAGAMENTO", "PAGAMENTO_RECUSADO", "PAGO", "SEPARANDO"}, statusDoDono) {
+		t.Fatalf("o Pedido do dono está em %v, fora da janela de cancelamento; a prova do cancelamento alheio seria vazia", statusDoDono)
 	}
 	// E o Endereço do dono, criado aqui: sem uma linha de A não há "alheio"
 	// para B tentar, e o subteste passaria provando só o inexistente.
@@ -61,6 +70,9 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 		bate func(*testing.T, http.Handler, string, *http.Cookie) *httptest.ResponseRecorder
 	}{
 		{"Pedido por GET", pedidoID, pegarPedido},
+		// A 6.3: o cancelamento é escrita, e a posse entra na leitura travada
+		// — o Pedido alheio nem chega a ser travado.
+		{"Pedido por POST de cancelamento", pedidoID, postarCancelamento},
 		{"Endereço por PUT", enderecoDoDono, putEnderecoValido},
 		// O DELETE por último: se ele apagasse, o PUT acima já teria rodado.
 		{"Endereço por DELETE", enderecoDoDono, deletarEndereco},
@@ -86,6 +98,12 @@ func negacaoPorDono(t *testing.T, rotas http.Handler, cookieDono *http.Cookie, p
 			t.Errorf("%s: os cabeçalhos distinguem os dois:\n%s\n%s",
 				recurso.nome, cabecalhosComparaveis(alheio), cabecalhosComparaveis(inexistente))
 		}
+	}
+
+	// O mesmo vale para o cancelamento: o Pedido de A segue no Status em que
+	// estava depois do POST de B.
+	if s := decodificar(t, pegarPedido(t, rotas, pedidoID, cookieDono))["status"]; s != statusDoDono {
+		t.Errorf("o Pedido %s do dono mudou de %v para %v depois do cancelamento de outro Comprador", pedidoID, statusDoDono, s)
 	}
 
 	// O 404 não pode ser só a resposta: o Endereço de A continua lá, inteiro,

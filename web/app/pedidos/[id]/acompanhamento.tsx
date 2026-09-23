@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
 import { Preco } from "@/components/preco";
@@ -11,20 +19,26 @@ import { freteGratis } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
 import {
   FALHA_NA_NOVA_TENTATIVA,
+  FALHA_NO_CANCELAMENTO,
   INTERVALO_AGUARDANDO_MS,
   PAGAMENTO_RECUSADO,
+  PRAZO_DO_CANCELAMENTO_MS,
   desfechoDaNovaTentativa,
+  desfechoDoCancelamento,
+  fraseSemCancelamento,
   impedimentosDaNovaTentativa,
   intervaloDaConsulta,
   linhaDoTempo,
   motivoDaRecusa,
+  podeCancelar,
   podeTentarDeNovo,
-  porQueNaoCancela,
   rotaDaNovaTentativa,
+  rotaDoCancelamento,
   rotuloDoStatus,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
+  textosDoCancelamento,
   type DetalheDoPedido,
 } from "@/lib/pedido";
 import { formatarPreco } from "@/lib/preco";
@@ -119,10 +133,10 @@ function LinhaDoTempo({ pedido }: { pedido: DetalheDoPedido }) {
 }
 
 // O Detalhe do Pedido: Itens com o preço praticado, a linha do tempo, o
-// Endereço e os valores congelados. O cancelamento é da 6.3, junto dos
-// valores, onde hoje mora só a frase de quando ele não existe mais.
+// Endereço e os valores congelados. O cancelamento não mora aqui: em
+// AGUARDANDO_PAGAMENTO o Detalhe não aparece, e o botão faltaria num dos quatro
+// Status da janela — ele fica no Card do topo, junto do Status.
 function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
-  const semCancelamento = porQueNaoCancela(pedido.status);
   return (
     <>
       <Card>
@@ -196,7 +210,6 @@ function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
               <dd className="tabular-nums">{formatarPreco(pedido.total_centavos)}</dd>
             </div>
           </dl>
-          {semCancelamento && <p className="text-muted-foreground mt-4 text-sm">{semCancelamento}</p>}
         </CardContent>
       </Card>
     </>
@@ -220,6 +233,22 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
   // cairia no `body`; ele vai para o título do Pedido, cujo Status a região
   // viva logo abaixo anuncia.
   const titulo = useRef<HTMLHeadingElement>(null);
+
+  // O cancelamento (6.3, FR-31): o Dialog é controlado e vive fora do botão,
+  // porque o botão some assim que a releitura traz CANCELADO — e o Dialog tem
+  // de fechar depois dela. O ref barra o segundo clique antes de o estado
+  // chegar à tela; o servidor também o barra, e o segundo sairia 200 sem
+  // efeito.
+  const [cancelamentoAberto, setCancelamentoAberto] = useState(false);
+  const cancelamentoEmVoo = useRef(false);
+  const [cancelando, setCancelando] = useState(false);
+  const [erroDoCancelamento, setErroDoCancelamento] = useState<string | null>(null);
+  // A frase da corrida perdida, no lugar da de `porQueNaoCancela`. Não
+  // envelhece: o Pedido que saiu da janela não volta a ela.
+  const [avisoDaCorrida, setAvisoDaCorrida] = useState<string | null>(null);
+  // Ao fechar depois de uma releitura, o foco vai ao título, e não ao botão
+  // que abriu o Dialog — ele já não existe.
+  const focarTituloAoFechar = useRef(false);
 
   useEffect(() => {
     let vivo = true;
@@ -330,7 +359,57 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
     }
   }
 
+  // "Cancelar Pedido", confirmado no Dialog: o Go decide tudo — janela,
+  // Reserva, corrida —, e a tela executa `desfechoDoCancelamento`. No sucesso
+  // e na corrida perdida, fecha e relê: é a leitura que traz o Status novo e a
+  // linha do tempo. Erro que não é corrida fica no Dialog, que continua aberto.
+  async function cancelar() {
+    if (cancelamentoEmVoo.current) return;
+    cancelamentoEmVoo.current = true;
+    setCancelando(true);
+    setErroDoCancelamento(null);
+    // Durante o envio o Dialog não fecha: uma requisição pendurada o prenderia
+    // aberto para sempre. Esgotado o prazo, o `fetch` aborta, o `catch` mostra
+    // a falha no Dialog e o `finally` solta a guarda. Tentar de novo é seguro —
+    // sobre o Pedido já cancelado, a rota responde 200 sem efeito.
+    const abortar = new AbortController();
+    const prazo = setTimeout(() => abortar.abort(), PRAZO_DO_CANCELAMENTO_MS);
+    try {
+      const resposta = await fetch(rotaDoCancelamento(pedidoId), {
+        method: "POST",
+        credentials: "same-origin",
+        signal: abortar.signal,
+      });
+      const json = await resposta.json().catch(() => null);
+      clearTimeout(prazo);
+      const desfecho = desfechoDoCancelamento({ resposta, json });
+      if (desfecho.tipo === "semSessao") {
+        router.push(paraLogin());
+        return;
+      }
+      if (desfecho.tipo === "erro") {
+        setErroDoCancelamento(desfecho.mensagem);
+        return;
+      }
+      // Fecha antes de reler: com o Dialog aberto, o resto da página está
+      // escondido do leitor de tela, e a região viva do Status mudaria sem
+      // ser anunciada. O foco vai ao título, e não ao botão, que some.
+      focarTituloAoFechar.current = true;
+      setCancelamentoAberto(false);
+      if (desfecho.aviso) setAvisoDaCorrida(desfecho.aviso);
+      await consultarAgora.current();
+    } catch {
+      setErroDoCancelamento(FALHA_NO_CANCELAMENTO);
+    } finally {
+      clearTimeout(prazo);
+      cancelamentoEmVoo.current = false;
+      setCancelando(false);
+    }
+  }
+
   const superficie = pedido ? superficieDoPedido(pedido) : null;
+  const textosDoDialog = textosDoCancelamento(pedido ? pedido.numero : "");
+  const semCancelamento = pedido ? fraseSemCancelamento(pedido, avisoDaCorrida) : null;
 
   return (
     <div className="space-y-4">
@@ -349,6 +428,12 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
                     precisa ouvir quando a tela troca o relógio. */}
                 {superficie === "recusado" && (
                   <span className="block font-medium">{motivoDaRecusa(pedido.historico)}</span>
+                )}
+                {/* Por que não há "Cancelar Pedido" — ou, depois de uma
+                    corrida perdida, o que aconteceu. Na região viva porque
+                    entra junto do Status novo, e é ele que o explica. */}
+                {semCancelamento && (
+                  <span className="text-muted-foreground block">{semCancelamento}</span>
                 )}
               </>
             ) : (
@@ -370,8 +455,8 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
             <>
               <p className="text-sm">{textoDasTentativas(pedido.tentativas_restantes)}</p>
               {/* Quando a ação sai da tela pelo Estoque, a razão fica no lugar
-                  dela, nomeando o Produto (FR-27). "Cancelar Pedido" é da 6.3:
-                  até lá a tela não promete o que não tem. */}
+                  dela, nomeando o Produto (FR-27). "Cancelar Pedido" continua
+                  logo abaixo: cancelar é a outra saída. */}
               {impedimentosDaNovaTentativa(pedido).map(({ chave, texto }) => (
                 <p key={chave} className="text-sm">
                   {texto}
@@ -402,6 +487,23 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
             </>
           )}
 
+          {/* O cancelamento nas três superfícies: o botão nos quatro Status
+              da janela; fora dela, a frase que explica por que ele não está
+              mora na região viva do Status, logo acima. Botão
+              `outline`, sem laranja nem verde (UX-DR7): o destrutivo é o do
+              Dialog, onde o passo irreversível acontece. */}
+          {pedido && podeCancelar(pedido) && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setErroDoCancelamento(null);
+                setCancelamentoAberto(true);
+              }}
+            >
+              {textosDoDialog.botao}
+            </Button>
+          )}
           {pedido && (
             <p className="text-muted-foreground text-sm">
               Última atualização: <Instante valor={pedido.atualizado_em} />
@@ -424,6 +526,59 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
           recusado" e "Tentativa expirada" são estados do Detalhe): o
           Comprador vê o que continua no Pedido. Só o relógio o esconde. */}
       {pedido && superficie !== "processando" && <Detalhe pedido={pedido} />}
+
+      {/* Durante o envio o Dialog não fecha — nem por Esc, nem por clique
+          fora, nem pelo "Manter o Pedido" —, e os dois botões ficam na tela,
+          com `aria-disabled` em vez de `disabled`, para o foco não cair no
+          vazio (UX-DR11). Sem o X do canto: "Manter o Pedido" é a saída. */}
+      <Dialog
+        open={cancelamentoAberto}
+        onOpenChange={(aberto) => {
+          if (!aberto && !cancelamentoEmVoo.current) setCancelamentoAberto(false);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onCloseAutoFocus={(e) => {
+            if (!focarTituloAoFechar.current) return;
+            focarTituloAoFechar.current = false;
+            e.preventDefault();
+            titulo.current?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{textosDoDialog.titulo}</DialogTitle>
+            <DialogDescription>{textosDoDialog.descricao}</DialogDescription>
+          </DialogHeader>
+          {erroDoCancelamento && (
+            <p className="text-destructive text-sm" role="alert">
+              {erroDoCancelamento}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              aria-disabled={cancelando}
+              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              onClick={() => {
+                if (!cancelamentoEmVoo.current) setCancelamentoAberto(false);
+              }}
+            >
+              {textosDoDialog.manter}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              aria-disabled={cancelando}
+              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              onClick={cancelar}
+            >
+              {cancelando ? textosDoDialog.enviando : textosDoDialog.confirmar}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

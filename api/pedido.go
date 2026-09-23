@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,12 +62,18 @@ func saidaDoPedido(p pedido.Pedido) saidaPedido {
 // `terminal` vem de pedido.EstadoTerminal, a única declaração de "acabou" do
 // sistema: é ele que manda a tela parar de consultar.
 //
+// `pode_cancelar` sai da tabela do AD-3, e não de uma cópia da janela em
+// JavaScript (AD-10): é verdadeiro quando CANCELADO está entre os destinos que
+// o Comprador alcança a partir do Status atual — os quatro da janela. A tela só
+// o lê para mostrar ou esconder o botão; quem recusa é a rota.
+//
 // Nenhuma chave nomeia a Reserva de Estoque: é conceito de domínio, e a
 // EXPERIENCE proíbe expô-lo ao Comprador.
 type saidaPedidoDetalhe struct {
 	saidaPedido
 	AtualizadoEm        string                  `json:"atualizado_em"`
 	Terminal            bool                    `json:"terminal"`
+	PodeCancelar        bool                    `json:"pode_cancelar"`
 	SubtotalCentavos    int64                   `json:"subtotal_centavos"`
 	FreteCentavos       int64                   `json:"frete_centavos"`
 	ExpiraEm            *string                 `json:"expira_em"`
@@ -129,6 +136,7 @@ func saidaDoDetalhe(d pedido.Detalhe) saidaPedidoDetalhe {
 		saidaPedido:         saidaDoPedido(d.Pedido),
 		AtualizadoEm:        instante(d.AtualizadoEm),
 		Terminal:            pedido.EstadoTerminal(d.Status),
+		PodeCancelar:        slices.Contains(pedido.Permitidas(d.Status, pedido.AtorComprador), pedido.StatusCancelado),
 		SubtotalCentavos:    d.SubtotalCentavos,
 		FreteCentavos:       d.FreteCentavos,
 		TentativasRestantes: d.TentativasRestantes,
@@ -286,6 +294,53 @@ func (s *servidor) novaTentativa(w http.ResponseWriter, r *http.Request) {
 	// repetida uma vez em impasse). O prazo novo e as Tentativas restantes a
 	// tela lê do Detalhe, que ela relê em seguida.
 	escreverJSON(w, http.StatusCreated, saidaDoPedido(p))
+}
+
+// cancelarPedido é o "Cancelar Pedido" do Comprador (6.3, FR-31), confirmado
+// no Dialog que nomeia o Pedido. Sem corpo, como a nova Tentativa: nada viaja
+// do navegador além do identificador na rota, e o cookie `SameSite=Lax` deixa
+// o formulário de outro site sem Sessão, em 401. Não existe par
+// administrativo desta rota: o Administrador não cancela (FR-32).
+//
+// 200 com o Pedido em CANCELADO — também quando ele já estava cancelado, que é
+// o segundo clique: sucesso sem efeito, e não erro. ENVIADO e ENTREGUE saem
+// 409 FORA_DA_JANELA_DE_CANCELAMENTO com o Status atual em `dados.status`, sem
+// gravar nada. `dados.status` é para quem chama a API direto: diz por que o
+// cancelamento não é mais possível. A tela não o usa — ela relê o Pedido, e é
+// a leitura que traz o Status novo. Pedido alheio, inexistente e malformado
+// são o mesmo 404 (AD-11).
+func (s *servidor) cancelarPedido(w http.ResponseWriter, r *http.Request) {
+	semCache(w)
+
+	comprador, err := s.compradorDaRequisicao(r)
+	if err != nil {
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	var p pedido.Pedido
+	err = emTransacao(r.Context(), s.pool, func(tx pgx.Tx) (bool, error) {
+		var err error
+		p, err = pedido.Cancelar(r.Context(), tx, r.PathValue("id"), comprador.ID)
+		return err == nil, err
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			erro.Escrever(r.Context(), w, erro.ErrNaoEncontrado, nil)
+			return
+		}
+		// O Status lido sob a trava: a recusa não gravou nada, então é o
+		// Status em que o Pedido está.
+		if errors.Is(err, pedido.ErrForaDaJanelaDeCancelamento) {
+			erro.Escrever(r.Context(), w, err, map[string]any{"status": string(p.Status)})
+			return
+		}
+		erro.Escrever(r.Context(), w, err, nil)
+		return
+	}
+
+	// Só depois do Commit: a transação pode ser repetida uma vez em impasse.
+	escreverJSON(w, http.StatusOK, saidaDoPedido(p))
 }
 
 // lerPedido é a tela do Pedido (5.8): a consulta que ela repete a cada 3 s

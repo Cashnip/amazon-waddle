@@ -557,6 +557,12 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("a expiração da Tentativa de Pagamento", func(t *testing.T) {
 		expiracaoDaTentativa(t, rotas, pool)
 	})
+	// A 6.3, com contas e Produtos próprios: o cancelamento pelo Comprador. A
+	// emissão e a varredura são globais, mas o transporte entrega só as
+	// Tentativas dos Pedidos dela — os dos subtestes acima não mudam.
+	t.Run("o cancelamento pelo Comprador", func(t *testing.T) {
+		cancelamentoPeloComprador(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {
