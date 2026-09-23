@@ -99,19 +99,49 @@ const frasesDoMotivo: Record<string, string> = {
   [RECUSADO_PELO_PROVEDOR]: "O Provedor de Pagamento recusou a Tentativa de Pagamento.",
 };
 
+// A frase de um motivo gravado, ou null quando a tela não o conhece. `hasOwn`,
+// e não a indexação crua: um motivo como "constructor" acharia o herdado de
+// Object.prototype.
+export function fraseDoMotivo(motivo: string | null): string | null {
+  return motivo !== null && Object.hasOwn(frasesDoMotivo, motivo) ? frasesDoMotivo[motivo] : null;
+}
+
 // O motivo da última entrada em PAGAMENTO_RECUSADO, como a tela o escreve. A
 // expiração tem frase própria (EXPERIENCE, "Tentativa expirada"), e a recusa
 // do Provedor também; motivo que a tela não conhece cai na genérica.
 export function motivoDaRecusa(historico: readonly Transicao[]): string {
   for (let i = historico.length - 1; i >= 0; i--) {
     if (historico[i].para === PAGAMENTO_RECUSADO) {
-      // `hasOwn`, e não a indexação crua: um motivo como "constructor"
-      // acharia o herdado de Object.prototype em vez de cair na genérica.
-      const motivo = historico[i].motivo ?? "";
-      return Object.hasOwn(frasesDoMotivo, motivo) ? frasesDoMotivo[motivo] : "O pagamento foi recusado.";
+      return fraseDoMotivo(historico[i].motivo) ?? "O pagamento foi recusado.";
     }
   }
   return "O pagamento foi recusado.";
+}
+
+// Uma linha da linha do tempo do Detalhe (FR-30, NFR-9): o que aconteceu, na
+// ordem em que o Go devolve, e nada do que ainda vai acontecer. O ator não
+// sai: é do Administrador e do NFR-9, não do Comprador.
+export type LinhaDoTempo = { status: string; antes: string | null; motivo: string | null; em: string };
+
+export function linhaDoTempo(historico: readonly Transicao[]): LinhaDoTempo[] {
+  return historico.map((t) => ({
+    status: rotuloDoStatus(t.para),
+    antes: t.de === null ? null : rotuloDoStatus(t.de),
+    motivo: fraseDoMotivo(t.motivo),
+    em: t.em,
+  }));
+}
+
+// Por que não há "Cancelar Pedido" (UX-DR11, ausente com frase): só depois
+// que o Pedido saiu para entrega. Nos quatro canceláveis a 6.3 põe o botão; em
+// CANCELADO não há o que explicar.
+const frasesSemCancelamento: Record<string, string> = {
+  ENVIADO: "Este Pedido já saiu para entrega e não pode mais ser cancelado.",
+  ENTREGUE: "Este Pedido já foi entregue e não pode mais ser cancelado.",
+};
+
+export function porQueNaoCancela(status: string): string | null {
+  return Object.hasOwn(frasesSemCancelamento, status) ? frasesSemCancelamento[status] : null;
 }
 
 // A ação da tripla do AD-18 (EXPERIENCE, "A ação disponível é derivada"):

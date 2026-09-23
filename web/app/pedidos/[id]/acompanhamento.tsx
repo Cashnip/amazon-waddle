@@ -16,9 +16,12 @@ import {
   desfechoDaNovaTentativa,
   impedimentosDaNovaTentativa,
   intervaloDaConsulta,
+  linhaDoTempo,
   motivoDaRecusa,
   podeTentarDeNovo,
+  porQueNaoCancela,
   rotaDaNovaTentativa,
+  rotuloDoStatus,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -37,18 +40,6 @@ import { formatarPreco } from "@/lib/preco";
 // Tudo sai de uma consulta só (AD-18). O que ler dela — superfície, ritmo,
 // tempo restante, motivo — mora em `lib/pedido.ts`, testado; aqui só se
 // executa.
-
-// Os rótulos são os termos do glossário, escritos como se lê em tela. Os sete
-// do CHECK estão aqui inteiros: é a lista do banco, e não a do que já acontece.
-const rotulo: Record<string, string> = {
-  AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
-  PAGAMENTO_RECUSADO: "Pagamento recusado",
-  PAGO: "Pago",
-  SEPARANDO: "Separando",
-  ENVIADO: "Enviado",
-  ENTREGUE: "Entregue",
-  CANCELADO: "Cancelado",
-};
 
 // O instante vem absoluto e em RFC 3339 do servidor; o `dateTime` guarda essa
 // forma e o que o Comprador lê é a mesma marca em pt-BR. É o sinal, durante a
@@ -99,10 +90,39 @@ function Relogio({ expiraEm }: { expiraEm: string }) {
   );
 }
 
-// O Detalhe do Pedido como a 5.8 o mostra: Itens com o preço praticado, os
-// valores congelados e o Endereço. A linha do tempo e o cancelamento são da
-// 6.2 e da 6.3, sobre este mesmo componente.
+// A linha do tempo (6.2, FR-30): uma linha por transição registrada, na ordem
+// do Go, e nenhuma etapa futura. Marcador de 8 px em `border` ligado por
+// filete de 1 px (DESIGN.md); a última linha não tem filete adiante, e é isso
+// que fecha ENTREGUE e CANCELADO sem caso especial. Sem cor e sem ícone. A
+// mudança de Status já é anunciada pela região viva do topo: aqui não há outra.
+function LinhaDoTempo({ pedido }: { pedido: DetalheDoPedido }) {
+  const linhas = linhaDoTempo(pedido.historico);
+  return (
+    <ol className="rounded-md">
+      {linhas.map((linha, i) => (
+        // O histórico só cresce no fim, então a posição é chave estável.
+        <li key={i} className="relative pb-4 pl-5 last:pb-0">
+          <span aria-hidden="true" className="bg-background absolute top-1.5 left-0 size-2 rounded-full border" />
+          {i < linhas.length - 1 && (
+            <span aria-hidden="true" className="bg-border absolute top-3.5 -bottom-1.5 left-[3.5px] w-px" />
+          )}
+          <p className="font-medium">{linha.status}</p>
+          {linha.antes && <p className="text-muted-foreground text-sm">antes: {linha.antes}</p>}
+          {linha.motivo && <p className="text-sm">{linha.motivo}</p>}
+          <p className="text-muted-foreground text-sm">
+            <Instante valor={linha.em} />
+          </p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// O Detalhe do Pedido: Itens com o preço praticado, a linha do tempo, o
+// Endereço e os valores congelados. O cancelamento é da 6.3, junto dos
+// valores, onde hoje mora só a frase de quando ele não existe mais.
 function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
+  const semCancelamento = porQueNaoCancela(pedido.status);
   return (
     <>
       <Card>
@@ -123,6 +143,17 @@ function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>Histórico</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LinhaDoTempo pedido={pedido} />
         </CardContent>
       </Card>
 
@@ -165,6 +196,7 @@ function Detalhe({ pedido }: { pedido: DetalheDoPedido }) {
               <dd className="tabular-nums">{formatarPreco(pedido.total_centavos)}</dd>
             </div>
           </dl>
+          {semCancelamento && <p className="text-muted-foreground mt-4 text-sm">{semCancelamento}</p>}
         </CardContent>
       </Card>
     </>
@@ -312,7 +344,7 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
           <p className="text-sm" role="status">
             {pedido ? (
               <>
-                Status: <span className="font-medium">{rotulo[pedido.status] ?? pedido.status}</span>
+                Status: <span className="font-medium">{rotuloDoStatus(pedido.status)}</span>
                 {/* O motivo mora na região viva: é ele que o Comprador
                     precisa ouvir quando a tela troca o relógio. */}
                 {superficie === "recusado" && (

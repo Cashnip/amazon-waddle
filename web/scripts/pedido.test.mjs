@@ -9,10 +9,13 @@ const {
   INTERVALO_AGUARDANDO_MS,
   INTERVALO_AVANCANDO_MS,
   desfechoDaNovaTentativa,
+  fraseDoMotivo,
   impedimentosDaNovaTentativa,
   intervaloDaConsulta,
+  linhaDoTempo,
   motivoDaRecusa,
   podeTentarDeNovo,
+  porQueNaoCancela,
   rotaDaNovaTentativa,
   rotuloDoStatus,
   superficieDoPedido,
@@ -182,4 +185,38 @@ test("os sete Status têm rótulo; o que a tela não conhece sai cru", () => {
   // herdado de Object.prototype não vira rótulo.
   assert.equal(rotuloDoStatus("DEVOLVIDO"), "DEVOLVIDO");
   assert.equal(rotuloDoStatus("constructor"), "constructor");
+});
+
+test("a linha do tempo é o histórico na ordem do Go, com rótulo, antes e motivo", () => {
+  const historico = [
+    { de: null, para: "AGUARDANDO_PAGAMENTO", ator: "COMPRADOR", motivo: null, em: "2026-09-23T10:00:00Z" },
+    { de: "AGUARDANDO_PAGAMENTO", para: "PAGAMENTO_RECUSADO", ator: "VARREDURA", motivo: "TEMPO_ESGOTADO", em: "2026-09-23T10:15:00Z" },
+    { de: "PAGAMENTO_RECUSADO", para: "AGUARDANDO_PAGAMENTO", ator: "COMPRADOR", motivo: null, em: "2026-09-23T10:16:00Z" },
+    { de: "AGUARDANDO_PAGAMENTO", para: "PAGO", ator: "PROVEDOR", motivo: null, em: "2026-09-23T10:17:00Z" },
+  ];
+  assert.deepEqual(linhaDoTempo(historico), [
+    // Nascimento: só o estado novo, sem "antes".
+    { status: "Aguardando pagamento", antes: null, motivo: null, em: "2026-09-23T10:00:00Z" },
+    { status: "Pagamento recusado", antes: "Aguardando pagamento", motivo: "Tempo de pagamento expirado.", em: "2026-09-23T10:15:00Z" },
+    // A nova Tentativa é mais uma linha, e o anterior é o que a distingue.
+    { status: "Aguardando pagamento", antes: "Pagamento recusado", motivo: null, em: "2026-09-23T10:16:00Z" },
+    { status: "Pago", antes: "Aguardando pagamento", motivo: null, em: "2026-09-23T10:17:00Z" },
+  ]);
+  assert.deepEqual(linhaDoTempo([]), []);
+});
+
+test("motivo desconhecido sai sem frase, e Status desconhecido sai cru", () => {
+  const linha = { de: "PAGO", para: "NOVO", ator: "ADMINISTRADOR", motivo: "OUTRO", em: "t" };
+  assert.deepEqual(linhaDoTempo([linha]), [{ status: "NOVO", antes: "Pago", motivo: null, em: "t" }]);
+  assert.equal(linhaDoTempo([{ ...linha, motivo: "constructor" }])[0].motivo, null);
+  assert.equal(fraseDoMotivo(null), null);
+  assert.equal(fraseDoMotivo("RECUSADO_PELO_PROVEDOR"), "O Provedor de Pagamento recusou a Tentativa de Pagamento.");
+});
+
+test("a frase de sem cancelamento só existe depois que o Pedido saiu para entrega", () => {
+  assert.equal(porQueNaoCancela("ENVIADO"), "Este Pedido já saiu para entrega e não pode mais ser cancelado.");
+  assert.equal(porQueNaoCancela("ENTREGUE"), "Este Pedido já foi entregue e não pode mais ser cancelado.");
+  for (const status of ["AGUARDANDO_PAGAMENTO", "PAGAMENTO_RECUSADO", "PAGO", "SEPARANDO", "CANCELADO", "constructor"]) {
+    assert.equal(porQueNaoCancela(status), null, status);
+  }
 });
