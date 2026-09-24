@@ -44,6 +44,7 @@ const {
   TITULO_APROVADO_SOBRE_CANCELADO,
   consultaDaTabela,
   desfechoDaTransicao,
+  textosDaTransicao,
   enderecoDaTabela,
   filtroDaURL,
   intervaloDaTabela,
@@ -486,12 +487,13 @@ test("a transição inválida é Alert destrutivo, e o Pedido que já avançou �
     resposta: { ok: status >= 200 && status < 300, status },
     json: { erro: { codigo, mensagem, dados, correlacao: "c" } },
   });
-  const tentada = { de: "PAGO", para: "ENTREGUE" };
+  const tentada = { numero: "2026-000042", de: "PAGO", para: "ENTREGUE" };
 
-  // 200: relê, sem Alert nenhum — a releitura traz o Status e o permitidas novos.
+  // 200: relê, e o Alert informativo nomeia o Pedido e o destino — com a
+  // Tabela filtrada a linha sai, e é ele que diz o que aconteceu.
   assert.deepEqual(
     desfechoDaTransicao({ resposta: { ok: true, status: 200 }, json: {} }, tentada),
-    { tipo: "releitura", alerta: null },
+    { tipo: "releitura", alerta: { variante: "informativo", texto: "Pedido 2026-000042: Entregue." } },
   );
 
   // Fora da tabela: nomeia a tentada E as permitidas que o Go devolveu.
@@ -508,6 +510,7 @@ test("a transição inválida é Alert destrutivo, e o Pedido que já avançou �
   // Sem saída nenhuma (Pedido terminal) a frase não termina numa lista vazia.
   assert.match(
     desfechoDaTransicao(resposta(409, "TRANSICAO_INVALIDA", "m", { permitidas: [] }), {
+      numero: "2026-000042",
       de: "ENTREGUE",
       para: "ENVIADO",
     }).alerta.texto,
@@ -523,11 +526,14 @@ test("a transição inválida é Alert destrutivo, e o Pedido que já avançou �
   // palavra "inválida" — é ela que reportaria causa falsa (EXPERIENCE).
   const avancou = desfechoDaTransicao(
     resposta(409, "ESTADO_JA_AVANCADO", "O Pedido já avançou de estado.", { status: "SEPARANDO" }),
-    { de: "PAGO", para: "SEPARANDO" },
+    { numero: "2026-000042", de: "PAGO", para: "SEPARANDO" },
   );
   assert.deepEqual(avancou, {
     tipo: "releitura",
-    alerta: { variante: "informativo", texto: "Este Pedido já está em Separando. A linha foi atualizada." },
+    alerta: {
+      variante: "informativo",
+      texto: "O Pedido 2026-000042 já está em Separando. A linha foi atualizada.",
+    },
   });
   assert.doesNotMatch(avancou.alerta.texto, /inválid/i);
 
@@ -624,4 +630,16 @@ test("o sinal da FR-26 fala da aprovação registrada, e nunca promete estorno",
   for (const texto of [MARCADOR_APROVADO_SOBRE_CANCELADO, TITULO_APROVADO_SOBRE_CANCELADO, TEXTO_APROVADO_SOBRE_CANCELADO]) {
     assert.doesNotMatch(texto, /reserva|reembolso|devolu|estorno/i, texto);
   }
+});
+
+test("o Dialog do avanço nomeia o Pedido e o Status destino", () => {
+  assert.deepEqual(textosDaTransicao("2026-000042", "SEPARANDO"), {
+    titulo: "Mudar o Pedido 2026-000042 para Separando?",
+    descricao: "O Pedido não volta ao Status anterior.",
+    voltar: "Voltar",
+    confirmar: "Iniciar a separação",
+    enviando: "Salvando…",
+  });
+  // Destino que a tela não conhece ainda sai nomeado, e não em branco.
+  assert.equal(textosDaTransicao("2026-000042", "NOVO").confirmar, "Mudar para NOVO");
 });

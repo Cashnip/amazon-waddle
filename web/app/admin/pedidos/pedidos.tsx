@@ -127,12 +127,16 @@ export function Pedidos() {
   // não terminal. Quem diz que acabou é o `terminal` do Go. O `ref` deixa o
   // intervalo chamar sempre a consulta mais recente sem ser rearmado a cada
   // resposta, o que adiaria a próxima para sempre.
+  // Pausada com um Dialog de confirmação aberto (ver `aoConfirmar`).
+  const confirmando = useRef(false);
   const consultar = useRef(carregar);
   consultar.current = carregar;
   const ritmo = intervaloDaTabela(lista?.itens ?? []);
   useEffect(() => {
     if (ritmo === null) return;
-    const tique = setInterval(() => consultar.current(), ritmo);
+    const tique = setInterval(() => {
+      if (!confirmando.current) consultar.current();
+    }, ritmo);
     return () => clearInterval(tique);
   }, [ritmo]);
 
@@ -262,7 +266,20 @@ export function Pedidos() {
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatarPreco(p.total_centavos)}</TableCell>
                   <TableCell>
-                    <AcoesDoPedido pedido={p} aoMudar={carregar} aoRelatar={setRelato} />
+                    {/* A transição feita aqui é anunciada pelo Alert do
+                        desfecho, que sobrevive à saída da linha; sem o Status
+                        anterior, a região do intervalo não a repete. */}
+                    <AcoesDoPedido
+                      pedido={p}
+                      aoMudar={() => {
+                        delete anteriores.current[p.id];
+                        return carregar();
+                      }}
+                      aoRelatar={setRelato}
+                      aoConfirmar={(aberto) => {
+                        confirmando.current = aberto;
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

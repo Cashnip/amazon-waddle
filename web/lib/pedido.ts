@@ -448,6 +448,20 @@ export function rotaDaTransicao(pedidoId: string): string {
 
 export const FALHA_NA_TRANSICAO = "Não foi possível mudar o Status do Pedido.";
 
+// Os textos do Dialog que confirma o avanço (EXPERIENCE: "avançar estado pede
+// confirmação em Dialog com o nome do estado destino"). Nomeia o Pedido pelo
+// número, como o do cancelamento: na Tabela há vinte linhas, e o Dialog
+// esconde de qual delas veio o clique. O confirmar repete o rótulo do botão.
+export function textosDaTransicao(numero: string, destino: string) {
+  return {
+    titulo: `Mudar o Pedido ${numero} para ${rotuloDoStatus(destino)}?`,
+    descricao: "O Pedido não volta ao Status anterior.",
+    voltar: "Voltar",
+    confirmar: rotuloDaAcao(destino),
+    enviando: "Salvando…",
+  };
+}
+
 // O Alert do desfecho, nas duas superfícies. A variante é o que a EXPERIENCE
 // separa: a transição fora da tabela é defeito de quem chamou e sai
 // `destructive`; o Pedido que outro ator já moveu é informação, e sai neutro —
@@ -484,11 +498,19 @@ function fraseDaTransicaoInvalida(de: string, para: string, permitidas: string[]
 // Sessão acabou, e a tela vai ao login (o mesmo desvio de `/admin/produtos`).
 export function desfechoDaTransicao(
   r: { resposta: { ok: boolean; status: number }; json: unknown },
-  tentada: { de: string; para: string },
+  tentada: { numero: string; de: string; para: string },
 ): DesfechoDaTransicao {
   const { ok, status } = r.resposta;
   if (status === 404) return { tipo: "semSessao" };
-  if (ok) return { tipo: "releitura", alerta: null };
+  // O sucesso também vira Alert, e nomeia o Pedido: com a Tabela filtrada por
+  // Status, a releitura tira a linha, e a região viva da Tabela só anuncia
+  // Pedido que continua nela. Só quem clicou sabe o destino.
+  if (ok) {
+    return {
+      tipo: "releitura",
+      alerta: { variante: "informativo", texto: `Pedido ${tentada.numero}: ${rotuloDoStatus(tentada.para)}.` },
+    };
+  }
   const erro = (r.json as { erro?: { codigo?: string; mensagem?: string; dados?: Record<string, unknown> } } | null)?.erro;
   const codigo = erro?.codigo ?? "";
   const dados = erro?.dados ?? {};
@@ -505,7 +527,7 @@ export function desfechoDaTransicao(
       tipo: "releitura",
       alerta: {
         variante: "informativo",
-        texto: `Este Pedido já está em ${rotuloDoStatus(atual)}. A linha foi atualizada.`,
+        texto: `O Pedido ${tentada.numero} já está em ${rotuloDoStatus(atual)}. A linha foi atualizada.`,
       },
     };
   }
