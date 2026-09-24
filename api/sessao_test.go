@@ -578,6 +578,14 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o pagamento aprovado sobre Pedido cancelado", func(t *testing.T) {
 		aprovadoSobreCancelado(t, rotas, pool)
 	})
+	// A 6.6, com conta, Vendedor, Categoria e Produtos próprios: cada condição
+	// da FR-33 que o caminho feliz da 1.8 não alcança. Fica por ÚLTIMO de
+	// propósito: `SimularEntrega` é global, e os Pedidos que ela monta com o
+	// histórico de uma hora — o que falha para sempre entre eles — seriam
+	// candidatos de qualquer subteste registrado depois.
+	t.Run("a simulação de entrega: o que nunca move, o Pedido travado e o que falha", func(t *testing.T) {
+		simulacaoDeEntregaFR33(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

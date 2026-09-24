@@ -135,7 +135,147 @@ func TestExecutarDeixaOCatalogoSemeado(t *testing.T) {
 	oTiqueExpiraNaOrdemDoAD6(t, ctx, conexao)
 
 	pararEsperando()
-	interruptorDesligaASimulacao(t, ctx, conexao)
+	deixados := interruptorDesligaASimulacao(t, ctx, conexao)
+	reinicioRetomaAEntrega(t, ctx, conexao, deixados)
+}
+
+// deixado é um Pedido vencido que o binário com a simulação desligada deixa
+// para trás, com a Reserva ATIVA de um Produto só dele e o Estoque total de
+// antes — o que o arranque seguinte tem de retomar.
+type deixado struct {
+	pedido, produto string
+	estoqueAntes    int32
+	// avancos é quantas linhas SIMULACAO o caminho até ENTREGUE grava.
+	avancos int
+}
+
+// deixarVencido monta o Pedido por INSERT, com o histórico de uma hora atrás
+// e a Reserva ATIVA de 1 unidade do Produto de posição `produto` na ordem de
+// id. Posições acima de 0: a 0 é a dos outros subtestes deste arquivo, que
+// contam o Estoque dela. O histórico entra por último, no mesmo commit — antes
+// dele o Pedido não é candidato de tique nenhum.
+func deixarVencido(t *testing.T, ctx context.Context, conexao *pgx.Conn, numero string, produto int, passos ...[3]string) deixado {
+	t.Helper()
+	tx, err := conexao.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a transação de %s: %v", numero, err)
+	}
+	defer tx.Rollback(ctx)
+	d := deixado{avancos: 3}
+	if passos[len(passos)-1][1] == "SEPARANDO" {
+		d.avancos = 2
+	}
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
+		VALUES ($1, uuidv7(), $2, 32900, 0, 32900)
+		RETURNING id::text`, numero, passos[len(passos)-1][1]).Scan(&d.pedido); err != nil {
+		t.Fatalf("criar o Pedido %s: %v", numero, err)
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT id::text, estoque_total FROM catalogo.produto ORDER BY id OFFSET $1 LIMIT 1`, produto).
+		Scan(&d.produto, &d.estoqueAntes); err != nil {
+		t.Fatalf("escolher o Produto de %s: %v", numero, err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO catalogo.reserva_estoque (produto_id, pedido_id, quantidade, estado)
+		VALUES ($1::uuid, $2::uuid, 1, 'ATIVA')`, d.produto, d.pedido); err != nil {
+		t.Fatalf("criar a Reserva de %s: %v", numero, err)
+	}
+	for i, p := range passos {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, ator, ocorrido_em)
+			VALUES ($1::uuid, $2, $3, $4, now() - make_interval(mins => $5))`,
+			d.pedido, p[0], p[1], p[2], 60+len(passos)-1-i); err != nil {
+			t.Fatalf("registrar %s → %s de %s: %v", p[0], p[1], numero, err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit de %s: %v", numero, err)
+	}
+	return d
+}
+
+// retratoDoDeixado é o Status, as linhas SIMULACAO do histórico, o estado da
+// Reserva e o Estoque total do Produto, numa leitura só.
+func retratoDoDeixado(t *testing.T, ctx context.Context, conexao *pgx.Conn, d deixado) (status string, avancos int, reserva string, estoque int32) {
+	t.Helper()
+	if err := conexao.QueryRow(ctx, `
+		SELECT p.status,
+		       (SELECT count(*) FROM pedido.transicao_status h WHERE h.pedido_id = p.id AND h.ator = 'SIMULACAO'),
+		       r.estado, pr.estoque_total
+		FROM pedido.pedido p
+		JOIN catalogo.reserva_estoque r ON r.pedido_id = p.id
+		JOIN catalogo.produto pr ON pr.id = r.produto_id
+		WHERE p.id = $1::uuid`, d.pedido).Scan(&status, &avancos, &reserva, &estoque); err != nil {
+		t.Fatalf("ler o Pedido %s: %v", d.pedido, err)
+	}
+	return status, avancos, reserva, estoque
+}
+
+// reinicioRetomaAEntrega é o "reiniciar retoma de onde parou" do AD-6 medido
+// no binário inteiro: o arranque novo encontra os Pedidos que o anterior
+// deixou e os leva até ENTREGUE — o PAGO pelas três etapas, o SEPARANDO pelas
+// duas que faltam, cada um consolidando a sua Reserva uma vez. Sem isto, um
+// arranque que perdesse ou refizesse etapa deixaria tudo verde: os outros
+// testes sobem um binário só e começam do zero. O que ele NÃO prova é que o
+// instante do avanço sai do histórico — a 200 ms, um relógio em memória zerado
+// no arranque também chegaria a tempo; essa prova é a de api/, com o histórico
+// de uma hora vencendo o intervalo de meia na primeira chamada.
+func reinicioRetomaAEntrega(t *testing.T, ctx context.Context, conexao *pgx.Conn, deixados []deixado) {
+	t.Helper()
+	// O binário desligado já parou: o que ele deixou está como foi montado,
+	// e o que acontecer daqui em diante é do arranque novo.
+	for _, d := range deixados {
+		status, avancos, reserva, estoque := retratoDoDeixado(t, ctx, conexao, d)
+		if avancos != 0 || reserva != "ATIVA" || estoque != d.estoqueAntes {
+			t.Fatalf("o binário desligado mexeu no Pedido %s: %s, %d avanços, Reserva %s, estoque_total %d",
+				d.pedido, status, avancos, reserva, estoque)
+		}
+	}
+
+	const endereco = "127.0.0.1:8096"
+	t.Setenv("AZAMON_HTTP_ADDR", endereco)
+	t.Setenv("AZAMON_WEBHOOK_BASE_URL", "http://"+endereco)
+	t.Setenv("AZAMON_ENTREGA_SIMULACAO_ATIVA", "true")
+	t.Setenv("AZAMON_ENTREGA_INTERVALO", "200ms")
+
+	servindo, parar := context.WithCancel(ctx)
+	fim := make(chan error, 1)
+	go func() { fim <- executar(servindo, io.Discard) }()
+	defer func() { parar(); <-fim }()
+
+	prazo := time.Now().Add(time.Minute)
+	for {
+		if c, err := net.DialTimeout("tcp", endereco, time.Second); err == nil {
+			c.Close()
+			break
+		}
+		if time.Now().After(prazo) {
+			t.Fatal("o arranque da retomada não chegou a escutar")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	for _, d := range deixados {
+		prazo := time.Now().Add(30 * time.Second)
+		for {
+			status, avancos, reserva, estoque := retratoDoDeixado(t, ctx, conexao, d)
+			if status == "ENTREGUE" {
+				if avancos != d.avancos {
+					t.Errorf("Pedido %s: %d linhas SIMULACAO, quero %d", d.pedido, avancos, d.avancos)
+				}
+				if reserva != "CONSOLIDADA" || estoque != d.estoqueAntes-1 {
+					t.Errorf("Pedido %s: Reserva %s e estoque_total %d; quero CONSOLIDADA e %d — uma consolidação, e só uma",
+						d.pedido, reserva, estoque, d.estoqueAntes-1)
+				}
+				break
+			}
+			if time.Now().After(prazo) {
+				t.Fatalf("o Pedido %s ficou em %s depois do arranque; a simulação não retomou de onde parou", d.pedido, status)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 }
 
 // interruptorDesligaASimulacao prova a consequência da FR-33 que nenhuma outra
@@ -151,7 +291,10 @@ func TestExecutarDeixaOCatalogoSemeado(t *testing.T) {
 //
 // A configuração é lida uma vez, no arranque, então o interruptor só é
 // observável subindo o binário de novo — no mesmo Postgres, que é a parte cara.
-func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pgx.Conn) {
+//
+// Devolve os dois Pedidos vencidos que este binário deixa ao parar — o PAGO
+// do interruptor e um SEPARANDO —, que são o ponto de partida da retomada.
+func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pgx.Conn) []deixado {
 	t.Helper()
 	const endereco = "127.0.0.1:8097"
 	t.Setenv("AZAMON_HTTP_ADDR", endereco)
@@ -161,19 +304,10 @@ func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pg
 
 	// Um Pedido em PAGO com o histórico já vencido: com a simulação ligada,
 	// este é exatamente o Pedido que o primeiro tique moveria.
-	var pedidoID string
-	if err := conexao.QueryRow(ctx, `
-		INSERT INTO pedido.pedido (numero, comprador_id, status, subtotal_centavos, frete_centavos, total_centavos)
-		VALUES ('AZ-INTERRUPTOR-0001', uuidv7(), 'PAGO', 32900, 0, 32900)
-		RETURNING id::text`).Scan(&pedidoID); err != nil {
-		t.Fatalf("criar o Pedido: %v", err)
-	}
-	if _, err := conexao.Exec(ctx, `
-		INSERT INTO pedido.transicao_status (pedido_id, status_anterior, status_novo, ator, ocorrido_em)
-		VALUES ($1::uuid, 'AGUARDANDO_PAGAMENTO', 'PAGO', 'PROVEDOR', now() - interval '1 hour')`,
-		pedidoID); err != nil {
-		t.Fatalf("registrar a transição: %v", err)
-	}
+	pago := deixarVencido(t, ctx, conexao, "AZ-INTERRUPTOR-0001", 1,
+		[3]string{"", "AGUARDANDO_PAGAMENTO", "COMPRADOR"},
+		[3]string{"AGUARDANDO_PAGAMENTO", "PAGO", "PROVEDOR"})
+	pedidoID := pago.pedido
 
 	servindo, parar := context.WithCancel(ctx)
 	fim := make(chan error, 1)
@@ -204,7 +338,17 @@ func interruptorDesligaASimulacao(t *testing.T, ctx context.Context, conexao *pg
 		t.Errorf("status = %s com a simulação desligada; quero PAGO parado", status)
 	}
 
+	// O segundo que este binário deixa: SEPARANDO vencido, com a Reserva por
+	// consolidar. Nasce antes da expiração abaixo, que ainda roda vários
+	// tiques com a simulação desligada — e a retomada confere que nenhum
+	// deles o moveu.
+	separando := deixarVencido(t, ctx, conexao, "AZ-INTERRUPTOR-0003", 2,
+		[3]string{"", "AGUARDANDO_PAGAMENTO", "COMPRADOR"},
+		[3]string{"AGUARDANDO_PAGAMENTO", "PAGO", "PROVEDOR"},
+		[3]string{"PAGO", "SEPARANDO", "ADMINISTRADOR"})
+
 	expiracaoIgnoraOInterruptor(t, ctx, conexao)
+	return []deixado{pago, separando}
 }
 
 // expiracaoIgnoraOInterruptor roda dentro do binário com
@@ -537,9 +681,26 @@ func oTiqueExpiraNaOrdemDoAD6(t *testing.T, ctx context.Context, conexao *pgx.Co
 		t.Errorf("Estoque disponivel = %d, quero %d: a expiracao devolve a unidade", agora, comReserva+1)
 	}
 
-	// O que a ordem do tique e a conferencia da inbox protegem juntas.
-	if s := esperarSair(noPrazo, "pago no prazo"); s != "PAGO" {
-		t.Errorf("o Pedido pago no prazo esta em %s; quero PAGO — `aplicar` corre antes de `expirar`, e a inbox e conferida sob a trava", s)
+	// O que a ordem do tique e a conferencia da inbox protegem juntas. Quem
+	// responde e o historico, e nao o Status corrente: a simulacao de entrega
+	// roda neste binario a 200 ms e pode ja ter levado o Pedido adiante de
+	// PAGO quando a leitura chega. A primeira saida de AGUARDANDO_PAGAMENTO e
+	// o que o tique decidiu, e nenhuma linha pode ter ido a
+	// PAGAMENTO_RECUSADO — nem antes, nem depois.
+	esperarSair(noPrazo, "pago no prazo")
+	var primeiraSaida string
+	var recusas int
+	if err := conexao.QueryRow(ctx, `
+		SELECT (SELECT status_novo FROM pedido.transicao_status
+		        WHERE pedido_id = $1::uuid AND status_anterior = 'AGUARDANDO_PAGAMENTO'
+		        ORDER BY ocorrido_em, id LIMIT 1),
+		       (SELECT count(*) FROM pedido.transicao_status
+		        WHERE pedido_id = $1::uuid AND status_novo = 'PAGAMENTO_RECUSADO')`,
+		noPrazo).Scan(&primeiraSaida, &recusas); err != nil {
+		t.Fatalf("ler o historico do Pedido pago no prazo: %v", err)
+	}
+	if primeiraSaida != "PAGO" || recusas != 0 {
+		t.Errorf("o Pedido pago no prazo saiu de AGUARDANDO_PAGAMENTO para %s, com %d linha(s) em PAGAMENTO_RECUSADO; quero PAGO e nenhuma — `aplicar` corre antes de `expirar`, e a inbox e conferida sob a trava", primeiraSaida, recusas)
 	}
 
 	// `recente` nasceu agora, com o prazo da Config bem acima do tique: varios
