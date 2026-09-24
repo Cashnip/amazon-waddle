@@ -3,6 +3,9 @@
 // lá, em api/pedido_detalhe_test.go.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const {
   CORRIDA_DO_CANCELAMENTO,
@@ -25,6 +28,8 @@ const {
   rotaDaNovaTentativa,
   rotaDoCancelamento,
   rotuloDoStatus,
+  tomDoStatus,
+  aparenciaDoSelo,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -211,6 +216,130 @@ test("os sete Status têm rótulo; o que a tela não conhece sai cru", () => {
   // herdado de Object.prototype não vira rótulo.
   assert.equal(rotuloDoStatus("DEVOLVIDO"), "DEVOLVIDO");
   assert.equal(rotuloDoStatus("constructor"), "constructor");
+});
+
+test("o tom do selo: progresso, falha, e o verde só em ENTREGUE", () => {
+  for (const s of ["AGUARDANDO_PAGAMENTO", "PAGO", "SEPARANDO", "ENVIADO"]) {
+    assert.equal(tomDoStatus(s), "progresso", s);
+  }
+  assert.equal(tomDoStatus("PAGAMENTO_RECUSADO"), "falha");
+  assert.equal(tomDoStatus("CANCELADO"), "falha");
+  assert.equal(tomDoStatus("ENTREGUE"), "entregue");
+  // O desconhecido é progresso, com o texto cru — nunca verde, e sem exceção,
+  // nem pelo herdado de Object.prototype.
+  for (const s of ["DEVOLVIDO", "constructor", "toString", "__proto__", "entregue", ""]) {
+    assert.equal(tomDoStatus(s), "progresso", s);
+  }
+  assert.equal(rotuloDoStatus("DEVOLVIDO"), "DEVOLVIDO");
+  // Sobre os sete do ponto único de rótulo: o verde sai para exatamente um.
+  const tons = STATUS.map(tomDoStatus);
+  assert.deepEqual(STATUS.filter((s) => tomDoStatus(s) === "entregue"), ["ENTREGUE"]);
+  assert.equal(tons.filter((t) => t === "falha").length, 2);
+  assert.equal(tons.filter((t) => t === "progresso").length, 4);
+});
+
+test("a aparência do selo: pílula de 14px, verde só em ENTREGUE, falha preenchida", () => {
+  const classes = (status) => aparenciaDoSelo(status).className.split(" ");
+  const desconhecidos = ["DEVOLVIDO", "constructor", "toString", "__proto__", "entregue", ""];
+  for (const s of [...STATUS, ...desconhecidos]) {
+    const { variant, className } = aparenciaDoSelo(s);
+    const c = classes(s);
+    // A forma é a mesma para todos: pílula, 14px, altura livre.
+    assert.ok(c.includes("rounded-full"), s);
+    assert.ok(c.includes("text-sm"), s);
+    assert.ok(c.includes("h-auto"), s);
+    // O `destructive` tingido do shadcn (3,99:1) nunca volta, por variante
+    // nem por classe com opacidade.
+    assert.notEqual(variant, "destructive", s);
+    assert.ok(!/\//.test(className), `${s}: ${className}`);
+    if (s === "ENTREGUE") {
+      assert.equal(variant, "default");
+      assert.ok(c.includes("bg-available") && c.includes("text-available-foreground"), className);
+      assert.ok(!c.includes("bg-destructive"), className);
+    } else if (s === "PAGAMENTO_RECUSADO" || s === "CANCELADO") {
+      assert.equal(variant, "default", s);
+      assert.ok(c.includes("bg-destructive") && c.includes("text-white"), `${s}: ${className}`);
+      assert.ok(!className.includes("available"), `${s}: ${className}`);
+    } else {
+      // Progresso — e o desconhecido cai aqui: o `secondary` do shadcn, sem
+      // fundo próprio que o sobreponha.
+      assert.equal(variant, "secondary", s);
+      assert.ok(!c.some((k) => k.startsWith("bg-")), `${s}: ${className}`);
+      assert.ok(!className.includes("available"), `${s}: ${className}`);
+    }
+  }
+  assert.deepEqual(
+    STATUS.filter((s) => classes(s).includes("bg-available")),
+    ["ENTREGUE"],
+  );
+  assert.deepEqual(
+    STATUS.filter((s) => classes(s).includes("bg-destructive")).sort(),
+    ["CANCELADO", "PAGAMENTO_RECUSADO"],
+  );
+});
+
+// Guarda de fonte (6.7): sem bancada de componente, é o que impede uma quinta
+// forma de exibir o Status de voltar. As quatro telas usam o selo, e nenhuma
+// escreve o rótulo solto do Status do Pedido.
+const web = fileURLToPath(new URL("..", import.meta.url));
+const lerDaWeb = (arquivo) => readFileSync(join(web, arquivo), "utf8");
+
+test("as quatro telas exibem o Status pelo selo, e não pelo rótulo solto", () => {
+  // Três delas não têm outro uso para o rótulo: nem o import sobra.
+  for (const tela of [
+    "app/pedidos/meus-pedidos.tsx",
+    "app/pedidos/[id]/acompanhamento.tsx",
+    "app/admin/pedidos/[id]/detalhe-admin.tsx",
+  ]) {
+    const fonte = lerDaWeb(tela);
+    assert.ok(fonte.includes("<SeloDoStatus"), `${tela} sem <SeloDoStatus`);
+    assert.ok(!fonte.includes("rotuloDoStatus"), `${tela} usa rotuloDoStatus`);
+  }
+  // A Tabela guarda dois usos que não são selo: a opção do filtro e a frase
+  // do vazio. Qualquer outra chamada — ou a função passada solta, sem
+  // chamada — é uma forma nova do Status e derruba a guarda.
+  const tabela = "app/admin/pedidos/pedidos.tsx";
+  const fonte = lerDaWeb(tabela);
+  assert.ok(fonte.includes("<SeloDoStatus"), `${tabela} sem <SeloDoStatus`);
+  const argumentos = [...fonte.matchAll(/\brotuloDoStatus\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.deepEqual(argumentos.sort(), ["filtro.status", "s"]);
+  const semChamada = [...fonte.matchAll(/\brotuloDoStatus\b(?!\s*\()/g)];
+  assert.equal(semChamada.length, 1, "além do import, rotuloDoStatus aparece sem chamada");
+  assert.match(fonte, /import \{[^}]*\brotuloDoStatus,?[^}]*\} from "@\/lib\/pedido"/);
+});
+
+function arquivosDe(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? arquivosDe(join(dir, e.name)) : [join(dir, e.name)],
+  );
+}
+
+// Os dois verdes do DESIGN.md, por arquivo. O do Estoque disponível é o
+// `text-available` puro. Todo o resto — `bg-`, `border-`, `ring-`, `fill-`
+// ou qualquer utilitário `*-available`, o `text-available-foreground`, o
+// token cru (`--available`, `--color-available`, `var(--available)`) e o hex
+// — é o verde de `ENTREGUE`, que só o selo pinta e só o globals.css declara.
+// Os `--radix-…-available-height` do shadcn não casam: o `available` deles
+// vem depois de hífen e antes de `-height`.
+function verdesPorArquivo() {
+  const estoque = new Set();
+  const selo = new Set();
+  for (const f of ["app", "components", "lib"].flatMap((d) => arquivosDe(join(web, d)))) {
+    if (!/\.(ts|tsx|css|mjs)$/.test(f)) continue;
+    const nome = relative(web, f).split(sep).join("/");
+    const fonte = readFileSync(f, "utf8");
+    for (const [utilitario] of fonte.matchAll(/(?<![\w-])[a-z]+-available(?:-foreground)?(?![\w-])/g)) {
+      (utilitario === "text-available" ? estoque : selo).add(nome);
+    }
+    if (/--(?:color-)?available(?![\w])|#007600/i.test(fonte)) selo.add(nome);
+  }
+  return { estoque: [...estoque].sort(), selo: [...selo].sort() };
+}
+
+test("o verde de ENTREGUE só é pintado pelo selo, e o do Estoque só pelo Estoque", () => {
+  const { estoque, selo } = verdesPorArquivo();
+  assert.deepEqual(selo, ["app/globals.css", "lib/pedido.ts"]);
+  assert.deepEqual(estoque, ["app/produtos/[id]/caixa-de-compra.tsx", "components/cartao-de-produto.tsx"]);
 });
 
 test("a linha do tempo é o histórico na ordem do Go, com rótulo, antes e motivo", () => {

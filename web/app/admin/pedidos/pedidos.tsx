@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
+import { SeloDoStatus } from "@/components/selo-do-status";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { formatarPreco } from "@/lib/preco";
 import {
@@ -250,7 +251,7 @@ export function Pedidos() {
                       `outline`, sem o verde nem o laranja do DESIGN. */}
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-2">
-                      {rotuloDoStatus(p.status)}
+                      <SeloDoStatus status={p.status} />
                       {p.pagamento_aprovado_sobre_cancelado && (
                         <>
                           <span className="sr-only">, </span>

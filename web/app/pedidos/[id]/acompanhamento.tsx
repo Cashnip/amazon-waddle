@@ -15,6 +15,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
 import { Preco } from "@/components/preco";
+import { SeloDoStatus } from "@/components/selo-do-status";
 import { freteGratis } from "@/lib/checkout";
 import { paraLogin } from "@/lib/destino";
 import {
@@ -34,7 +35,6 @@ import {
   podeTentarDeNovo,
   rotaDaNovaTentativa,
   rotaDoCancelamento,
-  rotuloDoStatus,
   superficieDoPedido,
   tempoRestante,
   textoDasTentativas,
@@ -423,7 +423,7 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
           <p className="text-sm" role="status">
             {pedido ? (
               <>
-                Status: <span className="font-medium">{rotuloDoStatus(pedido.status)}</span>
+                Status: <SeloDoStatus status={pedido.status} />
                 {/* O motivo mora na região viva: é ele que o Comprador
                     precisa ouvir quando a tela troca o relógio. */}
                 {superficie === "recusado" && (

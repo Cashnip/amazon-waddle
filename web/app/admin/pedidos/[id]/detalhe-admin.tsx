@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EnderecoPorExtenso } from "@/components/formulario-de-endereco";
+import { SeloDoStatus } from "@/components/selo-do-status";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { formatarPreco } from "@/lib/preco";
 import {
@@ -16,7 +17,6 @@ import {
   TITULO_APROVADO_SOBRE_CANCELADO,
   intervaloDaTabela,
   linhaDoTempo,
-  rotuloDoStatus,
   type DetalheAdmin,
   type RelatoDaTransicao,
 } from "@/lib/pedido";
@@ -126,7 +126,7 @@ export function DetalheDoPedidoAdmin({ pedidoId }: { pedidoId: string }) {
               {/* A região vive desde a montagem do Card e só o conteúdo muda:
                   a consulta de 10 s traz o Status novo sem clique nenhum. */}
               <p className="text-sm" role="status">
-                Status: <span className="font-medium">{rotuloDoStatus(pedido.status)}</span>
+                Status: <SeloDoStatus status={pedido.status} />
               </p>
               {/* O sinal da FR-26 (6.5), abaixo do Status que ele não muda.
                   Persistente: sem botão de fechar, porque é o registro de um

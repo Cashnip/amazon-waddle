@@ -8,9 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Preco } from "@/components/preco";
+import { SeloDoStatus } from "@/components/selo-do-status";
 import { paraLogin } from "@/lib/destino";
 import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
-import { rotuloDoStatus } from "@/lib/pedido";
 
 // "Meus pedidos" (6.1): número, data, total e Status, do mais recente para o
 // mais antigo e só os do Comprador autenticado — o Go filtra pelo dono na
@@ -146,7 +146,7 @@ export function MeusPedidos() {
             >
               <span className="font-medium">{pedido.numero}</span>
               <Data valor={pedido.criado_em} />
-              <span>{rotuloDoStatus(pedido.status)}</span>
+              <SeloDoStatus status={pedido.status} />
               <Preco centavos={pedido.total_centavos} />
             </a>
           </CardContent>

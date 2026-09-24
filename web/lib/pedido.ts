@@ -294,8 +294,8 @@ export function textoDasTentativas(restantes: number): string {
 
 // Os sete Status do CHECK do banco, escritos como se leem em tela. Ponto
 // único de rótulo: sem ele, uma renomeação deixaria uma superfície mostrando
-// o identificador cru. Aqui mora só o texto — o selo (cor e forma) é da 6.7,
-// que o fecha nas três superfícies de uma vez.
+// o identificador cru. Aqui mora o texto; a aparência do selo mora logo
+// abaixo, em `aparenciaDoSelo` (6.7), e o `SeloDoStatus` só a desenha.
 const rotulosDoStatus: Record<string, string> = {
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
   PAGAMENTO_RECUSADO: "Pagamento recusado",
@@ -311,6 +311,60 @@ const rotulosDoStatus: Record<string, string> = {
 // um "constructor" vindo do servidor acharia o herdado de Object.prototype.
 export function rotuloDoStatus(status: string): string {
   return Object.hasOwn(rotulosDoStatus, status) ? rotulosDoStatus[status] : status;
+}
+
+// O tom do selo de Status (6.7, UX-DR10). O verde é só de `ENTREGUE`, o
+// destrutivo só das duas falhas, e todo o resto — inclusive o Status que a
+// tela não conhece — é progresso. O desconhecido nunca sai verde: a cor de fim
+// bem-sucedido não se adivinha.
+export type TomDoStatus = "progresso" | "falha" | "entregue";
+
+// O mapa é só o das duas falhas. O verde fica fora dele, numa comparação com
+// um Status só: uma entrada nova no mapa não tem como ganhar o verde.
+const falhasDoStatus: Record<string, true> = {
+  PAGAMENTO_RECUSADO: true,
+  CANCELADO: true,
+};
+
+// `hasOwn` pelo mesmo motivo de `rotuloDoStatus`: um "constructor" vindo do
+// servidor não pode achar uma falha herdada.
+export function tomDoStatus(status: string): TomDoStatus {
+  if (status === "ENTREGUE") return "entregue";
+  return Object.hasOwn(falhasDoStatus, status) ? "falha" : "progresso";
+}
+
+// A aparência do selo de Status, inteira, como dado: a variante do `Badge` e o
+// `className` que o `cn` do `Badge` funde sobre a base. Mora aqui, e não no
+// componente, para que o `node --test` prenda classe por classe — e este é o
+// único arquivo que pinta com o verde de `ENTREGUE` (a guarda de fonte em
+// `scripts/pedido.test.mjs` prende isso).
+//
+// - Pílula: `rounded-full`, porque o `rounded-4xl` da base está preso em 8px
+//   no globals.css.
+// - 14px (`text-sm`, altura livre): por decisão humana de 2026-09-24, o
+//   rótulo do selo é texto de conteúdo, e o DESIGN.md não o deixa em 12px.
+//   O `badge.tsx` do shadcn não é editado; a sobreposição vai no uso.
+// - `progresso` é o `secondary` do shadcn, sem cor própria.
+// - `falha` é preenchido: o `destructive` do shadcn tinge a 10% e dá 3,99:1,
+//   abaixo do AA; o vermelho cheio sob branco dá 4,76:1.
+// - `entregue` é o verde do Estoque disponível, o único outro uso dele.
+export type AparenciaDoSelo = { variant: "secondary" | "default"; className: string };
+
+const FORMA_DO_SELO = "h-auto rounded-full text-sm";
+
+const classesDoTom: Record<TomDoStatus, string> = {
+  progresso: "",
+  falha: "bg-destructive text-white",
+  entregue: "bg-available text-available-foreground",
+};
+
+export function aparenciaDoSelo(status: string): AparenciaDoSelo {
+  const tom = tomDoStatus(status);
+  const cor = classesDoTom[tom];
+  return {
+    variant: tom === "progresso" ? "secondary" : "default",
+    className: cor ? `${FORMA_DO_SELO} ${cor}` : FORMA_DO_SELO,
+  };
 }
 
 // Os sete, para o filtro da Tabela do Administrador (6.4). Derivados do mapa
