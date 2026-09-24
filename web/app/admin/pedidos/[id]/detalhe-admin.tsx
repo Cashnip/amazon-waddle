@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +12,8 @@ import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { formatarPreco } from "@/lib/preco";
 import {
   SEM_RELATO,
+  TEXTO_APROVADO_SOBRE_CANCELADO,
+  TITULO_APROVADO_SOBRE_CANCELADO,
   intervaloDaTabela,
   linhaDoTempo,
   rotuloDoStatus,
@@ -126,6 +128,16 @@ export function DetalheDoPedidoAdmin({ pedidoId }: { pedidoId: string }) {
               <p className="text-sm" role="status">
                 Status: <span className="font-medium">{rotuloDoStatus(pedido.status)}</span>
               </p>
+              {/* O sinal da FR-26 (6.5), abaixo do Status que ele não muda.
+                  Persistente: sem botão de fechar, porque é o registro de um
+                  dinheiro aprovado, e não um aviso que se dispensa. Neutro, e
+                  não `destructive` nem verde ou laranja: é informação. */}
+              {pedido.pagamento_aprovado_sobre_cancelado && (
+                <Alert>
+                  <AlertTitle>{TITULO_APROVADO_SOBRE_CANCELADO}</AlertTitle>
+                  <AlertDescription>{TEXTO_APROVADO_SOBRE_CANCELADO}</AlertDescription>
+                </Alert>
+              )}
               {/* O mesmo bloco de ação da linha da Tabela: um componente só,
                   para os dois desfechos não divergirem. */}
               <AcoesDoPedido pedido={pedido} aoMudar={carregar} aoRelatar={setRelato} />

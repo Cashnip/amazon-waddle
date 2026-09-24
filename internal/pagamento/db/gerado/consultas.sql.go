@@ -146,6 +146,41 @@ func (q *Queries) MarcarConfirmacao(ctx context.Context, arg MarcarConfirmacaoPa
 	return err
 }
 
+const pedidosComAprovacaoSinalizada = `-- name: PedidosComAprovacaoSinalizada :many
+SELECT DISTINCT t.pedido_id
+FROM pagamento.confirmacao_recebida c
+JOIN pagamento.tentativa_pagamento t ON t.id = c.tentativa_id
+WHERE t.pedido_id = ANY($1::uuid[])
+  AND c.resultado = 'APROVADO'
+  AND c.estado = 'NAO_APLICAVEL_SINALIZADA'
+`
+
+// A metade de `pagamento` do sinal da FR-26 (6.5): quais destes Pedidos têm uma
+// aprovação que chegou e não pôde ser aplicada. A outra metade — o Pedido
+// estar CANCELADO — é de `pedido`, e a junção é em Go (AD-1, AD-2): esta
+// consulta não conhece Status nenhum. Tentativa superada conta, porque aprovação
+// de Tentativa superada também é dinheiro aprovado; RECUSADO não conta, porque
+// é dinheiro que nunca entrou. Uma ida só para a página inteira da Tabela.
+func (q *Queries) PedidosComAprovacaoSinalizada(ctx context.Context, pedidoIds []pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, pedidosComAprovacaoSinalizada, pedidoIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var pedido_id pgtype.UUID
+		if err := rows.Scan(&pedido_id); err != nil {
+			return nil, err
+		}
+		items = append(items, pedido_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const temConfirmacaoPendente = `-- name: TemConfirmacaoPendente :one
 SELECT EXISTS (
     SELECT 1

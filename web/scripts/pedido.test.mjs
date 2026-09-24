@@ -31,9 +31,12 @@ const {
   textosDoCancelamento,
   ANTIGOS,
   FALHA_NA_TRANSICAO,
+  MARCADOR_APROVADO_SOBRE_CANCELADO,
   ORDENACOES,
   RECENTES,
   STATUS,
+  TEXTO_APROVADO_SOBRE_CANCELADO,
+  TITULO_APROVADO_SOBRE_CANCELADO,
   consultaDaTabela,
   desfechoDaTransicao,
   enderecoDaTabela,
@@ -477,4 +480,19 @@ test("a Tabela anuncia só quem mudou de Status, nomeando o Pedido", () => {
   assert.equal(anuncioDaTabela({}, antes), "");
   // Chave herdada de Object.prototype não conta como Status anterior.
   assert.equal(anuncioDaTabela({}, [linha("constructor", "2026-000004", "PAGO")]), "");
+});
+
+// ————— Pagamento aprovado sobre Pedido cancelado (6.5) —————
+
+test("o sinal da FR-26 fala da aprovação registrada, e nunca promete estorno", () => {
+  assert.equal(MARCADOR_APROVADO_SOBRE_CANCELADO, "Pagamento aprovado");
+  assert.equal(TITULO_APROVADO_SOBRE_CANCELADO, "Pagamento aprovado sobre Pedido cancelado");
+  assert.equal(
+    TEXTO_APROVADO_SOBRE_CANCELADO,
+    "O Provedor de Pagamento aprovou uma Tentativa de Pagamento deste Pedido cancelado. " +
+      "O Status do Pedido não muda, e a aprovação fica registrada na Tentativa de Pagamento.",
+  );
+  for (const texto of [MARCADOR_APROVADO_SOBRE_CANCELADO, TITULO_APROVADO_SOBRE_CANCELADO, TEXTO_APROVADO_SOBRE_CANCELADO]) {
+    assert.doesNotMatch(texto, /reserva|reembolso|devolu|estorno/i, texto);
+  }
 });

@@ -332,7 +332,24 @@ export type PedidoNaTabela = {
   criado_em?: string;
   terminal: boolean;
   permitidas: string[];
+  // O sinal da FR-26 (6.5): o Provedor aprovou uma Tentativa de Pagamento
+  // deste Pedido, que está cancelado — a aprovação pode ter chegado antes do
+  // cancelamento (a cobrança duplicada) ou depois, e o texto não diz qual.
+  // Derivado no Go (CANCELADO e uma aprovação sinalizada na inbox), sempre
+  // presente; a tela só o lê.
+  pagamento_aprovado_sobre_cancelado: boolean;
 };
+
+// O marcador da linha da Tabela e o Alert persistente do Detalhe, para o
+// Pedido com `pagamento_aprovado_sobre_cancelado`. Texto, e não cor: nem o
+// verde nem o laranja do DESIGN têm lugar aqui. Nenhuma frase promete estorno
+// nem reembolso — a fase 1 não tem nenhum dos dois; o que ela garante é que a
+// aprovação não se perde.
+export const MARCADOR_APROVADO_SOBRE_CANCELADO = "Pagamento aprovado";
+export const TITULO_APROVADO_SOBRE_CANCELADO = "Pagamento aprovado sobre Pedido cancelado";
+export const TEXTO_APROVADO_SOBRE_CANCELADO =
+  "O Provedor de Pagamento aprovou uma Tentativa de Pagamento deste Pedido cancelado. " +
+  "O Status do Pedido não muda, e a aprovação fica registrada na Tentativa de Pagamento.";
 
 export type ItemDoPedidoAdmin = {
   produto_id: string;

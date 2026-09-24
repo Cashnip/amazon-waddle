@@ -570,6 +570,14 @@ func TestSessaoEProduto(t *testing.T) {
 	t.Run("o painel de Pedidos do Administrador", func(t *testing.T) {
 		painelDePedidosDoAdministrador(t, rotas, pool)
 	})
+	// A 6.5, com conta, Vendedor, Categoria e Produtos próprios: o pagamento
+	// aprovado sobre Pedido cancelado, lido pelo Administrador. Registrada
+	// DEPOIS do painel da 6.4, cuja Tabela sem filtro confere que os Pedidos
+	// dele são os mais recentes; a emissão e a varredura são globais, mas o
+	// transporte entrega só as Tentativas dos Pedidos dela.
+	t.Run("o pagamento aprovado sobre Pedido cancelado", func(t *testing.T) {
+		aprovadoSobreCancelado(t, rotas, pool)
+	})
 }
 
 func postar(t *testing.T, rotas http.Handler, corpo string) *httptest.ResponseRecorder {

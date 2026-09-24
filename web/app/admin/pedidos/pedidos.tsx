@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Pagination,
   PaginationContent,
@@ -24,6 +25,7 @@ import { FALHA_DE_REDE, pedir } from "@/lib/pedir";
 import { formatarPreco } from "@/lib/preco";
 import {
   ANTIGOS,
+  MARCADOR_APROVADO_SOBRE_CANCELADO,
   RECENTES,
   SEM_RELATO,
   STATUS,
@@ -243,7 +245,20 @@ export function Pedidos() {
                   {/* Sem região viva na célula: uma por linha anunciaria
                       "Separando" sem dizer de qual Pedido. Quem anuncia é a
                       região única da Tabela, acima. */}
-                  <TableCell>{rotuloDoStatus(p.status)}</TableCell>
+                  {/* O marcador da FR-26 (6.5) mora na mesma célula do Status:
+                      o leitor de tela lê os dois juntos, e é texto em
+                      `outline`, sem o verde nem o laranja do DESIGN. */}
+                  <TableCell>
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {rotuloDoStatus(p.status)}
+                      {p.pagamento_aprovado_sobre_cancelado && (
+                        <>
+                          <span className="sr-only">, </span>
+                          <Badge variant="outline">{MARCADOR_APROVADO_SOBRE_CANCELADO}</Badge>
+                        </>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{formatarPreco(p.total_centavos)}</TableCell>
                   <TableCell>
                     <AcoesDoPedido pedido={p} aoMudar={carregar} aoRelatar={setRelato} />

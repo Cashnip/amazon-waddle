@@ -31,10 +31,17 @@ import (
 //
 // `terminal` vem de pedido.EstadoTerminal, a única declaração de "acabou" do
 // sistema: é ele que manda a lista parar de consultar em intervalo.
+//
+// `pagamento_aprovado_sobre_cancelado` é o sinal da FR-26 (6.5): o Provedor
+// aprovou uma Tentativa de Pagamento de um Pedido já CANCELADO. Derivado na
+// leitura por `pedido` (AD-18), e sem `omitempty` de propósito: o contrato é a
+// chave sempre presente, `false` quando não se aplica. Mora só aqui, e não em
+// `saidaPedido`: nenhuma resposta do Comprador o carrega.
 type saidaPedidoAdmin struct {
 	saidaPedido
-	Terminal   bool     `json:"terminal"`
-	Permitidas []string `json:"permitidas"`
+	Terminal                        bool     `json:"terminal"`
+	Permitidas                      []string `json:"permitidas"`
+	PagamentoAprovadoSobreCancelado bool     `json:"pagamento_aprovado_sobre_cancelado"`
 }
 
 // saidaPedidoAdminDetalhe é o Detalhe administrativo. Não é
@@ -85,17 +92,18 @@ func permitidasDe(s pedido.Status) []string {
 	return saida
 }
 
-func saidaAdminDoPedido(p pedido.Pedido) saidaPedidoAdmin {
+func saidaAdminDoPedido(p pedido.PedidoAdmin) saidaPedidoAdmin {
 	return saidaPedidoAdmin{
-		saidaPedido: saidaDoPedido(p),
-		Terminal:    pedido.EstadoTerminal(p.Status),
-		Permitidas:  permitidasDe(p.Status),
+		saidaPedido:                     saidaDoPedido(p.Pedido),
+		Terminal:                        pedido.EstadoTerminal(p.Status),
+		Permitidas:                      permitidasDe(p.Status),
+		PagamentoAprovadoSobreCancelado: p.PagamentoAprovadoSobreCancelado,
 	}
 }
 
 func saidaAdminDoDetalhe(d pedido.DetalheAdmin) saidaPedidoAdminDetalhe {
 	saida := saidaPedidoAdminDetalhe{
-		saidaPedidoAdmin: saidaAdminDoPedido(d.Pedido),
+		saidaPedidoAdmin: saidaAdminDoPedido(d.PedidoAdmin),
 		AtualizadoEm:     instante(d.AtualizadoEm),
 		Comprador: saidaCompradorDoPedido{
 			ID: d.Comprador.ID, Nome: d.Comprador.Nome, Email: d.Comprador.Email,
@@ -265,5 +273,10 @@ func (s *servidor) transicionarPedidoAdmin(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Só depois do Commit: a transação pode ser repetida uma vez em impasse.
-	escreverJSON(w, http.StatusOK, saidaAdminDoPedido(p))
+	//
+	// O sinal da FR-26 sai `false` sem ler a inbox, e não por esquecimento: ele
+	// só existe sobre Pedido CANCELADO, e o 200 daqui nunca é CANCELADO — a
+	// tabela do AD-3 não tem linha de AtorAdministrador para esse destino. Se um
+	// dia tiver, este `false` passa a mentir e a leitura tem de entrar aqui.
+	escreverJSON(w, http.StatusOK, saidaAdminDoPedido(pedido.PedidoAdmin{Pedido: p}))
 }

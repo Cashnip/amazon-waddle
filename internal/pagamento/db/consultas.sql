@@ -78,3 +78,17 @@ SELECT EXISTS (
 -- entidade (AD-8): `pedido` recebe as restantes prontas, e não conta sozinho.
 -- name: ContarTentativas :one
 SELECT count(*)::integer FROM pagamento.tentativa_pagamento WHERE pedido_id = @pedido_id;
+
+-- A metade de `pagamento` do sinal da FR-26 (6.5): quais destes Pedidos têm uma
+-- aprovação que chegou e não pôde ser aplicada. A outra metade — o Pedido
+-- estar CANCELADO — é de `pedido`, e a junção é em Go (AD-1, AD-2): esta
+-- consulta não conhece Status nenhum. Tentativa superada conta, porque aprovação
+-- de Tentativa superada também é dinheiro aprovado; RECUSADO não conta, porque
+-- é dinheiro que nunca entrou. Uma ida só para a página inteira da Tabela.
+-- name: PedidosComAprovacaoSinalizada :many
+SELECT DISTINCT t.pedido_id
+FROM pagamento.confirmacao_recebida c
+JOIN pagamento.tentativa_pagamento t ON t.id = c.tentativa_id
+WHERE t.pedido_id = ANY(@pedido_ids::uuid[])
+  AND c.resultado = 'APROVADO'
+  AND c.estado = 'NAO_APLICAVEL_SINALIZADA';

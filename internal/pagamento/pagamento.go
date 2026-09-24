@@ -239,6 +239,40 @@ func TemConfirmacaoPendente(ctx context.Context, bd gerado.DBTX, pedidoID string
 	return tem, nil
 }
 
+// PedidosComAprovacaoSinalizada é a metade de `pagamento` do sinal da FR-26
+// (6.5): dos Pedidos pedidos, quais têm uma confirmação APROVADO que a
+// varredura sinalizou em vez de aplicar (NAO_APLICAVEL_SINALIZADA), em qualquer
+// Tentativa — superada inclusive. A outra metade, o Pedido estar CANCELADO, é
+// de `pedido`, que junta as duas em Go: esta porta não sabe o que é Status.
+//
+// Em lote, e não um `bool` por Pedido: a Tabela do Administrador pergunta pela
+// página inteira numa ida só. O mapa vem indexado pelo id canônico — o que o
+// Postgres devolve, e o que quem chama já tem quando o id saiu de uma coluna
+// uuid —, e só com os Pedidos sinalizados: o ausente lê `false`. Lista vazia
+// não vai ao banco.
+func PedidosComAprovacaoSinalizada(ctx context.Context, bd gerado.DBTX, pedidoIDs []string) (map[string]bool, error) {
+	sinalizados := map[string]bool{}
+	if len(pedidoIDs) == 0 {
+		return sinalizados, nil
+	}
+	chaves := make([]pgtype.UUID, 0, len(pedidoIDs))
+	for _, id := range pedidoIDs {
+		var chave pgtype.UUID
+		if err := chave.Scan(id); err != nil {
+			return nil, fmt.Errorf("identificador de Pedido inválido: %w", err)
+		}
+		chaves = append(chaves, chave)
+	}
+	linhas, err := gerado.New(bd).PedidosComAprovacaoSinalizada(ctx, chaves)
+	if err != nil {
+		return nil, fmt.Errorf("ler as aprovações sinalizadas dos Pedidos: %w", err)
+	}
+	for _, l := range linhas {
+		sinalizados[l.String()] = true
+	}
+	return sinalizados, nil
+}
+
 // Marcar leva a confirmação ao estado terminal, na mesma transação em que a
 // varredura aplicou (ou decidiu não aplicar) o efeito.
 func Marcar(ctx context.Context, bd gerado.DBTX, confirmacaoID, estado string) error {

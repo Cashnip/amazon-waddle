@@ -671,6 +671,39 @@ type FiltroAdmin struct {
 	Ordenacao string
 }
 
+// PedidoAdmin é o Pedido como as leituras do Administrador o devolvem: o
+// Pedido e o sinal da FR-26 (6.5) — o Provedor aprovou uma Tentativa de
+// Pagamento de um Pedido que já estava CANCELADO. Derivado na leitura (AD-7,
+// AD-18), sem coluna nem Status novo: a aprovação sinalizada vem da inbox de
+// `pagamento` por porta, e a junção com o Status é feita aqui, em Go, porque
+// SQL cruzando schema é aresta que o AD-1 não tem.
+//
+// O Pedido cancelado depois de PAGO casa de propósito: ali a aprovação
+// sinalizada é uma segunda, além da que virou PAGO — cobrança duplicada.
+type PedidoAdmin struct {
+	Pedido
+	PagamentoAprovadoSobreCancelado bool
+}
+
+// aprovadosSobreCancelado é a junção das duas metades do sinal: pergunta à
+// inbox só pelos Pedidos CANCELADO de `pedidos`, numa ida só, e devolve o
+// conjunto dos que têm aprovação sinalizada. Pedido em outro Status nunca é
+// perguntado — nem lê `true`, nem custa consulta. Nenhum CANCELADO, nenhuma ida
+// ao banco.
+func aprovadosSobreCancelado(ctx context.Context, bd gerado.DBTX, pedidos []Pedido) (map[string]bool, error) {
+	cancelados := make([]string, 0, len(pedidos))
+	for _, p := range pedidos {
+		if p.Status == StatusCancelado {
+			cancelados = append(cancelados, p.ID)
+		}
+	}
+	sinalizados, err := pagamento.PedidosComAprovacaoSinalizada(ctx, bd, cancelados)
+	if err != nil {
+		return nil, fmt.Errorf("ler o pagamento aprovado sobre Pedido cancelado: %w", err)
+	}
+	return sinalizados, nil
+}
+
 // ListarParaAdministrador é a Tabela de Pedidos do Administrador (6.4, FR-32):
 // a página pedida de TODOS os Pedidos, de todos os Compradores. Não há dono no
 // WHERE — é o que a distingue de Listar, e é por isso que são duas consultas.
@@ -678,7 +711,10 @@ type FiltroAdmin struct {
 // Conta primeiro e curto-circuita a página além do total, no mesmo molde de
 // Listar e de busca.Listar. A contagem repete o WHERE da lista palavra por
 // palavra: um filtro que divergisse pagina sobre um total que não é o da lista.
-func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin, pagina, porPagina int) ([]Pedido, int64, error) {
+//
+// Cada linha leva o sinal da FR-26 (6.5), lido da inbox numa consulta só para
+// a página inteira e só para os Pedidos CANCELADO dela — nunca uma por linha.
+func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin, pagina, porPagina int) ([]PedidoAdmin, int64, error) {
 	var status pgtype.Text
 	if f.Status != "" {
 		status = pgtype.Text{String: string(f.Status), Valid: true}
@@ -693,10 +729,10 @@ func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin,
 		return nil, 0, err
 	}
 	// Fatia vazia, e não nil: a lista sem Pedido nenhum serializa em `[]`.
-	pedidos := []Pedido{}
+	saida := []PedidoAdmin{}
 	// Comparado antes de multiplicar: uma `pagina` enorme não transborda.
 	if int64(pagina-1) >= (total+int64(porPagina)-1)/int64(porPagina) {
-		return pedidos, total, nil
+		return saida, total, nil
 	}
 	linhas, err := q.ListarPedidosAdmin(ctx, gerado.ListarPedidosAdminParams{
 		Status:       status,
@@ -707,6 +743,7 @@ func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin,
 	if err != nil {
 		return nil, 0, err
 	}
+	pedidos := make([]Pedido, 0, len(linhas))
 	for _, linha := range linhas {
 		pedidos = append(pedidos, Pedido{
 			ID:            linha.ID.String(),
@@ -716,7 +753,14 @@ func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin,
 			CriadoEm:      linha.CriadoEm.Time.UTC(),
 		})
 	}
-	return pedidos, total, nil
+	sinalizados, err := aprovadosSobreCancelado(ctx, bd, pedidos)
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, p := range pedidos {
+		saida = append(saida, PedidoAdmin{Pedido: p, PagamentoAprovadoSobreCancelado: sinalizados[p.ID]})
+	}
+	return saida, total, nil
 }
 
 // DetalheAdmin é o Detalhe de um Pedido como o Administrador o vê (FR-32):
@@ -726,8 +770,9 @@ func ListarParaAdministrador(ctx context.Context, bd gerado.DBTX, f FiltroAdmin,
 // Tipo próprio, e não o Detalhe do Comprador: aquele carrega a tripla
 // (`TentativasRestantes`, `Disponivel` por Item) e `ExpiraEm`, que são da
 // decisão do Comprador e não da operação da loja. Duas leituras, dois públicos.
+// O que ele tem a mais é o sinal da FR-26, pelo PedidoAdmin embutido.
 type DetalheAdmin struct {
-	Pedido
+	PedidoAdmin
 	Comprador        identidade.Conta
 	SubtotalCentavos int64
 	FreteCentavos    int64
@@ -756,16 +801,24 @@ func DetalharParaAdministrador(ctx context.Context, bd gerado.DBTX, pedidoID str
 		return DetalheAdmin{}, err
 	}
 	d := DetalheAdmin{
-		Pedido: Pedido{
+		PedidoAdmin: PedidoAdmin{Pedido: Pedido{
 			ID:            linha.ID.String(),
 			Numero:        linha.Numero,
 			Status:        Status(linha.Status),
 			TotalCentavos: linha.TotalCentavos,
 			AtualizadoEm:  linha.AtualizadoEm.Time.UTC(),
-		},
+		}},
 		SubtotalCentavos: linha.SubtotalCentavos,
 		FreteCentavos:    linha.FreteCentavos,
 	}
+	// O sinal da FR-26 pela mesma junção da Tabela, com um Pedido só: a inbox
+	// só é lida se ele estiver CANCELADO. Na transação de `api/`, a porta vê o
+	// mesmo instante que o Status que acabou de ser lido.
+	sinalizados, err := aprovadosSobreCancelado(ctx, bd, []Pedido{d.Pedido})
+	if err != nil {
+		return DetalheAdmin{}, err
+	}
+	d.PagamentoAprovadoSobreCancelado = sinalizados[d.ID]
 	// Tudo ou nada, pelo CHECK `pedido_criacao_completa`: basta uma coluna.
 	if linha.EnderecoCep.Valid {
 		d.Endereco = &Endereco{
