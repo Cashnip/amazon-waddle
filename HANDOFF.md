@@ -62,7 +62,7 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 **Antes da Épica 7, nesta ordem, com o contexto limpo entre cada sessão** (decisão humana de 2026-09-24):
 
 1. ~~**`bmad-checkpoint-preview` da Épica 6**~~ — **feito em 2026-09-24**: defeitos E1–E5 e a decisão O3 no bloco "O que o passeio da Épica 6 achou" abaixo. A leitura humana aprovou, e as sete estórias e a Épica 6 estão `done`.
-2. **`bmad-build` do D3 com D5** — preço por Item conferido sob a trava, com o teste que prende `pedido.go:282`. Três lentes: é a transação do Pedido.
+2. ~~**`bmad-build` do D3 com D5**~~ — **feito em 2026-09-24** (spec `spec-d3-d5-preco-por-item-sob-a-trava.md`, `done`): sob a trava, cada Item confere o preço contra o preço visto (`TOTAL_DIVERGENTE`), e reenviar sem passar pela entrada no checkout é recusado (AD-17). `Compensados`, `Limiar` e `Janela` em `api/pedido_test.go` a prendem, e `Janela` prende o lugar (passo 5, não passo 2). Revisão com uma lente, por decisão humana.
 3. **`bmad-build` do padrão de `Dialog` e foco** — D2, D6, D7, E2 (os dois `Dialog`s da Épica 6), E3 (o `destructive` abaixo do AA) e, se decidido, O3. Uma lente.
 4. **`bmad-build` do D1 e do D4**, mais E1, E4 e E5. Uma lente.
 
@@ -734,7 +734,7 @@ aprovado sobre Pedido cancelado visível a ele, a simulação de entrega e o sel
 da 6.4 (Dialog de confirmação e anúncio sob filtro) corrigidos em 7014591, e o
 resto dele achou E1–E5, registrados para o bmad-build; a Épica 6 está done.
 O passeio da Épica 5 foi feito e ela está done: sete defeitos (D1–D7) registrados para o bmad-build.
-Próximo passo: bmad-build de D3+D5, do padrão de Dialog e foco (D2, D6, D7, E2, E3)
+D3+D5 corrigidos. Próximo passo: bmad-build do padrão de Dialog e foco (D2, D6, D7, E2, E3)
 e de D1+D4 com E1, E4, E5; só então a Estória 7.1.
 ```
 

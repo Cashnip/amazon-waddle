@@ -65,10 +65,12 @@ type Pedido struct {
 }
 
 // ErrTotalDivergente recusa a criação cujo total não é mais o que a Revisão
-// exibiu: um preço ou o Frete mudou entre a Revisão e a confirmação. Conferido
-// duas vezes — antes do INSERT e de novo com os Produtos travados (AD-5) —, e a
-// recusa não grava nada, nem prende a chave de idempotência.
-var ErrTotalDivergente = errors.New("O total do Pedido mudou desde a Revisão. Confira os valores e confirme de novo.")
+// exibiu, ou em que o preço de um Item não é mais o que o Comprador viu: um
+// preço ou o Frete mudou entre a Revisão e a confirmação. O total é conferido
+// duas vezes — antes do INSERT e de novo com os Produtos travados (AD-5) —, e
+// o preço de cada Item só sob a trava, contra o preço visto (AD-17). A recusa
+// não grava nada, nem prende a chave de idempotência.
+var ErrTotalDivergente = errors.New("Um preço ou o total do Pedido mudou desde a Revisão. Confira os valores e confirme de novo.")
 
 // ErrCarrinhoVazio recusa a criação sem Item de Carrinho nenhum: não há Pedido
 // a fechar.
@@ -124,7 +126,10 @@ func digestDe(novo NovoPedido) string {
 //  5. **só então** a releitura dos preços, com os Produtos travados, e o
 //     Frete recalculado sobre eles (a Regra de Frete não é travada: só muda
 //     por migração) — o total foi ao INSERT calculado antes da trava, e é aqui
-//     que se confirma que nada mudou; o gatilho da 5.1 impede corrigir depois;
+//     que se confirma que nada mudou; o gatilho da 5.1 impede corrigir depois.
+//     Cada Item confere também o preço contra o preço visto: dois preços que
+//     se compensam fecham o mesmo subtotal, e o Comprador só tem ciência do
+//     preço que a entrada no checkout gravou (AD-17);
 //  6. Itens de Pedido (preço praticado e Vendedor congelados), a primeira
 //     linha do histórico, carrinho.Esvaziar sobre os Itens lidos e a Tentativa.
 //
@@ -263,6 +268,11 @@ func Criar(ctx context.Context, tx pgx.Tx, compradorID string, novo NovoPedido, 
 		}
 		if err != nil {
 			return Pedido{}, false, err
+		}
+		// O preço visto, e não o lido no passo 2: esse já é o preço novo, e é
+		// por isso que as somas batem quando dois preços se compensam.
+		if produto.PrecoCentavos != item.PrecoVistoCentavos {
+			return Pedido{}, false, ErrTotalDivergente
 		}
 		produtos = append(produtos, produto)
 		// Multiplicação de inteiros: não existe divisão no caminho monetário (AD-9).

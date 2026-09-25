@@ -1099,8 +1099,12 @@ func criacaoPeloCheckout(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	if n := itensNoCarrinho(lia); n != 1 {
 		t.Errorf("%d Itens no Carrinho depois do TOTAL_DIVERGENTE, quero 1", n)
 	}
-	// Terceira condição de aceite: a recusa não consome a chave. A mesma
-	// chave, com o total novo que a Revisão relida mostra, cria o Pedido.
+	// Terceira condição de aceite: a recusa não consome a chave. A entrada no
+	// checkout grava a ciência do preço novo (AD-17), e a mesma chave, com o
+	// total que a Revisão relida mostra, cria o Pedido.
+	if resp := postarEntrada(t, rotas, lia); resp.Code != http.StatusOK {
+		t.Fatalf("entrada no checkout = %d (%s)", resp.Code, resp.Body.String())
+	}
 	novoTotal := totalDaRevisao(t, rotas, lia, sp)
 	if novoTotal != 3200+freteSudeste {
 		t.Fatalf("total relido = %d, quero %d", novoTotal, 3200+freteSudeste)
@@ -1108,6 +1112,107 @@ func criacaoPeloCheckout(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	if resp := postarPedido(t, rotas, chaveDaRevisao, corpoPedido(sp, novoTotal), lia); resp.Code != http.StatusCreated {
 		t.Errorf("a mesma chave com o total novo = %d (%s), quero 201", resp.Code, resp.Body.String())
 	}
+
+	// Preços que mudam sem mudar o total: só a conferência por Item, sob a
+	// trava, recusa. No passo 2 o subtotal e o Frete já são os novos e batem.
+	// Cada cenário num subteste: confereErro é Fatalf, e um precisa falhar sem
+	// calar o outro.
+	semMudarOTotal := func(caso string, precos, novos []int, querFrete int64) {
+		t.Run(caso, func(t *testing.T) {
+			ids := make([]string, len(precos))
+			for i, preco := range precos {
+				ids[i] = novoProduto(fmt.Sprintf("%s %d", caso, i), preco)
+				adicionar(lia, ids[i], "1")
+			}
+			daRevisao := totalDaRevisao(t, rotas, lia, sp)
+			for i, preco := range novos {
+				publicar(ids[i], fmt.Sprintf("%s %d", caso, i), preco)
+			}
+			antes := fotografia()
+			chave := chaveNova(t)
+			confereErro(t, postarPedido(t, rotas, chave, corpoPedido(sp, daRevisao), lia), http.StatusConflict, "TOTAL_DIVERGENTE", "")
+			if depois := fotografia(); depois != antes {
+				t.Errorf("%s: a recusa gravou: %s, era %s", caso, depois, antes)
+			}
+			if n := itensNoCarrinho(lia); n != len(precos) {
+				t.Errorf("%s: %d Itens no Carrinho depois da recusa, quero %d", caso, n, len(precos))
+			}
+			if resp := postarEntrada(t, rotas, lia); resp.Code != http.StatusOK {
+				t.Fatalf("%s: entrada no checkout = %d (%s)", caso, resp.Code, resp.Body.String())
+			}
+			if novo := totalDaRevisao(t, rotas, lia, sp); novo != daRevisao {
+				t.Fatalf("%s: total relido = %d, quero o mesmo %d", caso, novo, daRevisao)
+			}
+			criado := postarPedido(t, rotas, chave, corpoPedido(sp, daRevisao), lia)
+			if criado.Code != http.StatusCreated {
+				t.Fatalf("%s: a mesma chave depois da entrada = %d (%s), quero 201", caso, criado.Code, criado.Body.String())
+			}
+			id := fmt.Sprint(decodificar(t, criado)["id"])
+			var quer []string
+			for i, preco := range novos {
+				quer = append(quer, fmt.Sprintf("%s %d|%d", caso, i, preco))
+			}
+			if got := textoDe(t, pool, `SELECT nome || '|' || preco_praticado_centavos FROM pedido.item_pedido
+			WHERE pedido_id = $1::uuid ORDER BY nome`, id); !slices.Equal(got, quer) {
+				t.Errorf("%s: Itens congelados = %v, quero %v", caso, got, quer)
+			}
+			if got := textoDe(t, pool, `SELECT frete_centavos::text FROM pedido.pedido WHERE id = $1::uuid`, id); !slices.Equal(got, []string{fmt.Sprint(querFrete)}) {
+				t.Errorf("%s: Frete congelado = %v, quero %d", caso, got, querFrete)
+			}
+		})
+	}
+	semMudarOTotal("Compensados", []int{5000, 3000}, []int{5500, 2500}, freteSudeste)
+	// R$ 250,00 é o limiar: Frete grátis. A R$ 235,00, mais o Frete do
+	// Sudeste, fecha os mesmos R$ 250,00 com outra divisão.
+	semMudarOTotal("Limiar", []int{freteIsencaoDeTeste}, []int{freteIsencaoDeTeste - freteSudeste}, freteSudeste)
+
+	// Os dois cenários acima mudam o preço antes do POST, e uma checagem por
+	// Item no passo 2 os recusaria do mesmo jeito. O que prende o lugar dela é
+	// a janela entre o passo 2 e a trava: outra transação troca os preços e
+	// segura as linhas, a criação lê os preços velhos no passo 2 e para em
+	// Reservar, e o commit a solta. Checada no passo 2, este Pedido nasceria.
+	t.Run("Janela", func(t *testing.T) {
+		copo := novoProduto("Janela 0", 5000)
+		prato := novoProduto("Janela 1", 3000)
+		adicionar(lia, copo, "1")
+		adicionar(lia, prato, "1")
+		daRevisao := totalDaRevisao(t, rotas, lia, sp)
+		antes := fotografia()
+		troca, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("abrir a troca de preços: %v", err)
+		}
+		defer troca.Rollback(ctx)
+		if _, err := troca.Exec(ctx, `
+			UPDATE catalogo.produto SET preco_centavos = CASE id WHEN $1::uuid THEN 5500 ELSE 2500 END
+			WHERE id IN ($1::uuid, $2::uuid)`, copo, prato); err != nil {
+			t.Fatalf("trocar os preços: %v", err)
+		}
+		resposta := make(chan *httptest.ResponseRecorder, 1)
+		go func() { resposta <- postarPedido(t, rotas, chaveNova(t), corpoPedido(sp, daRevisao), lia) }()
+		// Espera fixa, no molde de travaDeReservaSerializa: destravada, a
+		// criação responde em milissegundos.
+		select {
+		case r := <-resposta:
+			t.Fatalf("a criação respondeu %d com as linhas presas: não parou na trava", r.Code)
+		case <-time.After(500 * time.Millisecond):
+		}
+		if err := troca.Commit(ctx); err != nil {
+			t.Fatalf("comitar a troca: %v", err)
+		}
+		select {
+		case r := <-resposta:
+			confereErro(t, r, http.StatusConflict, "TOTAL_DIVERGENTE", "")
+		case <-time.After(10 * time.Second):
+			t.Fatal("a criação não saiu depois do commit da troca")
+		}
+		if depois := fotografia(); depois != antes {
+			t.Errorf("a recusa na janela gravou: %s, era %s", depois, antes)
+		}
+		if resp := esvaziarCarrinho(t, rotas, lia); resp.Code != http.StatusNoContent {
+			t.Fatalf("esvaziar = %d", resp.Code)
+		}
+	})
 
 	// Duplo clique concorrente: duas requisições iguais em paralelo, um
 	// Pedido, e as duas respostas com o mesmo id.
