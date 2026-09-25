@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,7 @@ export function MeuCarrinho() {
   // A mensagem de uma edição ou remoção que falhou, por linha.
   const [avisos, setAvisos] = useState<Record<string, string>>({});
   const [confirmados, setConfirmados] = useState<PrecosConfirmados>({});
+  const titulo = useRef<HTMLHeadingElement>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [esvaziando, setEsvaziando] = useState(false);
   const [erroDoDialog, setErroDoDialog] = useState<string | null>(null);
@@ -201,7 +202,7 @@ export function MeuCarrinho() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-medium">Carrinho</h1>
+      <h1 ref={titulo} tabIndex={-1} className="text-2xl font-medium outline-none">Carrinho</h1>
       {erroDaLista && (
         <Alert variant="destructive">
           <AlertDescription>{erroDaLista}</AlertDescription>
@@ -260,7 +261,11 @@ export function MeuCarrinho() {
               size="sm"
               variant="outline"
               className="mt-3"
-              onClick={() => setConfirmados((atuais) => comPrecosConfirmados(atuais, mudancas))}
+              onClick={() => {
+                setConfirmados((atuais) => comPrecosConfirmados(atuais, mudancas));
+                // O `Alert` sai com o próprio botão, e o foco cairia no `body`.
+                titulo.current?.focus();
+              }}
             >
               {mudancas.length === 1 ? "Confirmar o novo preço" : "Confirmar os novos preços"}
             </Button>

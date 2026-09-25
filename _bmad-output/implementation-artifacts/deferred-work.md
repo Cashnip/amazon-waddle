@@ -505,3 +505,6 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-6-7-a-forma-de-exibicao-dos-sete-status.md`
   summary: A decisão humana de 2026-09-24 (rótulo do selo de Status é texto de conteúdo, 14px) vive só na spec da 6.7 e neste registro; o `DESIGN.md` continua dizendo ao mesmo tempo "Badge sem alteração" e "no mínimo 14px", e o marcador `outline` "Pagamento aprovado" da 6.5 segue em 12px ao lado do selo de 14px.
   evidence: A revisão da 6.7 achou a tensão ainda aberta na espinha: nenhuma linha do `DESIGN.md` nem do `.memlog.md` da UX registra a decisão, e o próximo leitor da espinha tropeça no mesmo conflito. Fechar pede `uv run _bmad/scripts/memlog.py append` no diretório da UX e, se o dono decidir, a emenda do `DESIGN.md` — e a mesma pergunta para o marcador da 6.5 e qualquer outro `Badge` com texto de conteúdo.
+- source_spec: `_bmad-output/implementation-artifacts/spec-dialog-e-foco-d2-d6-d7-e2-e3.md`
+  summary: Quando o botão que abriu o `Dialog` sai do DOM ao confirmar (remover Endereço, Categoria ou Vendedor), o foco ainda cai no `body` — falta um destino de reserva, como o título da tela.
+  evidence: `DialogContent` só devolve o foco a quem abriu se ele continua `isConnected`; a linha removida leva o botão junto, e a matriz da spec aceitou esse caso como comportamento do Radix.

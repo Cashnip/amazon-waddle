@@ -560,7 +560,6 @@ export function Produtos() {
                 ref={campoDoAjuste}
                 name="estoque_total"
                 inputMode="numeric"
-                autoFocus
                 aria-invalid={erroDoAjuste !== null || undefined}
                 aria-describedby={erroDoAjuste ? "ajuste_estoque_total-erro" : undefined}
                 value={ajuste}

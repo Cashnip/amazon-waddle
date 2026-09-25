@@ -571,7 +571,10 @@ export function Acompanhamento({ pedidoId }: { pedidoId: string }) {
               type="button"
               variant="destructive"
               aria-disabled={cancelando}
-              className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              // O `destructive` do shadcn tinge a 10% e dá 3,99:1 (E3): cheio
+              // com branco é o par da 6.7, 4,76:1. O hover escurece — clarear
+              // o vermelho baixaria o contraste do branco.
+              className="bg-destructive text-white hover:bg-[color-mix(in_oklch,var(--destructive),black_15%)] aria-disabled:hover:bg-destructive aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
               onClick={cancelar}
             >
               {cancelando ? textosDoDialog.enviando : textosDoDialog.confirmar}

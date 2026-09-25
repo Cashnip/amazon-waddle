@@ -67,6 +67,7 @@ export function EscolhaDeEndereco() {
   // daqui é o reconhecimento do aviso, como no Carrinho (4.4).
   const [carrinho, setCarrinho] = useState<Carrinho | null>(null);
   const [confirmados, setConfirmados] = useState<PrecosConfirmados>({});
+  const titulo = useRef<HTMLHeadingElement>(null);
 
   // O 401 leva ao Login com o passo atual no `destino`.
   const semSessao = useCallback(() => router.push(paraLogin()), [router]);
@@ -246,7 +247,7 @@ export function EscolhaDeEndereco() {
   return (
     <div className="space-y-4">
       <EtapasDoCheckout atual="Endereço" />
-      <h1 className="text-2xl font-medium">Endereço de entrega</h1>
+      <h1 ref={titulo} tabIndex={-1} className="text-2xl font-medium outline-none">Endereço de entrega</h1>
 
       {erro && (
         <Alert variant="destructive">
@@ -293,7 +294,11 @@ export function EscolhaDeEndereco() {
               size="sm"
               variant="outline"
               className="mt-3"
-              onClick={() => setConfirmados((atuais) => comPrecosConfirmados(atuais, mudancas))}
+              onClick={() => {
+                setConfirmados((atuais) => comPrecosConfirmados(atuais, mudancas));
+                // O `Alert` sai com o próprio botão, e o foco cairia no `body`.
+                titulo.current?.focus();
+              }}
             >
               {mudancas.length === 1 ? "Confirmar o novo preço" : "Confirmar os novos preços"}
             </Button>

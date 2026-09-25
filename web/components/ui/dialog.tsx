@@ -47,14 +47,25 @@ function DialogOverlay({
   )
 }
 
+// O Radix só devolve o foco ao `DialogTrigger`, e todo `Dialog` do Azamon abre
+// por estado, sem um: no `Esc` o foco caía no `body` (WCAG 2.4.3). Guarda-se
+// quem tinha o foco ao abrir — em `onOpenAutoFocus`, antes de o `FocusScope`
+// movê-lo — e ele o recebe de volta ao fechar, salvo se quem usa já escolheu
+// outro destino (`preventDefault`) ou se ele saiu do DOM.
+// Não ponha `autoFocus` dentro do `Dialog`: o React foca antes do `FocusScope`,
+// o `onOpenAutoFocus` não dispara e nada é guardado. O Radix já foca o primeiro
+// campo; para outro, use `onOpenAutoFocus`.
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const quemAbriu = React.useRef<HTMLElement | null>(null)
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -64,6 +75,20 @@ function DialogContent({
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
+        onOpenAutoFocus={(e) => {
+          const ativo = document.activeElement
+          quemAbriu.current =
+            ativo instanceof HTMLElement && ativo !== document.body ? ativo : null
+          onOpenAutoFocus?.(e)
+        }}
+        onCloseAutoFocus={(e) => {
+          onCloseAutoFocus?.(e)
+          const alvo = quemAbriu.current
+          quemAbriu.current = null
+          if (e.defaultPrevented || !alvo?.isConnected) return
+          e.preventDefault()
+          alvo.focus()
+        }}
         {...props}
       >
         {children}
@@ -76,7 +101,7 @@ function DialogContent({
             >
               <XIcon
               />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">Fechar</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -115,7 +140,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">Fechar</Button>
         </DialogPrimitive.Close>
       )}
     </div>
