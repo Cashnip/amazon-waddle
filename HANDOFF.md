@@ -59,7 +59,16 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-`bmad-build` na **Estória 7.1** (O README leva do clone ao sistema rodando), a primeira da Épica 7 — a Épica 5 e a Épica 6 estão inteiras em `main`: a 6.1 (`48f6723`), a 6.2 (`5f618db`), a 6.3 (`b6093e9`), a 6.4 (`081a60e`), a 6.5 (`5b01aec`), a 6.6 (`cd27088`) e a 6.7 (`aadb350`). A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1), o diagrama dos seis módulos contra o código, o addendum percorrido contra o código, e os três roteiros ensaiados a partir de clone limpo. **Antes dela, ou junto da 7.4, vem a dívida maior do projeto:** o passeio da Épica 5 foi feito em 2026-09-24 e deixou sete defeitos para o `bmad-build` (D1–D7, no bloco "O que o passeio da Épica 5 achou" abaixo), e da Épica 6 só o passeio da `bmad-checkpoint-preview` começou — achou os dois defeitos do painel da 6.4, corrigidos em `7014591`. Os passeios abaixo são o roteiro do que falta. `epic-6-retrospective` continua `optional`, sem dono. A 5.11 está em `main` (`8a3dfd0`), a 5.10 em `main` (`22500bf`), a 5.9 em `main` (`577a6aa`), a 5.8 em `main` (`e421de8`), a 5.7
+**Antes da Épica 7, nesta ordem, com o contexto limpo entre cada sessão** (decisão humana de 2026-09-24):
+
+1. **`bmad-checkpoint-preview` da Épica 6** — o passeio das sete estórias pelos roteiros de cada uma, logo abaixo, registrando os defeitos no HANDOFF como o da Épica 5. Vem antes das correções porque a Épica 6 tem três `Dialog`s (cancelar, avançar Status, admin) que devem repetir o D6 e o D7, e o D2 mora no `dialog.tsx` compartilhado: juntar antes é corrigir o padrão uma vez só. O admin pede o humano entrando como Administrador numa aba — o agente não digita senha.
+2. **`bmad-build` do D3 com D5** — preço por Item conferido sob a trava, com o teste que prende `pedido.go:282`. Três lentes: é a transação do Pedido. Pode subir para antes do passo 1 se quiser fechar primeiro o risco de dinheiro; é independente do que a Épica 6 mostra.
+3. **`bmad-build` do padrão de `Dialog` e foco** — D2, D6, D7 e o que o passo 1 achar da mesma família. Uma lente.
+4. **`bmad-build` do D1 e do D4**, mais os pequenos do passo 1. Uma lente.
+
+Não um `bmad-build` único para tudo: a mistura força a revisão cara sobre o trivial ou a barata sobre o D3 (política de revisão do `bmad-build`). Depois dos quatro, `bmad-build` na **Estória 7.1**.
+
+Depois, `bmad-build` na **Estória 7.1** (O README leva do clone ao sistema rodando), a primeira da Épica 7 — a Épica 5 e a Épica 6 estão inteiras em `main`: a 6.1 (`48f6723`), a 6.2 (`5f618db`), a 6.3 (`b6093e9`), a 6.4 (`081a60e`), a 6.5 (`5b01aec`), a 6.6 (`cd27088`) e a 6.7 (`aadb350`). A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1), o diagrama dos seis módulos contra o código, o addendum percorrido contra o código, e os três roteiros ensaiados a partir de clone limpo. **Antes dela, ou junto da 7.4, vem a dívida maior do projeto:** o passeio da Épica 5 foi feito em 2026-09-24 e deixou sete defeitos para o `bmad-build` (D1–D7, no bloco "O que o passeio da Épica 5 achou" abaixo), e da Épica 6 só o passeio da `bmad-checkpoint-preview` começou — achou os dois defeitos do painel da 6.4, corrigidos em `7014591`. Os passeios abaixo são o roteiro do que falta. `epic-6-retrospective` continua `optional`, sem dono. A 5.11 está em `main` (`8a3dfd0`), a 5.10 em `main` (`22500bf`), a 5.9 em `main` (`577a6aa`), a 5.8 em `main` (`e421de8`), a 5.7
 em `main` (`7cd26ac`), a 5.6 em `main` (`9174f88`), a 5.5 em `main` (`f3cc0ff`), a 5.4 em `main` (`6e5984f`), a 5.3 em `main` (`dbcb2b8`) e a 5.2 em
 `main` (`400861b`), as dez `done` no `sprint-status.yaml` desde a leitura humana de 2026-09-24, com a Épica 5
 fechada e D1–D7 abertos para o `bmad-build`. As sete da Épica 6 continuam em `review`: falta a leitura humana
@@ -107,7 +116,7 @@ reconferência do total — só a última tem defeito.
 | D2 | baixa | `web/components/ui/dialog.tsx:79` | O fechar de todo `Dialog` se anuncia `Close`, em inglês |
 | D4 | baixa | `web/app/checkout/revisao/revisao-do-pedido.tsx:317` | O comentário promete que subtotal da cotação diferente do Carrinho é recusado na criação; não é (a tela manda o total da cotação, que bate). A correção do D3 fecha a janela |
 
-Ordem sugerida: D3 com D5 numa estória, D1, D6 com D7, e D2 e D4 de carona. Sem defeito, mas para decidir ou emendar:
+Ordem decidida em "Próximo passo": passeio da Épica 6 primeiro, depois D3 com D5, o padrão de `Dialog` e foco (D2, D6, D7), e D1 com D4. Sem defeito, mas para decidir ou emendar:
 - **O1:** "Confirmar o novo preço" é trava só de tela — recarregar ou digitar `/checkout/revisao` a dispensa, porque a
   entrada já gravou a ciência ao reportar. A spec 5.5 prevê isso, e a FR-19 pede "exibido e sinalizado"; com o D3, a
   garantia hoje é só o total. Decisão humana;
@@ -692,7 +701,8 @@ aprovado sobre Pedido cancelado visível a ele, a simulação de entrega e o sel
 único dos sete Status. O passeio da Épica 6 começou: dois defeitos do painel
 da 6.4 (Dialog de confirmação e anúncio sob filtro) corrigidos em 7014591.
 O passeio da Épica 5 foi feito e ela está done: sete defeitos (D1–D7) registrados para o bmad-build.
-Próximo passo: Estória 7.1 (O README leva do clone ao sistema rodando).
+Próximo passo: passeio da Épica 6; depois bmad-build de D3+D5, do padrão de Dialog
+e foco (D2, D6, D7) e de D1+D4; só então a Estória 7.1.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
