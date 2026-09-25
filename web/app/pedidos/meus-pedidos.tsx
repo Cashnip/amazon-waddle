@@ -139,15 +139,19 @@ export function MeusPedidos() {
         <Card key={pedido.id}>
           <CardContent>
             {/* A linha inteira é um `<a>` só: o alvo de toque é o cartão, e
-                não o número sozinho. */}
+                não o número sozinho. Grade de colunas iguais, para número,
+                data, selo e total caírem na mesma coluna em toda linha; só o
+                número é sublinhado. */}
             <a
-              className="text-link flex flex-wrap items-center justify-between gap-x-4 gap-y-1 underline underline-offset-2"
+              className="grid grid-cols-2 items-center justify-items-start gap-x-4 gap-y-1 tabular-nums sm:grid-cols-4"
               href={`/pedidos/${pedido.id}`}
             >
-              <span className="font-medium">{pedido.numero}</span>
+              <span className="text-link font-medium underline underline-offset-2">{pedido.numero}</span>
               <Data valor={pedido.criado_em} />
               <SeloDoStatus status={pedido.status} />
-              <Preco centavos={pedido.total_centavos} />
+              <span className="justify-self-end">
+                <Preco centavos={pedido.total_centavos} />
+              </span>
             </a>
           </CardContent>
         </Card>

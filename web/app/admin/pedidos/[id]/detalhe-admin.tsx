@@ -131,9 +131,10 @@ export function DetalheDoPedidoAdmin({ pedidoId }: { pedidoId: string }) {
               {/* O sinal da FR-26 (6.5), abaixo do Status que ele não muda.
                   Persistente: sem botão de fechar, porque é o registro de um
                   dinheiro aprovado, e não um aviso que se dispensa. Neutro, e
-                  não `destructive` nem verde ou laranja: é informação. */}
+                  não `destructive` nem verde ou laranja: é informação. Sem
+                  `role="alert"`: é estado fixo, não evento a anunciar. */}
               {pedido.pagamento_aprovado_sobre_cancelado && (
-                <Alert>
+                <Alert role={undefined}>
                   <AlertTitle>{TITULO_APROVADO_SOBRE_CANCELADO}</AlertTitle>
                   <AlertDescription>{TEXTO_APROVADO_SOBRE_CANCELADO}</AlertDescription>
                 </Alert>

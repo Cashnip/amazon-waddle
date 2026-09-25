@@ -444,6 +444,8 @@ test("sem o botão, a frase é a da corrida quando houve, e senão a do Status",
   assert.equal(fraseSemCancelamento(fora("ENTREGUE"), null), porQueNaoCancela("ENTREGUE"));
   assert.equal(fraseSemCancelamento(fora("CANCELADO"), null), null);
   assert.equal(fraseSemCancelamento(fora("ENVIADO"), CORRIDA_DO_CANCELAMENTO), CORRIDA_DO_CANCELAMENTO);
+  // Passado o ENVIADO, a corrida deixa de ser verdade: vale a frase do Status.
+  assert.equal(fraseSemCancelamento(fora("ENTREGUE"), CORRIDA_DO_CANCELAMENTO), porQueNaoCancela("ENTREGUE"));
 });
 
 test("o Dialog nomeia o Pedido pelo número", () => {

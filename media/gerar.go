@@ -83,7 +83,7 @@ var produtos = []produto{
 	{"Receitas de Domingo", "Sessenta receitas de almoço de família, com tempos de preparo e variações regionais.", 7490, "Livros", "Sertão Livraria"},
 	{"Breve História dos Rios", "Como os grandes rios brasileiros moldaram fronteiras, cidades e economias.", 5290, "Livros", "Sertão Livraria"},
 	{"O Relojoeiro de Ouro Preto", "Policial histórico ambientado nas ladeiras da cidade mineira em 1902.", 4890, "Livros", "Sertão Livraria"},
-	{"Anotações de um Andarilho", "Diário de viagem a pé por sete estados, escrito em fragmentos.", 3990, "Livros", "Sertão Livraria"},
+	{"Anotações de um Andarilho", "Diário de viagem a pé por sete estados, escrito em fragmentos.", 3995, "Livros", "Sertão Livraria"},
 	{"Física para Curiosos", "Explicações sem fórmulas para perguntas que todo mundo já fez sobre o mundo físico.", 6990, "Livros", "Sertão Livraria"},
 
 	// Casa e Cozinha

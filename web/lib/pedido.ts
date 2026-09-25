@@ -207,15 +207,18 @@ export function desfechoDoCancelamento(r: { resposta: { ok: boolean; status: num
   return { tipo: "erro", mensagem: erro?.mensagem ?? FALHA_NO_CANCELAMENTO };
 }
 
-// A frase de quando não há "Cancelar Pedido": a da corrida perdida, se houve,
-// e senão a do Status. Com o botão na tela não há frase nenhuma — a corrida
-// só acontece saindo da janela, e de lá o Pedido não volta.
+// A frase de quando não há "Cancelar Pedido": a da corrida perdida, se houve e
+// o Pedido ainda está em ENVIADO — a frase diz "foi enviado", e depois disso
+// deixa de ser verdade —, e senão a do Status. Com o botão na tela não há
+// frase nenhuma — a corrida só acontece saindo da janela, e de lá o Pedido
+// não volta.
 export function fraseSemCancelamento(
   p: Pick<DetalheDoPedido, "status" | "pode_cancelar">,
   avisoDaCorrida: string | null,
 ): string | null {
   if (podeCancelar(p)) return null;
-  return avisoDaCorrida ?? porQueNaoCancela(p.status);
+  if (avisoDaCorrida !== null && p.status === "ENVIADO") return avisoDaCorrida;
+  return porQueNaoCancela(p.status);
 }
 
 // A ação da tripla do AD-18 (EXPERIENCE, "A ação disponível é derivada"):

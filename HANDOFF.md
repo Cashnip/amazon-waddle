@@ -64,7 +64,7 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 1. ~~**`bmad-checkpoint-preview` da Épica 6**~~ — **feito em 2026-09-24**: defeitos E1–E5 e a decisão O3 no bloco "O que o passeio da Épica 6 achou" abaixo. A leitura humana aprovou, e as sete estórias e a Épica 6 estão `done`.
 2. ~~**`bmad-build` do D3 com D5**~~ — **feito em 2026-09-24** (spec `spec-d3-d5-preco-por-item-sob-a-trava.md`, `done`): sob a trava, cada Item confere o preço contra o preço visto (`TOTAL_DIVERGENTE`), e reenviar sem passar pela entrada no checkout é recusado (AD-17). `Compensados`, `Limiar` e `Janela` em `api/pedido_test.go` a prendem, e `Janela` prende o lugar (passo 5, não passo 2). Revisão com uma lente, por decisão humana.
 3. ~~**`bmad-build` do padrão de `Dialog` e foco**~~ — **feito em 2026-09-24** (spec `spec-dialog-e-foco-d2-d6-d7-e2-e3.md`, `done`): o `DialogContent` compartilhado guarda quem tinha o foco ao abrir e o devolve ao fechar, salvo destino escolhido por quem usa — corrige os oito `Dialog`s de uma vez, e não só os três nomeados. **Não ponha `autoFocus` dentro de `Dialog`:** o React foca antes do `FocusScope` e nada é guardado (a revisão achou isso no Ajustar Estoque, corrigido). "Confirmar o novo preço" leva o foco ao título, no passo Endereço e no Carrinho; `Close` virou `Fechar`; "Cancelar Pedido" é vermelho cheio com branco. **O3 aceito sem mudança** (decisão humana): o `Dialog` do Comprador fica no nível da página e não desmonta, e a corrida já termina com a frase certa. Visto no navegador: D6, D7 e D2 no passo Endereço e o `Esc` do Carrinho; não abertos na tela o cancelamento e o avanço de Status. Fica no `deferred-work.md`: o botão que some ao confirmar (remover Endereço, Categoria, Vendedor) ainda deixa o foco no `body`. Uma lente.
-4. **`bmad-build` do D1 e do D4**, mais E1, E4 e E5. Uma lente.
+4. ~~**`bmad-build` do D1 e do D4**, mais E1, E4 e E5~~ — **feito em 2026-09-24** (spec `spec-d1-d4-e1-e4-e5.md`, `done`): "Anotações de um Andarilho" passa a R$ 39,95, pelo `media/gerar.go`, e o passo 5 do Roteiro B anda sem reconfigurar nada. **A `VersaoSemente` não mudou:** a semente é `INSERT` sem `ON CONFLICT`, e versão nova sobre banco já semeado derruba o arranque — banco existente só vê o preço com `docker compose down -v`. Meus pedidos virou grade de colunas iguais com o sublinhado só no número; a frase da corrida perdida só vale em `ENVIADO`; o `Alert` da 6.5 saiu sem `role="alert"`; o comentário do D4 nomeia a checagem por Item. Não aberto no navegador. Uma lente.
 
 Não um `bmad-build` único para tudo: a mistura força a revisão cara sobre o trivial ou a barata sobre o D3 (política de revisão do `bmad-build`). Depois dos quatro, `bmad-build` na **Estória 7.1**.
 
@@ -735,7 +735,8 @@ da 6.4 (Dialog de confirmação e anúncio sob filtro) corrigidos em 7014591, e 
 resto dele achou E1–E5, registrados para o bmad-build; a Épica 6 está done.
 O passeio da Épica 5 foi feito e ela está done: sete defeitos (D1–D7) registrados para o bmad-build.
 D3+D5 e o padrão de Dialog e foco (D2, D6, D7, E2, E3; O3 aceito) corrigidos.
-Próximo passo: bmad-build de D1+D4 com E1, E4, E5; só então a Estória 7.1.
+D1+D4 com E1, E4, E5 corrigidos: os defeitos dos dois passeios estão fechados.
+Próximo passo: bmad-build da Estória 7.1.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*

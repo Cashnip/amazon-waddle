@@ -315,10 +315,10 @@ export function RevisaoDoPedido() {
             </CardContent>
           </Card>
 
-          {/* O bloco de valores é o do Go inteiro. Quando o subtotal da cotação
-              discorda do que o Carrinho devolveu, porque um preço mudou entre
-              as duas leituras, a Revisão não arbitra: quem recusa é a criação
-              do Pedido, sob a trava, com `TOTAL_DIVERGENTE` (5.6). */}
+          {/* O bloco de valores é o do Go inteiro, e a Revisão não arbitra
+              preço nenhum: quem recusa é a criação do Pedido, que compara sob
+              a trava o preço de cada Item com o preço visto e devolve
+              `TOTAL_DIVERGENTE` (5.6). */}
           <Card>
             <CardHeader>
               <CardTitle>
