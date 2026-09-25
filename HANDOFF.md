@@ -2,11 +2,11 @@
 
 **Atualizado:** 2026-09-25 · **Estado:**
 - PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si.
-- **Épicas 1 a 6 fechadas:** as 48 estórias estão `done` e em `main`. O Roteiro A anda de clone limpo em 3 min 26 s (teto do NFR-1: 15 min) e numa rede sem saída (NFR-15); o Roteiro B anda do passo 1 ao 5; o Roteiro C tem a prova do NFR-7.
+- **Épicas 1 a 6 fechadas:** as 48 estórias estão `done` e em `main`. O Roteiro A anda de clone limpo em 4 min 28 s, medido de novo na 7.1 (teto do NFR-1: 15 min) e numa rede sem saída (NFR-15); o Roteiro B anda do passo 1 ao 5; o Roteiro C tem a prova do NFR-7.
 - Os passeios da Épica 5 e da Épica 6 acharam D1–D7 e E1–E5, e **todos estão corrigidos em `main`** (`7014591`, `9240730`, `ab4558c`, `33ca441`). O2 decidido (não é defeito), O3 aceito sem mudança.
 - As retrospectivas headless das Épicas 5 e 6 estão `accepted-with-open-items`; as ações delas, com dono, estão no `sprint-status.yaml`.
 - O passeio só pelo teclado foi encerrado em 2026-09-25 por decisão humana e deixou K1 e K2, os dois de severidade baixa.
-- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). Falta a Épica 7 (quatro estórias, `backlog`), que verifica e não constrói.
+- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 está em `main` (`9c63713`) e em `review`; a 7.2, a 7.3 e a 7.4 estão em `backlog`.
 - O relato estória a estória até a Épica 6 saiu para [`handoff-historico-ate-epica-6.md`](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
@@ -70,7 +70,14 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 Contexto limpo entre cada sessão. Os passos 1 a 6 da ordem decidida em 2026-09-24 estão feitos; o que eles deixaram está no [histórico](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md). O passo 7 também: `a610f86` prova a ordem da trava (o teste morre com `40P01` sem o `ORDER BY p.id`), desarma o Pedido que falha da 6.6 para que nenhum subteste precise rodar por último, e prende o `de` do clique por guarda de fonte. Continua de pé uma cadeia de ordem mais antiga, fora do escopo: os subtestes das Épicas 1 a 3 em `TestSessaoEProduto` supõem banco virgem (numeração a partir de `000001`, só os Vendedores semeados).
 
-1. **`bmad-build` na Estória 7.1** (o README leva do clone ao sistema rodando), a primeira da Épica 7. A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1), o diagrama dos seis módulos contra o código (7.2), o addendum percorrido contra o código (7.3), e os três roteiros ensaiados a partir de clone limpo (7.4).
+A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1, 7.1), o diagrama dos seis módulos contra o código (7.2), o addendum percorrido contra o código (7.3), e os três roteiros ensaiados a partir de clone limpo (7.4). O contexto dela está em `epic-7-context.md`.
+
+A **7.1** está em `main` (`9c63713`, `spec-7-1-o-readme-leva-do-clone-ao-sistema-rodando.md`), em `review` no `sprint-status.yaml` até alguém do time revisar. O README das seções 1 a 5 foi percorrido contra o código e remedido do zero: 4 min 28 s com cache de construção frio. A seção 1 ganhou o **Registro de subidas** (uma linha por semana, cada semana por um integrante diferente, com receita de cache frio em bash e PowerShell). O que a 7.1 deixou aberto:
+- a linha da **pessoa de fora** (a metade da SM-3 que o agente não fecha) está no Registro sem dono — o time nomeia;
+- o ensaio da §3 com a rede da máquina de fato desligada não foi refeito, e nenhuma tela foi clicada no navegador;
+- três entradas novas em `deferred-work.md`: a contagem "49" de skills na §6 (dá 77 nesta máquina), os comentários velhos de `api/rotas.go:56` e `:68`, e o clone com caminho longo no Windows.
+
+1. **`bmad-build` na Estória 7.2** (o diagrama dos seis módulos corresponde ao código). O diagrama é o `DIAGRAMA-MODULOS.md` ao lado da espinha, e a prova é `internal/fronteira_test.go` passando — não há segundo desenho a manter. A decisão aberta de dividir `internal/pedido/pedido.go` (abaixo) não toca a fronteira entre módulos, mas vale decidir antes da 7.3.
 
 ### Defeitos abertos
 
@@ -173,6 +180,7 @@ E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, u
 - **Calcular o vencimento da Tentativa de Pagamento em outro lugar.** `expira_em` na tela e `pedido.Expirar` na varredura saem do mesmo `max(ocorrido_em)` do histórico mais o prazo da Config (`pedido.ExpiraEm`); instante próprio faz a tela e a varredura discordarem.
 - **Escrever o isento de Frete como `>`.** É `subtotal >= AZAMON_FRETE_ISENCAO_CENTAVOS`, o mesmo ponto em que o Carrinho cala o "Faltam R$ X"; com `>`, a Revisão cobra de quem o Carrinho acabou de isentar.
 - **Ajustar o Estoque total pelo `PUT` do Produto.** Tem rota própria (`PUT /api/v1/admin/produtos/{id}/estoque`): a tela reenvia a linha lida ao desativar, e isso regravaria um total velho por cima de uma consolidação.
+- **Clonar numa pasta funda no Windows.** Há arquivos versionados com caminho de até 116 caracteres (`_bmad-output/planning-artifacts/architecture/.../reviews/`), e o Git para Windows para em 260: numa pasta de ~140 caracteres ou mais o clone termina com `Filename too long` e arquivos faltando. O scratchpad do Claude Code passa disso. Use `git clone -c core.longpaths=true`, como o README manda.
 - **Reescrever um compose de rede desconectada.** O `docker-compose.offline.yml` foi escrito e descartado na 1.9: com `internal: true` o Docker descarta a publicação de 3000 e 8080 em silêncio. O ensaio é desligar a rede à mão (`addendum.md` §10).
 
 ## Para colar numa sessão nova
@@ -188,7 +196,8 @@ ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
 das Épicas 5 e 6 (D1–D7, E1–E5) estão corrigidos; do passeio só pelo
 teclado ficaram K1 e K2, de severidade baixa.
 Os testes das retros (items 26, 32, 33) estão feitos.
-Próximo passo: bmad-build da Estória 7.1.
+A Estória 7.1 (README) está em main, em review.
+Próximo passo: bmad-build da Estória 7.2.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
