@@ -91,14 +91,14 @@ development_status:
   5-11-expiração-da-tentativa-de-pagamento: done
   epic-5-retrospective: optional
 
-  epic-6: in-progress
-  6-1-meus-pedidos: review
-  6-2-detalhe-do-pedido: review
-  6-3-cancelamento-pelo-comprador: review
-  6-4-painel-de-pedidos-do-administrador: review
-  6-5-pagamento-aprovado-sobre-pedido-cancelado-visível-ao-adminis: review
-  6-6-simulação-de-entrega: review
-  6-7-a-forma-de-exibição-dos-sete-status: review
+  epic-6: done
+  6-1-meus-pedidos: done
+  6-2-detalhe-do-pedido: done
+  6-3-cancelamento-pelo-comprador: done
+  6-4-painel-de-pedidos-do-administrador: done
+  6-5-pagamento-aprovado-sobre-pedido-cancelado-visível-ao-adminis: done
+  6-6-simulação-de-entrega: done
+  6-7-a-forma-de-exibição-dos-sete-status: done
   epic-6-retrospective: optional
 
   epic-7: backlog
