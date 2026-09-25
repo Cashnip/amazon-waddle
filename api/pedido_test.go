@@ -672,9 +672,9 @@ func textoDe(t *testing.T, bd consultavel, sql string, args ...any) []string {
 // consolidação encerra. O relógio entra como parâmetro e não como tique, e é
 // isso que permite provar o "cedo demais" sem esperar por ele.
 //
-// Roda por último: é o único subteste que baixa o `estoque_total` de
-// produtoSemeado, e os que compram esse mesmo Produto contam com o total
-// intacto para o disponível bater.
+// Roda depois de todos os que compram produtoSemeado: é o único subteste que
+// baixa o `estoque_total` dele, e os que compram esse mesmo Produto contam com
+// o total intacto para o disponível bater.
 func simulacaoDeEntrega(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cookie *http.Cookie) {
 	ctx := context.Background()
 

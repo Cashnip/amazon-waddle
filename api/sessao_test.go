@@ -564,25 +564,24 @@ func TestSessaoEProduto(t *testing.T) {
 		cancelamentoPeloComprador(t, rotas, pool)
 	})
 	// A 6.4, com contas, Vendedor, Categoria e Produto próprios: o painel de
-	// Pedidos do Administrador. Fica por ÚLTIMO de propósito: a Tabela sem
-	// filtro é global, e o que ela confere é que os Pedidos desta estória são
-	// os mais recentes da loja.
+	// Pedidos do Administrador. A Tabela sem filtro é global, mas os Pedidos
+	// que ela confere nascem logo antes da leitura: são os mais recentes em
+	// qualquer posição.
 	t.Run("o painel de Pedidos do Administrador", func(t *testing.T) {
 		painelDePedidosDoAdministrador(t, rotas, pool)
 	})
 	// A 6.5, com conta, Vendedor, Categoria e Produtos próprios: o pagamento
-	// aprovado sobre Pedido cancelado, lido pelo Administrador. Registrada
-	// DEPOIS do painel da 6.4, cuja Tabela sem filtro confere que os Pedidos
-	// dele são os mais recentes; a emissão e a varredura são globais, mas o
-	// transporte entrega só as Tentativas dos Pedidos dela.
+	// aprovado sobre Pedido cancelado, lido pelo Administrador. A Tabela é
+	// procurada pelo id de cada Pedido; a emissão e a varredura são globais,
+	// mas o transporte entrega só as Tentativas dos Pedidos dela.
 	t.Run("o pagamento aprovado sobre Pedido cancelado", func(t *testing.T) {
 		aprovadoSobreCancelado(t, rotas, pool)
 	})
 	// A 6.6, com conta, Vendedor, Categoria e Produtos próprios: cada condição
-	// da FR-33 que o caminho feliz da 1.8 não alcança. Fica por ÚLTIMO de
-	// propósito: `SimularEntrega` é global, e os Pedidos que ela monta com o
-	// histórico de uma hora — o que falha para sempre entre eles — seriam
-	// candidatos de qualquer subteste registrado depois.
+	// da FR-33 que o caminho feliz da 1.8 não alcança. `SimularEntrega` é
+	// global e os Pedidos que ela monta são candidatos de todo subteste
+	// seguinte, que os avança e consolida as Reservas nos Produtos da 6.6; o
+	// que falha é desarmado no fim da prova dele.
 	t.Run("a simulação de entrega: o que nunca move, o Pedido travado e o que falha", func(t *testing.T) {
 		simulacaoDeEntregaFR33(t, rotas, pool)
 	})

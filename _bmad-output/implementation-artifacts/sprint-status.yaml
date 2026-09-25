@@ -305,7 +305,7 @@ action_items:
     action: "Acrescentar a bancada da 5.7 o teste que morre sem o ORDER BY id: dois
       Pedidos com os mesmos dois Produtos em ordem inversa (AD-4, AD-5)"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
   - id: "epic-5-retro-item-27-emendar-o-ad-4-em-architecture-spine-md"
     epic: 5
@@ -355,14 +355,14 @@ action_items:
       6.5 e 6.6 conferem so os proprios Pedidos em vez de depender da posicao, ou
       no minimo corrigir o comentario por ULTIMO de api/sessao_test.go:567"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
   - id: "epic-6-retro-item-33-acrescentar-o-teste-que-morre-quando-o-d"
     epic: 6
     action: "Acrescentar o teste que morre quando o de da transicao administrativa
       deixa de ser o Status visto no clique (6.4)"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
   - id: "epic-6-retro-item-34-compactar-o-handoff-md-antes-da-epica-7"
     epic: 6

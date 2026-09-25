@@ -42,8 +42,9 @@ func pegarPedidoAdmin(t *testing.T, rotas http.Handler, pedidoID string, cookie 
 // Simulado aprova — é assim que o Pedido chega a PAGO pelo caminho de
 // produção, que é de onde as três transições partem.
 //
-// Este subteste roda por último na suíte: a Tabela sem filtro é global, e o
-// que ela precisa é que os Pedidos desta estória sejam os mais recentes.
+// A Tabela sem filtro é global, e o que ela precisa é que os Pedidos desta
+// estória sejam os mais recentes: são, em qualquer posição da suíte, porque
+// nascem aqui, logo antes da leitura.
 func painelDePedidosDoAdministrador(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	ctx := context.Background()
 	admin := cookieDe(t, postarAdmin(t, rotas, `{"email":"`+emailAdmin+`","senha":"`+senhaAdmin+`"}`), http.StatusOK)

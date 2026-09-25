@@ -645,3 +645,20 @@ test("o Dialog do avanço nomeia o Pedido e o Status destino", () => {
   // Destino que a tela não conhece ainda sai nomeado, e não em branco.
   assert.equal(textosDaTransicao("2026-000042", "NOVO").confirmar, "Mudar para NOVO");
 });
+
+// Guarda de fonte (B8 da retro da 6): o `de` da transição é o Status que a
+// tela mostrava NO CLIQUE, e não o de quando o Administrador confirma. É ele
+// que faz o compare-and-swap do Go distinguir ESTADO_JA_AVANCADO de
+// TRANSICAO_INVALIDA; lido no confirmar — ou do servidor —, a corrida com a
+// simulação sairia com causa falsa. Sem bancada de componente, a fonte é o
+// que se confere: `pedido.status` aparece uma vez só, dentro do clique, e o
+// corpo do POST sai do destino guardado ali.
+test("o `de` da transição administrativa é o Status visto no clique", () => {
+  const fonte = lerDaWeb("app/admin/pedidos/acoes-do-pedido.tsx");
+  assert.equal([...fonte.matchAll(/\bpedido\.status\b/g)].length, 1, "pedido.status lido fora do clique");
+  assert.match(fonte, /onClick=\{\(\) => \{\s*if \(emVoo\.current\) return;\s*setDestino\(\{ de: pedido\.status, para: d \}\);/);
+  assert.match(fonte, /const tentada = \{ numero: pedido\.numero, \.\.\.destino \};/);
+  // Toda chave `de` do arquivo: o tipo do estado, a captura e o corpo do POST.
+  const des = [...fonte.matchAll(/\bde:\s*([\w.]+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(des, ["pedido.status", "string", "tentada.de"]);
+});

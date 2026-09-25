@@ -28,9 +28,9 @@ const chaveDoSinal = "pagamento_aprovado_sobre_cancelado"
 //
 // Tudo é próprio: conta, Vendedor, Categoria e Produtos. O Produto de `,00`
 // fecha o total em `,00` com o Frete (reais inteiros), a faixa que o Provedor
-// Simulado aprova; o de `,90`, a que ele recusa na primeira Tentativa. Roda
-// depois do painel da 6.4, cuja Tabela sem filtro confere que os Pedidos dele
-// são os mais recentes da loja.
+// Simulado aprova; o de `,90`, a que ele recusa na primeira Tentativa. A
+// Tabela é lida filtrada e procurada pelo id de cada Pedido, então a posição
+// na suíte é indiferente.
 //
 // A ordem importa só onde um subteste anda com o Pedido do anterior, e isso
 // está dito onde acontece.

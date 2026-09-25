@@ -36,9 +36,9 @@ type passoDoHistorico struct{ de, para, ator string }
 // todo Pedido montado já venceu, e o que a simulação avança recomeça a contar
 // de agora, então só se move uma etapa por chamada.
 //
-// Conta, Vendedor, Categoria e Produtos próprios. Roda por ÚLTIMO em
-// `TestSessaoEProduto`: `SimularEntrega` é global, e o Pedido que falha fica
-// falhando em toda chamada seguinte — que é o que ele prova.
+// Conta, Vendedor, Categoria e Produtos próprios. A posição em
+// `TestSessaoEProduto` é indiferente: `SimularEntrega` é global, mas o Pedido
+// que falha é desarmado no fim do subteste que o prova.
 func simulacaoDeEntregaFR33(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	ctx := context.Background()
 	const intervalo = 30 * time.Minute
@@ -253,10 +253,20 @@ func simulacaoDeEntregaFR33(t *testing.T, rotas http.Handler, pool *pgxpool.Pool
 		// Na mesma transação e nesta ordem: `PedidosParaAvancar` ordena por id
 		// (uuidv7, monotônico na sessão), então a falha vem antes do avanço do
 		// outro — é o que distingue juntar as falhas de desistir na primeira.
+		const reservado = 3
 		var falho, saudavel string
 		numa(t, func(tx pgx.Tx) {
-			falho = montar(t, tx, curto, "ATIVA", 3, nascimento, aprovado, separado)
+			falho = montar(t, tx, curto, "ATIVA", reservado, nascimento, aprovado, separado)
 			saudavel = montar(t, tx, farto, "ATIVA", 1, nascimento, aprovado, separado)
+		})
+		// Terminada a prova, o Pedido que falha deixa de falhar: `SimularEntrega`
+		// é global, e ele derrubaria toda chamada seguinte da suíte, em
+		// qualquer subteste registrado depois deste. Com o Estoque total
+		// coberto, a Reserva consolida e ele anda como qualquer outro.
+		t.Cleanup(func() {
+			if _, err := pool.Exec(ctx, `UPDATE catalogo.produto SET estoque_total = $2 WHERE id = $1::uuid`, curto, reservado); err != nil {
+				t.Errorf("desarmar o Pedido que falha: %v", err)
+			}
 		})
 		if v := textoDe(t, pool, `SELECT ($1::uuid < $2::uuid)::text`, falho, saudavel); len(v) != 1 || v[0] != "true" {
 			t.Fatalf("o Pedido que falha não nasceu antes do saudável: %v", v)

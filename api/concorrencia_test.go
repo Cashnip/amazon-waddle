@@ -172,6 +172,108 @@ func consistenciaSobConcorrencia(t *testing.T, rotas http.Handler, pool *pgxpool
 	t.Run("a trava do Produto serializa duas Reservas da última unidade", func(t *testing.T) {
 		travaDeReservaSerializa(t, pool, novoProduto(t, "Produto da Trava", 1))
 	})
+	// E a ordem da trava, que a de cima não alcança: com um Produto só não há
+	// ordem nenhuma para errar — ver o comentário de travaSegueOrdemDoID.
+	t.Run("dois Pedidos com os mesmos dois Produtos em ordem inversa não travam um no outro", func(t *testing.T) {
+		travaSegueOrdemDoID(t, pool, novoProduto(t, "Produto da Ordem A", 2), novoProduto(t, "Produto da Ordem B", 2))
+	})
+}
+
+// travaSegueOrdemDoID prende o `ORDER BY p.id` de `TravarProdutosParaReserva`
+// (AD-4, AD-5). Sem ele, as linhas saem travadas na ordem do plano, e a de uma
+// varredura sequencial é a posição física da linha na tabela — que o UPDATE
+// muda sem aviso. Dois Pedidos que travem os mesmos dois Produtos em ordem
+// inversa esperam um pelo outro, e o Postgres derruba um deles com 40P01.
+//
+// Um Pedido só chama `Reservar` uma vez, então a inversão é montada à mão:
+// `menor` é empurrado para depois de `maior` na tabela por um UPDATE que não
+// muda nada, e a segunda transação é proibida de usar índice — se ela travar
+// pela posição física, trava `maior` e espera `menor`. A primeira transação já
+// segura `menor` e então pede `maior`, na ordem do id. Com o `ORDER BY`, a
+// segunda espera em `menor` sem segurar nada, e as duas terminam; sem ele, é o
+// impasse. A mutação foi conferida: tirado o `ORDER BY p.id`, o Postgres
+// acusa o impasse (40P01) e derruba uma das duas.
+func travaSegueOrdemDoID(t *testing.T, pool *pgxpool.Pool, menor, maior string) {
+	ctx, cancelar := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelar()
+
+	// uuidv7 nasce crescente, mas a prova inteira depende disso: confere.
+	if v := textoDe(t, pool, `SELECT ($1::uuid < $2::uuid)::text`, menor, maior); len(v) != 1 || v[0] != "true" {
+		t.Fatalf("o primeiro Produto não tem o menor id: %v", v)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE catalogo.produto SET estoque_total = estoque_total WHERE id = $1::uuid`, menor); err != nil {
+		t.Fatalf("mover o Produto de menor id para o fim da tabela: %v", err)
+	}
+	if fisica := textoDe(t, pool, `
+		SELECT id::text FROM catalogo.produto WHERE id = ANY($1::uuid[]) ORDER BY ctid`,
+		[]string{menor, maior}); len(fisica) != 2 || fisica[0] != maior {
+		t.Fatalf("ordem física = %v; quero o de maior id primeiro", fisica)
+	}
+
+	primeira, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("abrir a primeira transação: %v", err)
+	}
+	defer primeira.Rollback(context.Background())
+	if err := catalogo.Reservar(ctx, primeira, uuidFalso(3), []catalogo.ItemReserva{{ProdutoID: menor, Quantidade: 1}}); err != nil {
+		t.Fatalf("a primeira Reserva de %s: %v", menor, err)
+	}
+
+	desfecho := make(chan error, 1)
+	go func() {
+		segunda, err := pool.Begin(ctx)
+		if err != nil {
+			desfecho <- err
+			return
+		}
+		defer segunda.Rollback(context.Background())
+		if _, err := segunda.Exec(ctx, `SET LOCAL enable_indexscan = off; SET LOCAL enable_bitmapscan = off`); err != nil {
+			desfecho <- err
+			return
+		}
+		err = catalogo.Reservar(ctx, segunda, uuidFalso(4), []catalogo.ItemReserva{
+			{ProdutoID: maior, Quantidade: 1}, {ProdutoID: menor, Quantidade: 1},
+		})
+		if err == nil {
+			err = segunda.Commit(ctx)
+		}
+		desfecho <- err
+	}()
+
+	// A segunda tem de estar parada na trava da primeira antes de a primeira
+	// pedir o outro Produto: é a espera dela que fecha o ciclo.
+	var pidDaPrimeira int32
+	if err := primeira.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pidDaPrimeira); err != nil {
+		t.Fatalf("ler o pid da primeira: %v", err)
+	}
+	for {
+		var esperando int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))`,
+			pidDaPrimeira).Scan(&esperando); err != nil {
+			t.Fatalf("ler pg_stat_activity: %v", err)
+		}
+		if esperando > 0 {
+			break
+		}
+		select {
+		case err := <-desfecho:
+			t.Fatalf("a segunda Reserva respondeu %v sem esperar a trava de %s", err, menor)
+		case <-ctx.Done():
+			t.Fatal("a segunda Reserva nunca chegou a esperar a trava")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	if err := catalogo.Reservar(ctx, primeira, uuidFalso(3), []catalogo.ItemReserva{{ProdutoID: maior, Quantidade: 1}}); err != nil {
+		t.Fatalf("a primeira Reserva de %s = %v; a segunda travou os Produtos fora da ordem do id", maior, err)
+	}
+	if err := primeira.Commit(ctx); err != nil {
+		t.Fatalf("comitar a primeira: %v", err)
+	}
+	if err := <-desfecho; err != nil {
+		t.Errorf("a segunda Reserva = %v; quero nil depois do commit da primeira", err)
+	}
 }
 
 // travaDeReservaSerializa isola a trava do AD-5, que o teste de ponta a ponta
