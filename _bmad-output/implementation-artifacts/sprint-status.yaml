@@ -370,5 +370,5 @@ action_items:
       contra :64-67 (D1-D7 e E1-E5 dados como abertos) e trocar o paragrafo unico
       da linha 3 por estado atual"
     owner: "Sung"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
