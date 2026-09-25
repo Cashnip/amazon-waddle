@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-24-2026 14:58
+last_updated: 09-24-2026 21:10
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -77,18 +77,18 @@ development_status:
   4-5-a-tela-do-carrinho-não-promete-o-que-o-sistema-não-faz: done
   epic-4-retrospective: optional
 
-  epic-5: in-progress
+  epic-5: done
   5-1-a-máquina-de-estados-do-pedido-completa-e-com-testes: done
-  5-2-seleção-de-endereço-no-checkout: review
-  5-3-cálculo-do-frete: review
-  5-4-revisão-do-pedido: review
-  5-5-entrada-no-checkout-revalidação-e-confirmação-do-preço-visto: review
-  5-6-criação-do-pedido-com-reserva-de-estoque-atômica: review
-  5-7-consistência-de-estoque-sob-concorrência: review
-  5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento: review
-  5-9-confirmação-aprovada-por-webhook: review
-  5-10-pagamento-recusado-e-nova-tentativa: review
-  5-11-expiração-da-tentativa-de-pagamento: review
+  5-2-seleção-de-endereço-no-checkout: done
+  5-3-cálculo-do-frete: done
+  5-4-revisão-do-pedido: done
+  5-5-entrada-no-checkout-revalidação-e-confirmação-do-preço-visto: done
+  5-6-criação-do-pedido-com-reserva-de-estoque-atômica: done
+  5-7-consistência-de-estoque-sob-concorrência: done
+  5-8-tentativa-de-pagamento-e-a-tela-do-pedido-em-processamento: done
+  5-9-confirmação-aprovada-por-webhook: done
+  5-10-pagamento-recusado-e-nova-tentativa: done
+  5-11-expiração-da-tentativa-de-pagamento: done
   epic-5-retrospective: optional
 
   epic-6: in-progress
