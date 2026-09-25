@@ -6,7 +6,7 @@
 - Os passeios da Épica 5 e da Épica 6 acharam D1–D7 e E1–E5, e **todos estão corrigidos em `main`** (`7014591`, `9240730`, `ab4558c`, `33ca441`). O2 decidido (não é defeito), O3 aceito sem mudança.
 - As retrospectivas headless das Épicas 5 e 6 estão `accepted-with-open-items`; as ações delas, com dono, estão no `sprint-status.yaml`.
 - O passeio só pelo teclado foi encerrado em 2026-09-25 por decisão humana e deixou K1 e K2, os dois de severidade baixa.
-- Falta o passo 7 abaixo e a Épica 7 (quatro estórias, `backlog`), que verifica e não constrói.
+- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). Falta a Épica 7 (quatro estórias, `backlog`), que verifica e não constrói.
 - O relato estória a estória até a Épica 6 saiu para [`handoff-historico-ate-epica-6.md`](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
@@ -68,12 +68,9 @@ O bloqueio 2 não impede começar a construir: nenhuma das quatro suposições t
 
 ## Próximo passo
 
-Contexto limpo entre cada sessão. Os passos 1 a 6 da ordem decidida em 2026-09-24 estão feitos; o que eles deixaram está no [histórico](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
+Contexto limpo entre cada sessão. Os passos 1 a 6 da ordem decidida em 2026-09-24 estão feitos; o que eles deixaram está no [histórico](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md). O passo 7 também: `a610f86` prova a ordem da trava (o teste morre com `40P01` sem o `ORDER BY p.id`), desarma o Pedido que falha da 6.6 para que nenhum subteste precise rodar por último, e prende o `de` do clique por guarda de fonte. Continua de pé uma cadeia de ordem mais antiga, fora do escopo: os subtestes das Épicas 1 a 3 em `TestSessaoEProduto` supõem banco virgem (numeração a partir de `000001`, só os Vendedores semeados).
 
-1. **`bmad-build` dos testes que faltam** (passo 7): `epic-5-retro-item-26` (teste que falha sem o `ORDER BY id` na trava — `travaDeReservaSerializa` usa um Produto só e não o pega), `epic-6-retro-item-32` (tirar a dependência de ordem de `TestSessaoEProduto`, `api/sessao_test.go:566-588`) e `epic-6-retro-item-33` (teste que falha quando o `de` da transição administrativa deixa de ser o Status visto no clique).
-2. **`bmad-build` na Estória 7.1** (o README leva do clone ao sistema rodando), a primeira da Épica 7. A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1), o diagrama dos seis módulos contra o código (7.2), o addendum percorrido contra o código (7.3), e os três roteiros ensaiados a partir de clone limpo (7.4).
-
-Não um `bmad-build` único para tudo: a mistura força a revisão cara sobre o trivial ou a barata sobre o que tem raio de alcance (política de revisão do `bmad-build`).
+1. **`bmad-build` na Estória 7.1** (o README leva do clone ao sistema rodando), a primeira da Épica 7. A Épica 7 **verifica** o que as seis anteriores produziram, e não escreve documentação do zero: README do clone ao sistema rodando em ≤ 15 min (NFR-1), o diagrama dos seis módulos contra o código (7.2), o addendum percorrido contra o código (7.3), e os três roteiros ensaiados a partir de clone limpo (7.4).
 
 ### Defeitos abertos
 
@@ -190,8 +187,8 @@ ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
 Épicas 1 a 6 fechadas: 48 estórias done em main. Os defeitos dos passeios
 das Épicas 5 e 6 (D1–D7, E1–E5) estão corrigidos; do passeio só pelo
 teclado ficaram K1 e K2, de severidade baixa.
-Próximo passo: bmad-build dos testes que faltam (retro items 26, 32, 33),
-depois bmad-build da Estória 7.1.
+Os testes das retros (items 26, 32, 33) estão feitos.
+Próximo passo: bmad-build da Estória 7.1.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
