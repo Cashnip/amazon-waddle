@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-25-2026 18:46
+last_updated: 09-25-2026 19:42
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
 
   epic-7: in-progress
   7-1-o-readme-leva-do-clone-ao-sistema-rodando: review
-  7-2-o-diagrama-dos-seis-módulos-corresponde-ao-código: backlog
+  7-2-o-diagrama-dos-seis-módulos-corresponde-ao-código: review
   7-3-o-addendum-percorrido-contra-o-código: backlog
   7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: backlog
   epic-7-retrospective: optional
@@ -198,7 +198,11 @@ action_items:
     action: "Reconciliar o grafo do AD-1 na espinha com a tabela real do teste, ou
       parar de chama-lo de exaustivo — a Estoria 7.2 desenha o diagrama a partir dele"
     owner: "Sung"
-    status: open
+    status: done
+    resolution: "Estoria 7.2 (2026-09-25): o grafo do AD-1 foi redesenhado a partir
+      do codigo, com as 23 arestas da tabela, e TestDiagramaEhATabela em internal/fronteira_test.go
+      prende o conjunto de setas a tabela arestas e os dois blocos iguais. Spec:
+      _bmad-output/implementation-artifacts/spec-7-2-o-diagrama-dos-seis-modulos-corresponde-ao-codigo.md"
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-3-retro-item-13-apontar-a-sonda-do-nfr-4-db-medicao_nfr4"
     epic: 3
@@ -242,7 +246,11 @@ action_items:
     action: "Reconciliar o grafo do AD-1 em ARCHITECTURE-SPINE.md:51-68 com a tabela
       real, ou parar de chama-lo de exaustivo — a Estoria 7.2 o le"
     owner: "Sung"
-    status: open
+    status: done
+    resolution: "Estoria 7.2 (2026-09-25): o mesmo bloco mermaid, marcado por %% AD-1,
+      vive byte a byte na espinha e no DIAGRAMA-MODULOS.md, com as 23 arestas da tabela;
+      TestDiagramaEhATabela falha se os dois divergirem ou se as setas deixarem de
+      ser a tabela arestas. Spec: _bmad-output/implementation-artifacts/spec-7-2-o-diagrama-dos-seis-modulos-corresponde-ao-codigo.md"
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
   - id: "epic-3-retro-item-19-reconciliar-em_separacao-architecture-sp"
     epic: 3

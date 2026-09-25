@@ -48,29 +48,56 @@ companions: []
 - **Rule:** um módulo importa outro **apenas** por `internal/<módulo>/<módulo>.go`. As setas abaixo são exaustivas e rotuladas com o que atravessa: uma seta que não está aqui é defeito, e uma seta invertida é ciclo. **A regra tem mecanismo:** `internal/fronteira_test.go` lê o grafo de importação com `go list -deps -json` e falha se aparecer aresta fora desta tabela — o AD-2 tem o seu par, uma consulta a `information_schema` que falha se existir FK cruzando schema.
 
 ```mermaid
+%% AD-1 — conferido por internal/fronteira_test.go
 graph TD
-    web["web · Next.js<br/>apresentação"] --> api["api · net/http<br/>tradução e autenticação"]
+    web["<b>web</b> · Next.js<br/><i>apresentação</i>"]
+    api["<b>api</b> · net/http<br/><i>tradução e autenticação</i>"]
+    relogio["<b>cmd/azamon</b><br/><i>monta o servidor · tique de AZAMON_VARREDURA_INTERVALO (1 s)</i>"]
+    identidade["<b>identidade</b>"]
+    catalogo["<b>catalogo</b>"]
+    busca["<b>busca</b>"]
+    carrinho["<b>carrinho</b>"]
+    pedido["<b>pedido</b>"]
+    pagamento["<b>pagamento</b>"]
+    plataforma["plataforma<br/><i>config · log · erro → HTTP</i>"]
+    db["db<br/><i>migrações e semente</i>"]
+    media["media<br/><i>imagens do Catálogo Semeado</i>"]
+    porta{{"porta do AD-8<br/><i>IniciarTentativa · confirmação por webhook</i>"}}
+    simulado["Provedor Simulado<br/><i>pagamento.Simulado · adapter</i>"]
+    web -->|"/api/* por rewrites()"| api
     api --> identidade
     api --> catalogo
     api --> busca
     api --> carrinho
     api --> pedido
-    api --> pagamento
-    relogio["relógio · ticker 1 s<br/>cmd/azamon"] -->|"Varrer()"| pedido
-    relogio -->|"EmitirDevidas()"| pagamento
-    pedido -->|"Reservar · Liberar · Consolidar"| catalogo
-    pedido -->|"Esvaziar"| carrinho
-    pedido -->|"Endereço"| identidade
-    pedido -->|"IniciarTentativa · ConfirmacoesNaoAplicadas"| pagamento
-    carrinho -->|"preço · visibilidade"| catalogo
-    busca -->|"VIEW"| catalogo
-    pagamento --> porta{{"ProvedorDePagamento<br/>porta"}}
-    porta --> simulado["Provedor Simulado<br/>adapter"]
+    api -->|"RegistrarConfirmacao"| pagamento
+    api -.->|"erro.Escrever · Config"| plataforma
+    api -.->|"Arquivos"| media
+    relogio -->|"Rotas"| api
+    relogio -.->|"Migracoes · Semente · SementeGrande"| db
+    relogio -.->|"CarregarConfig · NovoLogger · AbrirRedis · Migrar · Semear"| plataforma
+    relogio -->|"1 Varrer · 2 Expirar · 3 SimularEntrega"| pedido
+    relogio -->|"4 EmitirConfirmacoesDevidas(Simulado, enviar)"| pagamento
+    plataforma -.->|"sentinelas"| identidade
+    plataforma -.->|"sentinelas"| catalogo
+    plataforma -.->|"sentinelas"| carrinho
+    plataforma -.->|"sentinelas"| pedido
+    pedido -->|"Reservar · Liberar · Consolidar<br/>Disponivel · BuscarProduto"| catalogo
+    pedido -->|"Itens · ConfirmarPrecoVisto · Esvaziar"| carrinho
+    pedido -->|"BuscarEndereco · BuscarComprador"| identidade
+    pedido -->|"IniciarTentativa · ConfirmacoesNaoAplicadas · Marcar<br/>TemConfirmacaoPendente · TentativasRestantes<br/>PedidosComAprovacaoSinalizada"| pagamento
+    carrinho -->|"BuscarProduto · Resumos"| catalogo
+    busca -->|"VIEW produto_visivel · Normalizar"| catalogo
+    pagamento --> porta
+    porta --> simulado
+    simulado -.->|"POST /api/v1/webhooks/pagamento"| api
 ```
 
-`identidade` e `catalogo` não dependem de ninguém. **`pagamento` não conhece `pedido`** (AD-7), e **`carrinho` não conhece `identidade`** — a posse vem do `comprador_id` da Sessão, que `api/` injeta (AD-11). O relógio não é módulo e não decide nada: só chama, na ordem do AD-6.
+`identidade`, `catalogo` e `pagamento` não dependem de ninguém. **`pagamento` não conhece `pedido`** (AD-7), e **`carrinho` não conhece `identidade`**: a posse vem do `comprador_id` da Sessão, que `api/` injeta (AD-11). O relógio não é módulo e não decide nada. É o `cmd/azamon`, que também monta o servidor, e só chama os quatro passos na ordem do AD-6.
 
-Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 do PRD põe no escopo e a SM-7 mede.
+As setas pontilhadas são as de `plataforma`, `db` e `media`, mais o caminho de volta do webhook. As três primeiras estão na tabela e são exaustivas como as outras, mas não são módulos do NFR-2. A de `simulado` para `api` é uma chamada HTTP em tempo de execução, e não um importe, e fica fora da conferência. **`internal/plataforma/erro` é a única origem dentro de `plataforma`.** Ele traduz os sentinelas de `identidade`, `catalogo`, `carrinho` e `pedido` num arquivo só (AD-14). A seta contrária é proibida: nenhum módulo de domínio importa `internal/plataforma/erro`, e o teste falha se algum importar. A raiz `internal/plataforma` (config, log, correlação, migração, semente) fica isenta no teste, pelo pacote exato e não pela área (addendum §10, entrada da 1.1), e qualquer pacote pode importá-la. Hoje nenhum módulo de domínio importa nem a raiz. `web`, a porta e o Provedor Simulado ficam fora da conferência: `web` não é Go, e a porta e o adapter moram dentro de `pagamento`.
+
+Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 do PRD põe no escopo e a SM-7 mede. O `DIAGRAMA-MODULOS.md` ao lado carrega o mesmo bloco, byte a byte, com a tabela do que atravessa cada fronteira. **`TestDiagramaEhATabela`, no mesmo `internal/fronteira_test.go`, prende as duas coisas:** exige os dois blocos idênticos e o conjunto de setas igual à tabela `arestas`, nos dois sentidos. `TestTabelaEhOCodigo` fecha o outro lado: toda aresta da tabela precisa de ao menos um importe real que a sustente. Os rótulos não passam pela guarda: nomeiam símbolos exportados que o código chama, e quem os confere é `grep`.
 
 ### AD-2 — A fronteira do módulo é um schema do Postgres
 
