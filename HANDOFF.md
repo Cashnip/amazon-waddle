@@ -6,7 +6,7 @@
 - Os passeios da Épica 5 e da Épica 6 acharam D1–D7 e E1–E5, e **todos estão corrigidos em `main`** (`7014591`, `9240730`, `ab4558c`, `33ca441`). O2 decidido (não é defeito), O3 aceito sem mudança.
 - As retrospectivas headless das Épicas 5 e 6 estão `accepted-with-open-items`; as ações delas, com dono, estão no `sprint-status.yaml`.
 - O passeio só pelo teclado foi encerrado em 2026-09-25 por decisão humana e deixou K1 e K2, os dois de severidade baixa.
-- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 está em `main` (`9c63713`) e em `review`; a 7.2, a 7.3 e a 7.4 estão em `backlog`.
+- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 (`9c63713`) e a 7.2 (`2043ecc`) estão em `main` e em `review`; a 7.3 e a 7.4 estão em `backlog`.
 - O relato estória a estória até a Épica 6 saiu para [`handoff-historico-ate-epica-6.md`](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
@@ -77,7 +77,11 @@ A **7.1** está em `main` (`9c63713`, `spec-7-1-o-readme-leva-do-clone-ao-sistem
 - o ensaio da §3 com a rede da máquina de fato desligada não foi refeito, e nenhuma tela foi clicada no navegador;
 - três entradas novas em `deferred-work.md`: a contagem "49" de skills na §6 (dá 77 nesta máquina), os comentários velhos de `api/rotas.go:56` e `:68`, e o clone com caminho longo no Windows.
 
-1. **`bmad-build` na Estória 7.2** (o diagrama dos seis módulos corresponde ao código). O diagrama é o `DIAGRAMA-MODULOS.md` ao lado da espinha, e a prova é `internal/fronteira_test.go` passando — não há segundo desenho a manter. A decisão aberta de dividir `internal/pedido/pedido.go` (abaixo) não toca a fronteira entre módulos, mas vale decidir antes da 7.3.
+A **7.2** está em `main` (`2043ecc`, `spec-7-2-o-diagrama-dos-seis-modulos-corresponde-ao-codigo.md`), em `review` no `sprint-status.yaml`. O grafo do AD-1 foi redesenhado a partir do código — 23 arestas, rótulos com os símbolos que o código chama — e é **um bloco mermaid só, marcado por `%% AD-1`, byte a byte na espinha e no `DIAGRAMA-MODULOS.md`**. Quatro testes em `internal/fronteira_test.go` o prendem: `TestDiagramaEhATabela` (os dois blocos iguais, setas = tabela `arestas`), `TestTabelaEhOCodigo` (toda aresta da tabela sustentada por importe real), e `TestGuardaDoDiagrama` e `TestExtracaoDoAD1`, que provam que as guardas mordem. Fechou `epic-1-retro-item-12` e `epic-3-retro-item-18`. O que a 7.2 deixou aberto:
+- ninguém olhou o mermaid renderizado (só `mermaid.parse`);
+- quatro entradas em `deferred-work.md`: a porta do AD-8 sem `interface` Go (7.3), a tabela do AD-6 na espinha ainda com dois passos do relógio dentro de `pedido.Varrer` — contradiz o código e o AD-1 novo (7.3) —, o `deck-banca.html` com `ProvedorDePagamento` e sem `contador_numero` (7.4), e o `db/schema_test.go` sem o schema `carrinho` (sem dono).
+
+1. **`bmad-build` na Estória 7.3** (o addendum percorrido contra o código). Antes, decidir a divisão de `internal/pedido/pedido.go` e a emenda do AD-4 (Decisões abertas, abaixo). Entram nela as duas entradas de 7.3 que a 7.2 deixou em `deferred-work.md` — a porta do AD-8 e o AD-6. Quem mexer no grafo ou na tabela `arestas` mexe nos dois arquivos e no teste, senão `go test ./internal/` cai; e renomear o diretório da arquitetura (a entrada de caminho longo da 7.1) quebra `TestDiagramaEhATabela`, que o lê.
 
 ### Defeitos abertos
 
@@ -196,8 +200,8 @@ ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
 das Épicas 5 e 6 (D1–D7, E1–E5) estão corrigidos; do passeio só pelo
 teclado ficaram K1 e K2, de severidade baixa.
 Os testes das retros (items 26, 32, 33) estão feitos.
-A Estória 7.1 (README) está em main, em review.
-Próximo passo: bmad-build da Estória 7.2.
+As Estórias 7.1 (README) e 7.2 (diagrama) estão em main, em review.
+Próximo passo: bmad-build da Estória 7.3.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
