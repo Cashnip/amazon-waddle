@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-24-2026 23:27
+last_updated: 09-25-2026 18:46
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -101,8 +101,8 @@ development_status:
   6-7-a-forma-de-exibição-dos-sete-status: done
   epic-6-retrospective: done
 
-  epic-7: backlog
-  7-1-o-readme-leva-do-clone-ao-sistema-rodando: backlog
+  epic-7: in-progress
+  7-1-o-readme-leva-do-clone-ao-sistema-rodando: review
   7-2-o-diagrama-dos-seis-módulos-corresponde-ao-código: backlog
   7-3-o-addendum-percorrido-contra-o-código: backlog
   7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: backlog

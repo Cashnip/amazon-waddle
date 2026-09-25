@@ -508,3 +508,15 @@ Append-only: não edite nem remova entradas existentes.
 - source_spec: `_bmad-output/implementation-artifacts/spec-dialog-e-foco-d2-d6-d7-e2-e3.md`
   summary: Quando o botão que abriu o `Dialog` sai do DOM ao confirmar (remover Endereço, Categoria ou Vendedor), o foco ainda cai no `body` — falta um destino de reserva, como o título da tela.
   evidence: `DialogContent` só devolve o foco a quem abriu se ele continua `isConnected`; a linha removida leva o botão junto, e a matriz da spec aceitou esse caso como comportamento do Radix.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-7-1-o-readme-leva-do-clone-ao-sistema-rodando.md`
+  summary: A §6 do README afirma que `ls .claude/skills | grep -c '^bmad-'` dá 49 depois de `npx bmad-method@6.11.0 install`, e a 7.1 não verificou o número.
+  evidence: A 7.1 não reinstala o BMad — a spec põe as seções 6 a 10 fora do escopo, e a contagem só se confere num clone limpo, com o instalador rodado com as respostas da tabela. Na máquina de trabalho a mesma contagem dá 77, e não 49, porque a instalação ali tem módulos além de `core` + `bmm` (as skills de `bmb`, `cis`, `tea` e `loop` também começam por `bmad-`) — então contar ali não prova nada sobre o que a §6 promete. Fecha quem fizer a próxima linha do Registro de subidas, rodando também a §6 e anotando o número real.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-7-1-o-readme-leva-do-clone-ao-sistema-rodando.md`
+  summary: Dois comentários de `api/rotas.go` descrevem o sistema de antes das Épicas 5 e 6: `:56` chama `POST /api/v1/pedidos` de "Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4)", e `:68` chama `GET /api/v1/pedidos` de "o esboço que a Estória 6.1 substitui".
+  evidence: Desde a 5.6 o Pedido nasce do Carrinho, com Endereço, Frete e `Idempotency-Key` (`api/pedido.go`, `criarPedido`), e desde a 6.1 a listagem é paginada no envelope do AD-18 — o README corrigido na 7.1 diz isso, e o mapa de rotas diz o contrário a quem lê o código. A spec da 7.1 proíbe tocar código; a correção é trocar os dois comentários, sem mudar comportamento.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-7-1-o-readme-leva-do-clone-ao-sistema-rodando.md`
+  summary: No Windows, o clone falha com `Filename too long` quando a pasta de destino passa de uns 140 caracteres, porque há arquivos versionados com caminho de até 116 caracteres (os de `_bmad-output/planning-artifacts/architecture/architecture-azamon-2026-09-05/reviews/`).
+  evidence: Visto na medição da 7.1: o clone num diretório de 156 caracteres terminou com `Clone succeeded, but checkout failed` e sete arquivos de fora, antes de qualquer `docker compose`. O README ganhou o aviso e o `git clone -c core.longpaths=true`, que a mesma sessão usou para medir, e isso basta para quem lê a §1. A saída estrutural — encurtar os nomes dos diretórios de planejamento — mexe em caminhos que outros documentos citam, e fica para decisão do time.
