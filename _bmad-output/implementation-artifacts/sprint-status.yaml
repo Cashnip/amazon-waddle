@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-24-2026 21:10
+last_updated: 09-24-2026 23:27
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -89,7 +89,7 @@ development_status:
   5-9-confirmação-aprovada-por-webhook: done
   5-10-pagamento-recusado-e-nova-tentativa: done
   5-11-expiração-da-tentativa-de-pagamento: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   epic-6: done
   6-1-meus-pedidos: done
@@ -99,7 +99,7 @@ development_status:
   6-5-pagamento-aprovado-sobre-pedido-cancelado-visível-ao-adminis: done
   6-6-simulação-de-entrega: done
   6-7-a-forma-de-exibição-dos-sete-status: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   epic-7: backlog
   7-1-o-readme-leva-do-clone-ao-sistema-rodando: backlog
@@ -114,8 +114,9 @@ action_items:
       prd.md:123 e EXPERIENCE.md:78 — o CHECK da migracao e o codigo sao a realidade"
     owner: "Sung"
     status: done
-    resolution: "Resolvido na direcao inversa em 2026-09-19 (estoria 5.1): o codigo passou a SEPARANDO,
-      que e o termo do glossario; a migracao 20260919120000_pedido_maquina_de_estados reescreve os dados antigos"
+    resolution: "Resolvido na direcao inversa em 2026-09-19 (estoria 5.1): o codigo
+      passou a SEPARANDO, que e o termo do glossario; a migracao 20260919120000_pedido_maquina_de_estados
+      reescreve os dados antigos"
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-2-trocar-o-uuid-de-web-app-page-tsx-102-po"
     epic: 1
@@ -165,8 +166,8 @@ action_items:
       que paga a migracao"
     owner: "Sung"
     status: done
-    resolution: "Estoria 5.1: motivo entrou agora; correlacao adiada e registrada no addendum 10 e no
-      deferred-work.md, porque pedido nao importa plataforma (AD-1)"
+    resolution: "Estoria 5.1: motivo entrou agora; correlacao adiada e registrada
+      no addendum 10 e no deferred-work.md, porque pedido nao importa plataforma (AD-1)"
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-13.md"
   - id: "epic-1-retro-item-9-marcar-resolvido-na-primeira-entrada-de"
     epic: 1
@@ -287,3 +288,79 @@ action_items:
     owner: "Sung"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-09-19.md"
+  - id: "epic-5-retro-item-25-fazer-o-passeio-so-pelo-teclado-com-leit"
+    epic: 5
+    action: "Fazer o passeio so pelo teclado, com leitor de tela, da UJ-1 no checkout
+      (Carrinho, Endereco, Revisao, Pedido nos tres desfechos, 1440 px) — NFR-11/UX-DR14
+      nunca checado"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
+  - id: "epic-5-retro-item-26-acrescentar-a-bancada-da-5-7-o-teste-que"
+    epic: 5
+    action: "Acrescentar a bancada da 5.7 o teste que morre sem o ORDER BY id: dois
+      Pedidos com os mesmos dois Produtos em ordem inversa (AD-4, AD-5)"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
+  - id: "epic-5-retro-item-27-emendar-o-ad-4-em-architecture-spine-md"
+    epic: 5
+    action: "Emendar o AD-4 em ARCHITECTURE-SPINE.md:117 para nomear o contador do
+      ano na ordem global de travas, com memlog, e corrigir o comentario de db/migracoes/20260921120000_pedido_criacao.sql:15"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
+  - id: "epic-5-retro-item-28-decidir-o1-a-ciencia-do-preco-visto-e-tr"
+    epic: 5
+    action: "Decidir O1: a ciencia do preco visto e trava so de tela (recarregar a
+      Revisao a dispensa) — aceitar como leitura da FR-19 ou exigir no servidor"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
+  - id: "epic-5-retro-item-29-regra-de-processo-ca-com-cadeado-nao-fec"
+    epic: 5
+    action: "Regra de processo: CA com cadeado nao fecha com a prova da sua guarda
+      no deferred-work.md; a estoria entrega o teste que morre quando a guarda sai"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
+  - id: "epic-6-retro-item-30-fazer-o-passeio-so-pelo-teclado-com-leit"
+    epic: 6
+    action: "Fazer o passeio so pelo teclado, com leitor de tela, das superficies
+      da Epica 6, e reabrir na tela o que as correcoes deixaram sem ver: UJ-3 (inclusive
+      cancelar em AGUARDANDO_PAGAMENTO com o Produto de ,95), Dialog de avanco de
+      Status, Meus pedidos (E1 e estado vazio), frase da corrida ate ENTREGUE (E4)
+      e AZAMON_ENTREGA_SIMULACAO_ATIVA=false"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
+  - id: "epic-6-retro-item-31-registrar-no-design-md-com-memlog-da-ux"
+    epic: 6
+    action: "Registrar no DESIGN.md, com memlog da UX, a decisao dos 14px do selo
+      de Status, e decidir o marcador Pagamento aprovado em 12px"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
+  - id: "epic-6-retro-item-32-desfazer-a-cadeia-de-ordem-em-testsessao"
+    epic: 6
+    action: "Desfazer a cadeia de ordem em TestSessaoEProduto: os subtestes da 6.4,
+      6.5 e 6.6 conferem so os proprios Pedidos em vez de depender da posicao, ou
+      no minimo corrigir o comentario por ULTIMO de api/sessao_test.go:567"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
+  - id: "epic-6-retro-item-33-acrescentar-o-teste-que-morre-quando-o-d"
+    epic: 6
+    action: "Acrescentar o teste que morre quando o de da transicao administrativa
+      deixa de ser o Status visto no clique (6.4)"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
+  - id: "epic-6-retro-item-34-compactar-o-handoff-md-antes-da-epica-7"
+    epic: 6
+    action: "Compactar o HANDOFF.md antes da Epica 7: tirar a contradicao de :71-75
+      contra :64-67 (D1-D7 e E1-E5 dados como abertos) e trocar o paragrafo unico
+      da linha 3 por estado atual"
+    owner: "Sung"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-09-24.md"
