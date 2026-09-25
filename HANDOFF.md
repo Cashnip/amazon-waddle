@@ -71,7 +71,7 @@ Não um `bmad-build` único para tudo: a mistura força a revisão cara sobre o 
 **Depois dos quatro, e ainda antes da 7.1, nesta ordem** (decisão humana de 2026-09-24, depois das retrospectivas headless da Épica 5 e da Épica 6 — `epic-5-retro-2026-09-24.md` e `epic-6-retro-2026-09-24.md`, as duas `accepted-with-open-items`):
 
 5. ~~**`bmad-retrospective -H` da Épica 5 e da Épica 6**~~ — **feito em 2026-09-24**: itens `epic-5-retro-item-25`..`29` e `epic-6-retro-item-30`..`34` no `sprint-status.yaml`. Perguntas abertas para decisão humana nas duas retros (O1, O2, dividir `pedido.go`, `epics.md` vivo ou não, o E5 sem registro de decisão). As transições `epic-3-retro-item-19` e `item-23` → `done` foram propostas e **não** gravadas.
-6. **`bmad-checkpoint-preview` só pelo teclado (e leitor de tela) das Épicas 5 e 6** — decide os dois vereditos, que podem cair para `rejected`. No mesmo passeio, reabrir o que não foi visto depois das correções: os `Dialog`s de cancelamento e de avanço de Status, E1, E4 e E5, o Produto de R$ 39,95 (pede `docker compose down -v`), cancelar em `AGUARDANDO_PAGAMENTO` com ele, Meus pedidos vazio e `AZAMON_ENTREGA_SIMULACAO_ATIVA=false`. Um Chrome e uma stack só: em série, nunca em paralelo.
+6. ~~**`bmad-checkpoint-preview` só pelo teclado (e leitor de tela) das Épicas 5 e 6**~~ — **encerrado em 2026-09-25 por decisão humana, no meio da UJ-1**: acessibilidade com leitor de tela não é o foco do projeto. Percorrido com teclado de verdade e VoiceOver até o desfecho `,95` e a nova Tentativa chegando a `PAGO`; nenhum bloqueio, então os dois vereditos ficam `accepted-with-open-items`. O2 decidido (não é defeito), D6 e D2 confirmados, K1 e K2 no bloco "O que o passeio só pelo teclado achou" abaixo. **Não vistos, e continuam sem ver na tela depois das correções:** os desfechos `,00` e `,90` pelo teclado, o `Alert` de preço (D7), a UJ-3 (E2, E3, cancelar em `AGUARDANDO_PAGAMENTO` com o Produto de R$ 39,95), E1, E4, E5, Meus pedidos vazio, o painel pelo teclado e `AZAMON_ENTREGA_SIMULACAO_ATIVA=false`.
 7. **`bmad-build` dos testes que faltam** — `epic-5-retro-item-26` (teste que falha sem o `ORDER BY id` na trava), `epic-6-retro-item-32` (tirar a dependência de ordem de `TestSessaoEProduto`, `api/sessao_test.go:566-588`) e `epic-6-retro-item-33` (teste que falha quando o `de` da transição administrativa muda).
 
 Depois dos sete, `bmad-build` na **Estória 7.1**.
@@ -187,6 +187,23 @@ antes do segundo clique da ferramenta, e sem Produto de `,95` (D1) não há jane
 AZ-2026-000038. Também não feitos: o estado vazio de Meus pedidos (a conta semeada tem 44 Pedidos), o passeio só pelo
 teclado e com leitor de tela, e o `AZAMON_ENTREGA_SIMULACAO_ATIVA=false` da 6.6. Estado deixado no banco: os Pedidos
 AZ-2026-000037 a 000044 da conta semeada, com o Estoque consumido pelos que chegaram a `ENVIADO` — `docker compose down -v` o devolve.
+
+**O que o passeio só pelo teclado achou (2026-09-25, `bmad-checkpoint-preview`, teclado de verdade e VoiceOver no Chrome, 1482 px, stack de `docker compose down -v` + `up --build`), e o `bmad-build` corrige em sessão própria:**
+
+Percorrido pelo teclado, com o foco lido por `document.activeElement` a cada parada: entrar, a busca (região viva
+"1–1 de 1 resultado"), Página de Produto → "Adicionar ao Carrinho" (status "Adicionado ao Carrinho.", contador em 1),
+Carrinho → Fechar o Pedido, o formulário de Endereço vazio (foco no primeiro campo inválido, com `aria-invalid` e o
+erro por `aria-describedby`), o primeiro Endereço (foco no rádio marcado), o `Dialog` de novo Endereço (foco preso
+dentro, `Esc` devolvendo a "Cadastrar Endereço" — **D6 corrigido**, fechar é "Fechar" — **D2 corrigido**), Revisão
+(R$ 39,95 + R$ 15,00 = R$ 54,95, laranja só em "Confirmar Pedido"), o `,95` expirando com "Tempo de pagamento
+expirado." na região de status e o relógio fora dela, e "Tentar pagar de novo" chegando a `PAGO` com o foco no `<h1>`.
+**O2 decidido: não é defeito.** Com teclado de verdade, a seta move o foco **e** marca; o registro anterior era da
+injeção de tecla. Parado por decisão humana antes do desfecho `,00` (passo 6 de "Próximo passo").
+
+| ID | Sev. | Onde | O quê |
+|---|---|---|---|
+| K1 | baixa | `web/components/casca.tsx:40` | Sem "Pular para o conteúdo": do topo ao primeiro Produto são 24 `Tab`s (logo, Categoria, busca, Carrinho, conta e a faixa de Categorias). Há `<main>`, então o WCAG 2.4.1 passa pelo rotor do leitor de tela; é atrito só para quem usa o teclado sem leitor |
+| K2 | baixa | `web/app/checkout/endereco/escolha-de-endereco.tsx:216` | Depois de salvar um Endereço pelo `Dialog`, o novo fica marcado mas a parada de `Tab` do grupo fica no antigo (`tabindex=0` no desmarcado, `-1` no marcado): entrando com `Shift+Tab`, o VO diz "Paulista, não selecionado" em vez do Endereço que vai receber o Pedido. É o foco itinerante do Radix, que guarda o último item focado e não acompanha o `value` mudado por código. A seta corrige |
 
 **O que a 6.7 deixou pronto, e a Épica 7 usa:**
 - **um Status de Pedido na tela é `<SeloDoStatus status={…} />`, e só isso**: o texto vem de `rotuloDoStatus` e a
@@ -711,6 +728,7 @@ E antes de alargar qualquer camada: o **passo 0** do addendum §8. Um Produto, u
   Só a palavra estrutural muda: as chaves do `sprint-status.yaml` continuam saindo do título em português.
 - **Editar a `SPEC.md` à mão.** Ela é **derivada** do `.memlog.md` da spec a cada execução, e `bmad-spec` é a única escritora — uma edição manual é sobrescrita no próximo derive, em silêncio. Mudou algo? Rode `bmad-spec` de novo apontando para a mesma pasta: os `CAP` são preservados por ID. O mesmo vale para o `mapa-de-capacidades.md`.
 - **Delegar o passo 2 do `bmad-build` (investigação) a um subagente sem escopo redundante.** Um fork/subagent herda a conversa inteira, inclusive as instruções dos passos seguintes do próprio workflow — e pode segui-las em vez da instrução específica do turno ("só investigue, não escreva código"). Foi o que aconteceu na 2.6: o subagente de investigação implementou a estória inteira e commitou em `main` sem passar pelo CHECKPOINT 1 nem por nenhum outro HALT. O commit acabou correto depois de revisão e verificação independentes (`go build`/`go vet`/`go test ./...` e o build Docker do `web/`, rodados de novo fora do relato do subagente), mas por sorte de execução, não por garantia do processo. Peça investigação numa sessão nova sem o workflow completo no contexto, ou revise o commit resultante linha por linha antes de confiar nele — nunca trate a delegação como segura por padrão.
+- **Passear sobre imagem velha.** `docker compose up` não reconstrói: se `azamon` e `web` já têm imagem, ela sobe como está, com o código de quando foi construída. Em 2026-09-25 o `down -v && up` subiu imagens de 16 h e 10 h antes, com o Andarilho a R$ 39,90 e nenhuma correção de D1/E1–E5 no ar. Antes de passeio ou apresentação, `docker compose up --build`, e confira a hora em `docker compose images`.
 - **Semear dado de regra em `db/semente/`.** A semente roda **uma vez por marcador de versão**: um banco que já a tem nunca vê arquivo novo, e trocar `VersaoSemente` reexecuta os `INSERT` do Catálogo, que colidem em uuid literal. Dado que é regra — a Faixa de Frete é o caso — nasce na própria migração, e aí existe em todo banco, testcontainers inclusive. `db/semente/` é do Catálogo Semeado da demonstração, e o arquivo é **gerado** por `media/gerar.go`.
 - **Pôr centavos quebrados num valor que entra no total do Pedido.** O Provedor Simulado decide pelos **centavos do total**, então um Frete de R$ 19,90 transformaria todo Produto de `,00` numa recusa, e o apresentador perderia o controle do desfecho. Os valores da `faixa_frete` são reais inteiros, com `CHECK (valor_centavos % 100 = 0)`; quem acrescentar faixa mantém isso.
 - **Achar que Go, sqlc e Next rodam direto nesta máquina Windows.** Não rodam: `go` não está no `PATH` e o `web/`
