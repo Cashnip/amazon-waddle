@@ -75,8 +75,9 @@ FOR UPDATE;
 -- name: AjustarEstoqueTotal :exec
 UPDATE catalogo.produto SET estoque_total = @estoque_total WHERE id = @id;
 
--- As duas consultas da consolidação (Estória 1.8), a única passagem em que o
--- Estoque total muda. O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
+-- As duas consultas da consolidação (Estória 1.8), a única passagem do Pedido
+-- em que o Estoque total muda (a outra é o ajuste do Administrador, da 3.4).
+-- O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
 -- do Status: zero linhas devolvidas é Reserva já consolidada, que é no-op e
 -- nunca erro.
 -- name: ConsolidarReservasDoPedido :many

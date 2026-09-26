@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 09-25-2026 19:42
+last_updated: 09-26-2026 23:55
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -104,7 +104,7 @@ development_status:
   epic-7: in-progress
   7-1-o-readme-leva-do-clone-ao-sistema-rodando: review
   7-2-o-diagrama-dos-seis-módulos-corresponde-ao-código: review
-  7-3-o-addendum-percorrido-contra-o-código: backlog
+  7-3-o-addendum-percorrido-contra-o-código: review
   7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: backlog
   epic-7-retrospective: optional
 action_items:
@@ -320,7 +320,11 @@ action_items:
     action: "Emendar o AD-4 em ARCHITECTURE-SPINE.md:117 para nomear o contador do
       ano na ordem global de travas, com memlog, e corrigir o comentario de db/migracoes/20260921120000_pedido_criacao.sql:15"
     owner: "Sung"
-    status: open
+    status: done
+    resolution: "Estoria 7.3 (2026-09-25): o AD-4 foi emendado no lugar — contador do
+      ano, depois a linha de pedido, depois catalogo.produto por id, por ultimo carrinho.item_carrinho
+      —, com memlog da arquitetura, e o comentario da migracao passou a dizer que o gemeo
+      espera no contador. Spec: _bmad-output/implementation-artifacts/spec-7-3-o-addendum-percorrido-contra-o-codigo.md"
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-09-24.md"
   - id: "epic-5-retro-item-28-decidir-o1-a-ciencia-do-preco-visto-e-tr"
     epic: 5

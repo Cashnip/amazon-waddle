@@ -53,8 +53,9 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// mesmo handler da listagem administrativa — a Categoria não tem nada que
 	// o visitante não possa ver.
 	mux.HandleFunc("GET /api/v1/categorias", s.listarCategorias)
-	// Da Página de Produto direto ao Pedido, sem Carrinho (Épica 4). A leitura
-	// é a tela do Pedido em processamento, consultada a cada 3 s.
+	// O Confirmar Pedido da Revisão, ao fim de Carrinho → Endereço → Revisão
+	// (5.6). A leitura é a tela do Pedido em processamento e o Detalhe do
+	// Pedido, consultados em intervalo (AD-18).
 	mux.HandleFunc("POST /api/v1/pedidos", s.criarPedido)
 	mux.HandleFunc("GET /api/v1/pedidos/{id}", s.lerPedido)
 	// A nova Tentativa de Pagamento do Pedido recusado (FR-27), a partir do
@@ -64,8 +65,8 @@ func Rotas(cfg plataforma.Config, pool *pgxpool.Pool, rdb *redis.Client) http.Ha
 	// "cancelamento" do Pedido, sem corpo. Não há rota administrativa de
 	// cancelamento — o Administrador não cancela (FR-32).
 	mux.HandleFunc("POST /api/v1/pedidos/{id}/cancelamento", s.cancelarPedido)
-	// "Meus pedidos" (2.6), no molde de "Escolher" Endereço: a lista do dono,
-	// mais recente primeiro — o esboço que a Estória 6.1 substitui.
+	// "Meus pedidos" (2.6, refeita na 6.1): a lista do dono, mais recente
+	// primeiro.
 	mux.HandleFunc("GET /api/v1/pedidos", s.listarPedidos)
 	// Os Endereços do Comprador (FR-5), no mux raiz: são da loja, e o dono é
 	// quem a Sessão diz. "Escolher" é a listagem — não há Endereço padrão, e a

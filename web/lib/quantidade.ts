@@ -1,5 +1,7 @@
-// O teto de unidades por Item de Carrinho (§7.1). Na 3.6 é constante do web/;
-// ponytail: quando o Carrinho (Épica 4) nascer, o teto passa a vir do Go.
+// O teto de unidades por Item de Carrinho (§7.1). Nasceu na 3.6 como constante
+// do web/, e continua: o Carrinho da Épica 4 trouxe o mesmo limiar ao Go
+// (AZAMON_CARRINHO_UNIDADES_MAX), que é quem decide; este só limita o seletor.
+// Os dois têm de mudar juntos (deferred-work.md, 7.3).
 export const TETO_POR_ITEM = 10;
 
 // A quantidade que o seletor aceita: 1 a min(10, disponível). É a mesma conta

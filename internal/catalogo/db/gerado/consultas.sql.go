@@ -232,8 +232,9 @@ type ConsolidarReservasDoPedidoRow struct {
 	Quantidade int32
 }
 
-// As duas consultas da consolidação (Estória 1.8), a única passagem em que o
-// Estoque total muda. O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
+// As duas consultas da consolidação (Estória 1.8), a única passagem do Pedido
+// em que o Estoque total muda (a outra é o ajuste do Administrador, da 3.4).
+// O `estado = 'ATIVA'` no WHERE é compare-and-swap como o
 // do Status: zero linhas devolvidas é Reserva já consolidada, que é no-op e
 // nunca erro.
 func (q *Queries) ConsolidarReservasDoPedido(ctx context.Context, pedidoID pgtype.UUID) ([]ConsolidarReservasDoPedidoRow, error) {

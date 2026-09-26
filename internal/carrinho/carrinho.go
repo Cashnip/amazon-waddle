@@ -1,8 +1,9 @@
 // Package carrinho é dono de Carrinho e Item de Carrinho.
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). O dono vem sempre de fora, como texto: `carrinho` não conhece
-// `identidade` (AD-11), e quem resolve a Sessão é `api/`.
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1). O dono vem sempre
+// de fora, como texto: `carrinho` não conhece `identidade` (AD-11), e quem
+// resolve a Sessão é `api/`.
 package carrinho
 
 import (

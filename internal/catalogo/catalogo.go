@@ -1,13 +1,14 @@
 // Package catalogo é dono de Vendedor, Categoria, Produto, Estoque e Reserva de Estoque.
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). Mora aqui a interface de Estoque do AD-5/AD-19 que Carrinho,
-// checkout e cancelamento consomem, com as assinaturas já definitivas:
-// Disponivel e Visiveis em lote, lidos da VIEW produto_visivel — o único lugar
-// do predicado de visibilidade —, e Reservar, Liberar e Consolidar, as três
-// idempotentes. Só Consolidar baixa o Estoque total no caminho da compra; o
-// outro que o escreve é o ajuste do Administrador (produto.go), sob a mesma
-// ordem de trava. Também mora aqui o detalhe de Produto da Página de Produto.
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1). Mora aqui a
+// interface de Estoque do AD-5/AD-19 que Carrinho, checkout e cancelamento
+// consomem, com as assinaturas já definitivas: Disponivel e Visiveis em lote,
+// lidos da VIEW produto_visivel — o único lugar do predicado de visibilidade —,
+// e Reservar, Liberar e Consolidar, as três idempotentes. Só Consolidar baixa o
+// Estoque total no caminho da compra; o outro que o escreve é o ajuste do
+// Administrador (produto.go), sob a mesma ordem de trava. Também mora aqui o
+// detalhe de Produto da Página de Produto.
 package catalogo
 
 import (
@@ -325,7 +326,8 @@ func Liberar(ctx context.Context, tx pgx.Tx, pedidoID string) error {
 
 // Consolidar encerra a Reserva do Pedido e baixa o Estoque total na mesma
 // quantidade. É o efeito da transição SEPARANDO → ENVIADO, e a única
-// passagem do sistema em que `estoque_total` muda — daí em diante o
+// passagem do Pedido em que `estoque_total` muda (a outra é o ajuste do
+// Administrador, da 3.4, fora do Pedido) — daí em diante o
 // cancelamento não é mais possível, e a Reserva não tem mais o que segurar.
 //
 // Pedido sem Reserva ATIVA é no-op que devolve nil, nunca erro: consolidar duas

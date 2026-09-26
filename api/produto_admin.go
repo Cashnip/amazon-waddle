@@ -18,7 +18,7 @@ import (
 // entradaProduto é o corpo do POST e do PUT. Ponteiro onde a ausência não
 // pode virar zero em silêncio: `estoque_total` só no POST, `ativo` só no PUT,
 // e nos dois ele é obrigatório. O preço é inteiro de centavos: quem converte
-// "12,90" em 1290 é o navegador, por texto (AD-3).
+// "12,90" em 1290 é o navegador, por texto (AD-9).
 type entradaProduto struct {
 	Nome          string `json:"nome"`
 	Descricao     string `json:"descricao"`

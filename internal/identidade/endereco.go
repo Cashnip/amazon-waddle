@@ -227,7 +227,7 @@ func normalizarCEP(cep string) string {
 }
 
 // normalizarUF é o mesmo contrato de normalizarEmail, do outro lado do CHECK:
-// a coluna tem `CHECK (uf = upper(uf))`. Quais são as 27 siglas é regra de
+// a coluna tem `CHECK (uf ~ '^[A-Z]{2}$')`. Quais são as 27 siglas é regra de
 // quem valida, não de quem grava.
 func normalizarUF(uf string) string {
 	return strings.ToUpper(strings.TrimSpace(uf))

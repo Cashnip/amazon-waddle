@@ -12,8 +12,11 @@
 --    chave estrangeira cruzando schema é proibida (AD-2).
 -- 3. A chave de idempotência e o digest do corpo (AD-7, NFR-12). O índice
 --    único é por Comprador: a chave é dele, e duas pessoas nunca colidem. O
---    INSERT do Pedido é a reivindicação da chave — o gêmeo concorrente espera
---    neste índice.
+--    INSERT do Pedido é a reivindicação da chave, mas o gêmeo concorrente não
+--    espera neste índice: espera antes, na linha do ano de
+--    pedido.contador_numero, que o número do INSERT exige (AD-4). Quando o
+--    primeiro comita, o ON CONFLICT DO NOTHING do gêmeo não devolve linha, e
+--    ele relê pela chave e devolve o Pedido original.
 -- 4. Item de Pedido só nasce antes da primeira linha do histórico: depois
 --    dela o Pedido existe, e o conteúdo dele é escrito uma vez (fecha o INSERT
 --    tardio que a 5.1 deixou aberto).

@@ -1,11 +1,12 @@
 // Package pedido é dono de Pedido, Item de Pedido, máquina de estados, Frete e varredura.
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1), junto com maquina.go, que guarda a tabela de transições do
-// AD-3 e o Transicionar, e frete.go, que guarda a Regra de Frete (AD-17).
-// Aqui moram o nascimento do Pedido a partir do Carrinho, as leituras e os três
-// passos da varredura que são de `pedido` — aplicar a confirmação, expirar a
-// Tentativa vencida e simular a entrega até ENTREGUE.
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1): maquina.go guarda
+// a tabela de transições do AD-3 e o Transicionar, frete.go a Regra de Frete
+// (AD-17), e checkout.go a entrada no checkout. Aqui moram o nascimento do
+// Pedido a partir do Carrinho, as leituras e os três passos da varredura que
+// são de `pedido` — aplicar a confirmação, expirar a Tentativa vencida e
+// simular a entrega até ENTREGUE.
 package pedido
 
 import (

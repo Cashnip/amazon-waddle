@@ -107,9 +107,9 @@ export function RevisaoDoPedido() {
     let vivo = true;
 
     // A chave nasce aqui, na entrada da Revisão — antes de qualquer leitura, e
-    // uma só por tentativa de checkout: se já existe (recarregamento, ida e
-    // volta ao Carrinho, releitura depois de uma recusa), é a mesma que
-    // continua.
+    // uma só por tentativa de checkout: se já existe (recarregamento,
+    // releitura depois de uma recusa), é a mesma que continua. O "Fechar o
+    // Pedido" do Carrinho a descarta e começa outra tentativa (5.6).
     setChave(chaveDeIdempotencia());
 
     const guardado = lerEscolha();

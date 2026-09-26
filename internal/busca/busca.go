@@ -2,8 +2,8 @@
 // Elasticsearch. Não tem tabelas: lê o Catálogo só pela VIEW produto_visivel,
 // que já aplica o predicado de visibilidade (AD-2, AD-16, AD-19).
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1).
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1).
 package busca
 
 import (

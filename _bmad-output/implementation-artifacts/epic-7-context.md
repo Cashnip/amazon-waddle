@@ -47,7 +47,9 @@ No dia da entrega, a banca precisa encontrar três entregáveis de documentaçã
 
 ## Cross-Story Dependencies
 
-- A Épica 7 depende das Épicas 1 a 6 fechadas (estão). O Roteiro A já andou de clone limpo em 3 min 26 s e offline, mas cronometrado pelo autor. **A metade "pessoa de fora" da SM-3 continua sem prova**, e é a 7.1 que a fecha.
-- A 7.2 e a 7.3 se apoiam no teste de fronteira e no histórico de decisões do addendum. Há uma decisão aberta que toca a 7.3: emendar o AD-4 para citar o contador do ano na ordem de trava, ou dividir `internal/pedido/pedido.go` antes de percorrer o addendum.
+- A Épica 7 depende das Épicas 1 a 6 fechadas (estão). A 7.1 remediu o Roteiro A de clone limpo em 4 min 28 s com cache frio, ainda cronometrado pelo time. **A metade "pessoa de fora" da SM-3 continua sem prova**: o Registro de subidas do README tem a linha sem dono.
+- A 7.2 redesenhou o grafo do AD-1 a partir do código (23 arestas, um bloco mermaid `%% AD-1` idêntico na espinha e no `DIAGRAMA-MODULOS.md`), preso por `TestDiagramaEhATabela` e `TestTabelaEhOCodigo` em `internal/fronteira_test.go`. Deixou para a 7.3 duas entradas em `deferred-work.md`: a porta do AD-8 sem `interface` Go, e a tabela do AD-6 com `Expirar` e `SimularEntrega` dentro de `pedido.Varrer`.
+- Decidido em 2026-09-25, antes da 7.3: `internal/pedido/pedido.go` **fica como está** (B2 da retro da Épica 6, aceito), e a emenda do AD-4 com o contador do ano (`epic-5-retro-item-27`) **entra na 7.3**.
+- A 7.2 e a 7.3 se apoiam no teste de fronteira e no histórico de decisões do addendum. As duas decisões abertas que tocavam a 7.3 (o AD-4 e a divisão de `pedido.go`) foram tomadas; ver acima.
 - A 7.4 consome o resultado da 7.1: o README é o ponto de partida do clone limpo. Ela usa como insumo os roteiros de passeio das Épicas 5 e 6 e os desfechos que ninguém viu em tela depois das correções. O passo 5 do Roteiro C está condicionado ao teste do NFR-7 (estória 5.7).
 - Uma pendência externa segue aberta: a rubrica do professor (bloqueio 2, dono Sung) é a 5ª verificação do passo 0. Ela não bloqueia a épica, mas pode mover suposições do PRD se chegar antes da entrega.

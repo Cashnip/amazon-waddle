@@ -1,9 +1,10 @@
 // Package identidade é dono de Comprador, Administrador, Sessão, Endereço e Argon2id.
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). O que mora aqui na Épica 1 é o mínimo que a Estória 1.5
-// pede — autenticar o Comprador semeado e carregar a Sessão. Cadastro,
-// bloqueio por tentativas e recuperação de senha são da Épica 2.
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1). O que mora aqui na
+// Épica 1 é o mínimo que a Estória 1.5 pede — autenticar o Comprador semeado e
+// carregar a Sessão. Cadastro, bloqueio por tentativas e recuperação de senha
+// são da Épica 2.
 package identidade
 
 import (

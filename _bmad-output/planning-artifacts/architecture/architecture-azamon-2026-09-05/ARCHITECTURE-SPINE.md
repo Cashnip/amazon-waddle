@@ -7,7 +7,7 @@ paradigm: 'monólito modular — pacote por domínio, com portas-e-adaptadores a
 scope: 'Todo o MVP: os seis módulos do NFR-2, a casca de apresentação, o envelope operacional em contêineres e as costuras que sustentam a fase 2 técnica'
 status: final
 created: '2026-09-05'
-updated: '2026-09-06'
+updated: '2026-09-25'
 binds:
   - 'PRD §4.1 Conta e Identidade (FR-1..FR-5)'
   - 'PRD §4.2 Catálogo (FR-6..FR-11)'
@@ -141,7 +141,7 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 - **Prevents:** o efeito sobre o Estoque e a transição de Status caírem em transações diferentes e divergirem
 - **Rule:** quem inicia o caso de uso abre a transação e a passa adiante **explicitamente**, como parâmetro nomeado: `Reservar(ctx context.Context, tx pgx.Tx, …)`. Transação em `context.Context` é proibida — invisível é esquecível. Nenhum módulo abre transação própria quando recebe uma. **Nenhuma chamada de rede acontece dentro de uma transação aberta** — o webhook do AD-8 é emitido pelo relógio, depois do commit.
 
-  **Nível de isolamento: `READ COMMITTED`**, o padrão do Postgres — declarado, não presumido, porque a corretude do AD-5 depende de bloqueio explícito e não de isolamento. **A ordem de aquisição de bloqueio é global e única:** primeiro a linha de `pedido`, depois as linhas de `catalogo.produto` **ordenadas por `id`**. Sem essa ordem, dois Pedidos com os mesmos dois Produtos em ordem inversa produzem *deadlock*. `api/` repete uma vez, e só uma, uma transação que morra com `40P01` (deadlock) ou `40001` (serialização).
+  **Nível de isolamento: `READ COMMITTED`**, o padrão do Postgres — declarado, não presumido, porque a corretude do AD-5 depende de bloqueio explícito e não de isolamento. **A ordem de aquisição de bloqueio é global e única:** na criação do Pedido, primeiro a linha do ano em `pedido.contador_numero` (`ProximoNumeroDoAno`, porque o número legível vai no `INSERT`) e o Pedido que nasce; em todo outro caso de uso, primeiro a linha de `pedido`; depois, sempre, as linhas de `catalogo.produto` **ordenadas por `id`**; e, na criação, por último as de `carrinho.item_carrinho` que `Esvaziar` apaga. Nenhum caso de uso trava o contador depois de um Produto, e é isso que mantém a ordem sem ciclo. A regra ordena as linhas que casos de uso diferentes disputam; as outras que um caso de uso trava entram depois da linha que as governa ou sozinhas — `catalogo.reserva_estoque` depois dos Produtos (`Reservar`) ou do Pedido (`Liberar`, `Consolidar`), `pagamento.confirmacao_recebida` depois do Pedido na varredura, e `carrinho.carrinho` e `carrinho.item_carrinho` sozinhas nas rotas do Carrinho. Sem essa ordem, dois Pedidos com os mesmos dois Produtos em ordem inversa produzem *deadlock*. O contador é também o primeiro ponto de espera de duas criações do mesmo ano — o gêmeo do duplo clique espera nele, e não no índice da chave de idempotência; quando o primeiro comita, o `ON CONFLICT DO NOTHING` do gêmeo não devolve linha, e ele relê pela chave e devolve o Pedido original —, e por isso serializa toda criação de Pedido: custo aceito na escala deste projeto, e o motivo de o teste de ponta a ponta do NFR-7 não provar sozinho a trava do AD-5. `api/` repete uma vez, e só uma, uma transação que morra com `40P01` (deadlock) ou `40001` (serialização).
 
 ### AD-5 — O Catálogo é dono do Estoque; disponível é derivado
 
@@ -163,16 +163,16 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 
 - **Binds:** FR-25, FR-26, FR-27, FR-33, FR-34
 - **Prevents:** um Pedido congelado porque o contêiner reiniciou e o temporizador que o avançaria morreu na memória
-- **Rule:** nenhum estado é alcançado por `time.Timer`, `time.After`, `time.AfterFunc` ou agendamento em memória — **em nenhum módulo, inclusive no Provedor Simulado.** Um *goroutine* em `cmd/azamon` tica a cada 1 s e **não decide nada**: ele só chama, nesta ordem normativa, dois passos que pertencem aos seus donos.
+- **Rule:** nenhum estado é alcançado por `time.Timer`, `time.After`, `time.AfterFunc` ou agendamento em memória — **em nenhum módulo, inclusive no Provedor Simulado.** Um *goroutine* em `cmd/azamon` tica a cada 1 s e **não decide nada**: ele só chama, nesta ordem normativa, até quatro passos que pertencem aos seus donos — três de `pedido` e um de `pagamento`; o passo 3 só roda com a simulação de entrega ligada.
 
   | Ordem | Chamada | Dono | Requisito |
   |---|---|---|---|
   | 1 | `pedido.Varrer` — **aplica** as confirmações não aplicadas | `pedido` | FR-26, FR-27 |
-  | 2 | idem — **expira** a Tentativa cujo prazo venceu | `pedido` | FR-34 |
-  | 3 | idem — **avança** a etapa devida da simulação de entrega | `pedido` | FR-33 |
+  | 2 | `pedido.Expirar` — **expira** a Tentativa cujo prazo venceu | `pedido` | FR-34 |
+  | 3 | `pedido.SimularEntrega` — **avança** a etapa devida da simulação de entrega, só com `AZAMON_ENTREGA_SIMULACAO_ATIVA` | `pedido` | FR-33 |
   | 4 | `pagamento.EmitirConfirmacoesDevidas` — **emite** o POST do AD-7 | `pagamento` | FR-25 |
 
-  **Emitir é comportamento do Provedor, então mora em `pagamento`** — pô-lo em `pedido` colocaria conhecimento de gateway dentro do Pedido e quebraria o NFR-3 e a SM-5 na primeira troca. Aplicar vem antes de expirar: senão uma aprovação que chegou no prazo é descartada por um relógio que rodou primeiro.
+  **Emitir é comportamento do Provedor, então mora em `pagamento`** — pô-lo em `pedido` colocaria conhecimento de gateway dentro do Pedido e quebraria o NFR-3 e a SM-5 na primeira troca. Aplicar vem antes de expirar: senão uma aprovação que chegou no prazo é descartada por um relógio que rodou primeiro. O interruptor da simulação cobre só o passo 3: a expiração da FR-34 não se desliga.
 
   **Uma transação por Pedido, nunca uma por tique** — um Pedido que falhe não pode derrubar a varredura dos outros. Toda leitura usa `FOR UPDATE SKIP LOCKED`. `ErrEstadoJaAvancado` é desfecho **esperado** da varredura, registrado e seguido em frente, nunca erro. Um relógio, quatro requisitos.
 
@@ -195,6 +195,8 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 - **Binds:** FR-25, NFR-3, SM-5
 - **Prevents:** que trocar pelo Stripe toque no checkout, no Pedido ou na máquina de estados
 - **Rule:** a porta tem duas operações e mais nada: `IniciarTentativa(ctx, tx, pedidoID, totalCentavos, teto) error` e a confirmação que chega por webhook. O total vai como valor — o adapter **não** consulta `pedido` —, e o teto também, da configuração (AD-13); o identificador externo é derivado do Pedido e do número da Tentativa (AD-7), e não devolvido. A mesma operação abre a primeira Tentativa, na criação do Pedido, e a nova (FR-27), numerando pelas que o Pedido já tem, sempre com a linha do Pedido presa. O Provedor Simulado decide pelos centavos do total conforme §7.1 do PRD, apenas na primeira Tentativa de Pagamento; da segunda em diante aprova. As faixas vivem em configuração porque o NFR-16 exige (AD-13), mas **não existe superfície de operador nem alternância em tempo de execução**: nada é reconfigurado entre roteiros, e o apresentador provoca o desfecho escolhendo Produto e quantidade. **O teto de 3 Tentativas de Pagamento por Pedido (§7.1, FR-27) é de `pagamento`**, que é dono da entidade: `IniciarTentativa` recusa com `ErrTetoDeTentativas` e o `pedido` traduz isso na recusa da transição, `pedido.ErrTentativasEsgotadas` — é a tradução que a borda HTTP conhece, porque `plataforma` não tem aresta para `pagamento` (AD-1). Nenhum dado de cartão entra em lugar nenhum, nem simulado.
+
+  **A porta é contrato, não tipo:** as duas operações são a função exportada `pagamento.IniciarTentativa` e a rota `POST /api/v1/webhooks/pagamento`, e não existe `interface` Go. Com um adapter só, a interface seria cerimônia — o Paradigma põe portas-e-adaptadores só onde a costura é real, e a costura aqui é a assinatura. O adapter é `pagamento.Simulado` mais `pagamento.EmitirConfirmacoesDevidas`, que o relógio chama (AD-6). Na troca pelo Stripe sai o adapter, e entra quem chama o gateway depois do commit, também pelo relógio (o AD-4 proíbe rede dentro da transação); ficam a assinatura de `IniciarTentativa`, que só grava a Tentativa, a rota do webhook e a inbox, e o checkout, o Pedido e a máquina de estados não são tocados. Mudam, além do adapter, a autenticação do handler do webhook — hoje o segredo compartilhado `X-Azamon-Segredo`, amanhã a assinatura do gateway — e entra o passo síncrono com o navegador que um gateway real pede para coletar o meio de pagamento, que o MVP não tem porque não coleta cartão.
 
 ### AD-9 — Dinheiro é `int64` de centavos, ponta a ponta
 

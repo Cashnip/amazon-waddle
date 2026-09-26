@@ -1,10 +1,11 @@
 // Package pagamento é dono da porta do Provedor de Pagamento, do Provedor Simulado e da inbox de confirmação.
 //
-// Este arquivo é a interface pública do módulo: o ÚNICO que outro módulo
-// importa (AD-1). O módulo NÃO conhece `pedido` (AD-7): quem lê a inbox e
-// aplica é a varredura de `pedido`, e a aresta contrária não existe. Também
-// não conhece `net/http` — a função que leva a confirmação até o webhook entra
-// como parâmetro, e quem a constrói é `cmd/azamon`.
+// Este arquivo abre a interface pública do módulo, mas a porta é o pacote: o
+// que os arquivos irmãos exportam também é interface (AD-1). O módulo NÃO
+// conhece `pedido` (AD-7): quem lê a inbox e aplica é a varredura de `pedido`,
+// e a aresta contrária não existe. Também não conhece `net/http` — a função que
+// leva a confirmação até o webhook entra como parâmetro, e quem a constrói é
+// `cmd/azamon`.
 //
 // Nada aqui pede, gera ou guarda dado de cartão, nem no Simulado.
 package pagamento

@@ -28,8 +28,12 @@ const (
 	repeticoes = 20  // × 5 casos = 100 execuções, o bastante para um p95 honesto
 )
 
-// sonda é a forma que a Épica 3 vai implementar: LIKE sobre a coluna
-// normalizada (o que o índice GIN pg_trgm serve), mais os dois filtros.
+// sonda é a forma que a 1.4 mediu: LIKE sobre a coluna normalizada (o que
+// o índice GIN pg_trgm serve), mais os dois filtros. Não é a consulta da
+// busca: a da Épica 3 lê a VIEW produto_visivel, com o Estoque disponível,
+// filtra por `IS NULL OR` e ordena por CASE (internal/busca/db/consultas.sql).
+// A retro da Épica 3 a mediu à mão (pior p95 de 8,47 ms); trazê-la para cá é o
+// epic-3-retro-item-13.
 const sonda = `
 	SELECT id, nome, preco_centavos
 	FROM catalogo.produto

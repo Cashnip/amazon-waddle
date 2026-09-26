@@ -11,7 +11,7 @@ import (
 )
 
 // saidaProduto é o DTO da Página de Produto. O preço sai cru, em centavos
-// int64 — não existe divisão no caminho monetário (AD-3), e o `R$` é o
+// int64 — não existe divisão no caminho monetário (AD-9), e o `R$` é o
 // navegador quem escreve. A imagem sai relativa: quem serve o byte é
 // GET /api/v1/media/{arquivo}, do próprio binário (AD-12).
 type saidaProduto struct {

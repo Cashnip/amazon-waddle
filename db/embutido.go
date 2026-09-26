@@ -24,8 +24,11 @@ var Semente embed.FS
 // DirSemente é o caminho da semente dentro de Semente.
 const DirSemente = "semente"
 
-// VersaoSemente é o que public.semente guarda: mudou o conteúdo de
-// db/semente/, muda esta constante e o próximo arranque semeia de novo.
+// VersaoSemente é o que public.semente guarda. Trocá-la faz o próximo
+// arranque semear de novo, e a semente é INSERT sem ON CONFLICT: sobre um
+// banco já semeado, a troca bate na chave primária e derruba o arranque. Por
+// isso a correção D1 mudou db/semente/ sem trocá-la, e banco existente só vê
+// a semente nova depois de `docker compose down -v`.
 // É texto, e não número, porque quem lê a tabela quer saber *qual* semente
 // está lá, não quantas vieram antes.
 const VersaoSemente = "2026-09-11-catalogo-inicial"

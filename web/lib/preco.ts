@@ -1,4 +1,4 @@
-// Reais ↔ centavos por texto, nunca por ponto flutuante (AD-3): "12,90" vira
+// Reais ↔ centavos por texto, nunca por ponto flutuante (AD-9): "12,90" vira
 // 1290 juntando os dígitos, e não multiplicando 12.9 por 100. O formato é o
 // brasileiro — ponto só como separador de milhar, vírgula como decimal.
 // Texto fora dele devolve null, e a tela pede o preço de novo; quem decide se
