@@ -6,7 +6,7 @@
 - Os passeios da Épica 5 e da Épica 6 acharam D1–D7 e E1–E5, e **todos estão corrigidos em `main`** (`7014591`, `9240730`, `ab4558c`, `33ca441`). O2 decidido (não é defeito), O3 aceito sem mudança.
 - As retrospectivas headless das Épicas 5 e 6 estão `accepted-with-open-items`; as ações delas, com dono, estão no `sprint-status.yaml`.
 - O passeio só pelo teclado foi encerrado em 2026-09-25 por decisão humana e deixou K1 e K2, os dois de severidade baixa.
-- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 (`9c63713`) e a 7.2 (`2043ecc`) estão em `main` e em `review`; a 7.3 e a 7.4 estão em `backlog`.
+- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 (`9c63713`), a 7.2 (`2043ecc`) e a 7.3 (`691008b`) estão em `main` e em `review`; a 7.4 está em `backlog`.
 - O relato estória a estória até a Épica 6 saiu para [`handoff-historico-ate-epica-6.md`](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
@@ -81,7 +81,13 @@ A **7.2** está em `main` (`2043ecc`, `spec-7-2-o-diagrama-dos-seis-modulos-corr
 - ninguém olhou o mermaid renderizado (só `mermaid.parse`);
 - quatro entradas em `deferred-work.md`: a porta do AD-8 sem `interface` Go (7.3), a tabela do AD-6 na espinha ainda com dois passos do relógio dentro de `pedido.Varrer` — contradiz o código e o AD-1 novo (7.3) —, o `deck-banca.html` com `ProvedorDePagamento` e sem `contador_numero` (7.4), e o `db/schema_test.go` sem o schema `carrinho` (sem dono).
 
-1. **`bmad-build` na Estória 7.3** (o addendum percorrido contra o código). Antes, decidir a divisão de `internal/pedido/pedido.go` e a emenda do AD-4 (Decisões abertas, abaixo). Entram nela as duas entradas de 7.3 que a 7.2 deixou em `deferred-work.md` — a porta do AD-8 e o AD-6. Quem mexer no grafo ou na tabela `arestas` mexe nos dois arquivos e no teste, senão `go test ./internal/` cai; e renomear o diretório da arquitetura (a entrada de caminho longo da 7.1) quebra `TestDiagramaEhATabela`, que o lê.
+A **7.3** está em `main` (`691008b`, `spec-7-3-o-addendum-percorrido-contra-o-codigo.md`), em `review`. O addendum foi percorrido nos dois sentidos: as 260 decisões de §1–§10 contra o código (225 confirmadas, 10 trocadas com registro, 9 trocadas sem registro e agora com o porquê, 16 históricas, **nenhuma contradita**), com a evidência de cada uma em `percurso-do-addendum.md`; e as 27 estórias e correções que não tinham bloco no §10 foram varridas, e 109 decisões de arquitetura que faltavam entraram no §10 marcadas "registrado na 7.3". O AD-4 (contador do ano na ordem de trava; fechou `epic-5-retro-item-27`), o AD-6 (as três funções de `pedido` no relógio) e o AD-8 (a porta é contrato, não `interface` Go) foram emendados no lugar; `pedido.go` ficou em um arquivo, por decisão. O que a 7.3 deixou aberto:
+- **a espinha ainda diverge do código em cinco pontos**, adiados porque a spec só emendava AD-4/6/8: o AD-18 (quatro superfícies de consulta, não três; Meus pedidos desempata em `id DESC`), a Semente Estrutural ("o ÚNICO arquivo que outro módulo importa"), o AD-10 (`next/image` e `fetch` em RSC), o AD-19 (a VIEW é a fonte, não `Visiveis`) e a tabela de rotas do AD-16. Todos em `deferred-work.md`, com prazo antes da entrega;
+- o teto por Item de Carrinho repetido no `web/` (`TETO_POR_ITEM` contra `AZAMON_CARRINHO_UNIDADES_MAX`), adiado;
+- o NFR-4 da consulta embarcada foi medido na retro da Épica 3 (pior p95 de 8,47 ms), mas o teste ainda mede a sonda da 1.4: é o `epic-3-retro-item-13`, aberto;
+- os 109 itens retroativos foram escritos pelos leitores e conferidos por amostra de âncora, não um a um; a revisão da 7.3 rodou antes deles.
+
+1. **`bmad-build` na Estória 7.4** (os três roteiros ensaiados de clone limpo). Antes da entrega, também as emendas de espinha adiadas acima. Quem mexer no grafo ou na tabela `arestas` mexe nos dois arquivos e no teste, senão `go test ./internal/` cai.
 
 ### Defeitos abertos
 
@@ -97,9 +103,9 @@ O resto do que ficou adiado, com a condição de fechamento de cada um, está em
 ### Decisões abertas
 
 - **O1** (`epic-5-retro-item-28`): "Confirmar o novo preço" é trava só de tela — recarregar ou digitar `/checkout/revisao` a dispensa, porque a entrada no checkout já gravou a ciência ao reportar. A FR-19 pede "exibido e sinalizado", e ele é exibido; a garantia do servidor hoje é que nenhum Item nasce com preço diferente do que a entrada registrou. Aceitar como leitura da FR-19, ou exigir a ciência no servidor. Dono: Sung.
-- **AD-4** (`epic-5-retro-item-27`): a ordem global "pedido → produtos" da espinha não cita o contador do ano (`ProximoNumeroDoAno`), que o `Criar` trava antes dos dois. Emendar no lugar, com memlog da arquitetura; e o comentário de `db/migracoes/20260921120000_pedido_criacao.sql:14` diz que o gêmeo espera no índice, quando espera no contador.
+- ~~**AD-4**~~ (`epic-5-retro-item-27`): **resolvida na 7.3** — o AD-4 foi emendado com o contador do ano, e o comentário da migração corrigido.
 - **Os 14px do selo** (`epic-6-retro-item-31`): a decisão humana de 2026-09-24 vive só na spec da 6.7 — o `DESIGN.md` diz ao mesmo tempo "`Badge` sem alteração" e "no mínimo 14px", e o marcador "Pagamento aprovado" da 6.5 segue em 12px. Pede `uv run _bmad/scripts/memlog.py append` no diretório da UX e a palavra do dono da UX.
-- **Dividir `internal/pedido/pedido.go`** (1.196 linhas, três blocos que não se tocam; B2 da retro da Épica 6): agora, antes de a 7.3 percorrer o addendum contra o código, ou aceitar como está.
+- ~~**Dividir `internal/pedido/pedido.go`**~~: **decidido em 2026-09-25 — fica como está**, registrado no §10 do addendum, na entrada da 7.3.
 - **`epics.md` é documento vivo depois da construção?** O `epic-3-retro-item-16` virou contradição: a CA da 3.5 diz verde "**só** para Estoque disponível", e a 6.7 embarcou o verde em `ENTREGUE`, como o `DESIGN.md` manda.
 - **O E5 foi tratado como defeito** (`33ca441` tirou o `role="alert"` do `Alert` da 6.5) sem registro de decisão humana; a retro da Épica 6 não o reabre.
 - **Transições propostas e não gravadas:** `epic-3-retro-item-19` e `item-23` → `done`.
@@ -200,8 +206,8 @@ ARCHITECTURE-SPINE.md, com 20 ADs de ID estável.
 das Épicas 5 e 6 (D1–D7, E1–E5) estão corrigidos; do passeio só pelo
 teclado ficaram K1 e K2, de severidade baixa.
 Os testes das retros (items 26, 32, 33) estão feitos.
-As Estórias 7.1 (README) e 7.2 (diagrama) estão em main, em review.
-Próximo passo: bmad-build da Estória 7.3.
+As Estórias 7.1 (README), 7.2 (diagrama) e 7.3 (addendum) estão em main, em review.
+Próximo passo: bmad-build da Estória 7.4.
 ```
 
 *Este arquivo não é carregado automaticamente por agentes — o `AGENTS.md` da raiz é. Ele carrega as armadilhas de maior consequência e aponta para cá; as de escopo estreito, como não renumerar as suposições do §16, vivem só aqui. Depois de mudança significativa, refresque com `bmad-project-context`.*
