@@ -147,7 +147,7 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 
 - **Binds:** FR-11, FR-24, FR-28, FR-31, NFR-7
 - **Prevents:** um contador mutável de disponibilidade espalhado — e a variante em que `pedido` e `catalogo` guardam versões diferentes da mesma verdade
-- **Rule:** `catalogo` é dono de `produto.estoque_total` e de `catalogo.reserva_estoque`. `pedido` nunca toca tabela de Estoque; usa `catalogo.Disponivel(ctx, produtoIDs []uuid) map[uuid]int`, `Reservar`, `Liberar`, `Consolidar` — **`Disponivel` é em lote**, porque toda tela que precisa dele precisa para vários Produtos. **Estoque disponível nunca é armazenado:** é `estoque_total − Σ reservas ativas`, calculado na consulta, e é o único número que sai para qualquer tela ou VIEW.
+- **Rule:** `catalogo` é dono de `produto.estoque_total` e de `catalogo.reserva_estoque`. `pedido` nunca toca tabela de Estoque; usa `catalogo.Disponivel(ctx context.Context, bd gerado.DBTX, ids []string) (map[string]int, error)`, `Reservar`, `Liberar`, `Consolidar` — o banco atravessa a fronteira como parâmetro, pelo AD-4, e o erro é só o do banco: Produto inexistente, invisível ou de id malformado vale `0` e nunca some do mapa — **`Disponivel` é em lote**, porque toda tela que precisa dele precisa para vários Produtos. **Estoque disponível nunca é armazenado:** é `estoque_total − Σ reservas ativas`, calculado na consulta, e é o único número que sai para qualquer tela ou VIEW.
 
   **A linha de `produto` é o mutex de uma grandeza que mora em `reserva_estoque`, então a ordem é obrigatória e são dois comandos:** `SELECT … FROM produto WHERE id = ANY($1) ORDER BY id FOR UPDATE` **primeiro**, e só depois a soma das reservas ativas. Ler a soma antes de segurar o bloqueio é o defeito que vende a mesma última unidade duas vezes — e é exatamente o que o teste do NFR-7 dispara. A FR-11 (Administrador não baixa o total abaixo das reservas) segue a mesma ordem.
 
@@ -208,7 +208,7 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 
 - **Binds:** `web/`, NFR-2, NFR-6
 - **Prevents:** regra de negócio vazar dos seis módulos para um sétimo lugar que ninguém chamou de módulo
-- **Rule:** `next.config.js` reescreve `/api/*` para o Go — o navegador conhece **uma origem só**, então não há CORS nem `SameSite=None`. Proibidos: Server Actions, Route Handlers com regra, acesso a banco ou Redis do Node, e `fetch` do servidor Next para o Go dentro de RSC. Um caminho de dado: navegador → `/api` → Go. O processo Node não guarda estado de domínio nenhum. Duas armadilhas do Next.js 16 que falham **em silêncio**: `middleware.ts` foi renomeado para `proxy.ts` e um arquivo com o nome antigo é ignorado sem erro de build; e a otimização de `next/image` recusa upstream que resolva para IP privado — que é o `azamon` do compose. As imagens do Catálogo Semeado usam `unoptimized`, coerente com o AD-12, que já quer o Go como dono do byte.
+- **Rule:** `next.config.js` reescreve `/api/*` para o Go — o navegador conhece **uma origem só**, então não há CORS nem `SameSite=None`. Proibidos: Server Actions, Route Handlers com regra, e acesso a banco ou Redis do Node. **O `fetch` do servidor Next para o Go dentro de RSC é permitido, e só para leitura** — a Vitrine (1.5) e a Página de Produto (3.5) renderizam no servidor e precisam do dado no instante do render; o destino vem da configuração (`AZAMON_API_URL`, o serviço do compose), porque `/api` relativo não existe no servidor do Next, onde não há navegador para resolver o `rewrites()`. Toda escrita continua saindo do navegador: dois caminhos de dado, navegador → `/api` → Go para tudo que muta, e Next → Go para a leitura que o RSC renderiza. O que a proibição guarda é regra no Node, e nenhum dos dois a carrega. O processo Node não guarda estado de domínio nenhum. Duas armadilhas do Next.js 16 que falham **em silêncio**: `middleware.ts` foi renomeado para `proxy.ts` e um arquivo com o nome antigo é ignorado sem erro de build; e a otimização de `next/image` recusa upstream que resolva para IP privado — que é o `azamon` do compose. **Nenhuma tela usa `next/image`:** a imagem do Produto é `<img>` em `web/components/imagem-do-produto.tsx`, porque o arquivo é SVG embutido no Go e servido na mesma origem, e não há o que otimizar. É o mesmo desfecho que `unoptimized` daria, com um componente a menos, e é coerente com o AD-12, que já quer o Go como dono do byte.
 
 ### AD-11 — Autorização no servidor, por dono do recurso
 
@@ -261,6 +261,8 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
   | `GET /api/v1/produtos/<id>` | `catalogo` |
   | `/api/v1/admin/produtos…` (CRUD, Estoque) | `catalogo` |
   | `GET /api/v1/admin/produtos` (listagem administrativa, inclui inativos) | `catalogo` |
+  | `GET /api/v1/categorias` (a faixa de Categorias da loja) | `catalogo` |
+  | `/api/v1/admin/categorias…` (CRUD de Categoria) | `catalogo` |
 
   Rota de Produto sem linha nesta tabela é defeito. Nenhum módulo além de `busca` monta consulta para localizar Produto na loja. `busca` lê `catalogo` por VIEW, nunca por tabela, e **a VIEW expõe `estoque_disponivel` derivado (AD-5), nunca `estoque_total`** — senão a Vitrine promete unidade que o Carrinho recusa. Normalização (sem acento, minúscula) acontece **na escrita**, em coluna dedicada preenchida pelo Go, com índice GIN `pg_trgm` — não em `tsvector` com pontuação, porque o §5 do PRD proíbe relevância por pontuação e a FR-14 já fixa três ordenações com desempate estável. `CREATE EXTENSION IF NOT EXISTS pg_trgm` é a primeira migração de `catalogo` — a imagem oficial do Postgres traz a extensão, mas não habilitada.
 
@@ -289,9 +291,9 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
                    "ator": "COMPRADOR", "motivo": null, "em": "…" } ] }
 ```
 
-  **Todo instante é absoluto e vem do servidor**, em RFC 3339 — nunca uma duração em segundos, porque duração recomeça quando a página recarrega. Consulta em intervalo existe em exatamente três superfícies e em nenhuma outra: `GET /pedidos/<id>` a cada 3 s enquanto `AGUARDANDO_PAGAMENTO`; o mesmo a cada 10 s enquanto o estado não for terminal; `GET /admin/pedidos` a cada 10 s enquanto listar Pedido não terminal. **Terminal significa `ENTREGUE` ou `CANCELADO`**, e mais nada — é a única leitura consistente com a tabela do AD-3, onde nenhum dos dois aparece como origem. Existe **uma função só**, `pedido.EstadoTerminal(s Status) bool`, usada pelas três superfícies de consulta sem exceção. Nenhuma segunda noção de terminal é declarada: quem precisa de um corte mais estreito testa o `Status` contra os valores nomeados.
+  **Todo instante é absoluto e vem do servidor**, em RFC 3339 — nunca uma duração em segundos, porque duração recomeça quando a página recarrega. Consulta em intervalo existe em exatamente quatro superfícies e em nenhuma outra: `GET /pedidos/<id>` a cada 3 s enquanto `AGUARDANDO_PAGAMENTO`; o mesmo a cada 10 s enquanto o estado não for terminal; `GET /admin/pedidos` a cada 10 s enquanto listar Pedido não terminal; e `GET /admin/pedidos/<id>` a cada 10 s enquanto o Pedido não for terminal, que a 6.4 acrescentou — o Detalhe do Pedido do Administrador tem de ver a varredura andar como a Tabela vê, e tira a cadência do mesmo auxiliar dela, com uma lista de um. **Terminal significa `ENTREGUE` ou `CANCELADO`**, e mais nada — é a única leitura consistente com a tabela do AD-3, onde nenhum dos dois aparece como origem. Existe **uma função só**, `pedido.EstadoTerminal(s Status) bool`, usada pelas três superfícies de consulta sem exceção. Nenhuma segunda noção de terminal é declarada: quem precisa de um corte mais estreito testa o `Status` contra os valores nomeados.
 
-  **Toda listagem usa um envelope só**, porque quatro superfícies de três módulos precisam do mesmo: `{ "itens": [...], "pagina": 1, "por_pagina": 20, "total": 137 }`. A ordenação declarada da FR-14 sempre termina em `id` ascendente como desempate — sem isso a paginação repete e some com linhas entre páginas. `por_pagina` vem do servidor, com o teto do §7.1.
+  **Toda listagem usa um envelope só**, porque quatro superfícies de três módulos precisam do mesmo: `{ "itens": [...], "pagina": 1, "por_pagina": 20, "total": 137 }`. A ordenação declarada sempre termina em `id` como desempate — sem isso a paginação repete e some com linhas entre páginas —, **no mesmo sentido da coluna que ordena**: as três ordenações da FR-14 desempatam em `id` ascendente, e Meus pedidos (6.1), que lista do mais recente para o mais antigo, desempata em `id DESC`. O que estabiliza o `OFFSET` é o desempate existir e ser total, não o sentido dele; inverter só a segunda chave faria a página 2 repetir linha que a 1 já mostrou. `uuidv7()` é cronológica por construção, então o desempate por `id` concorda com o instante que a primeira chave ordena. `por_pagina` vem do servidor, com o teto do §7.1.
 
   A resposta administrativa do Pedido carrega `pagamento_aprovado_sobre_cancelado`, que é como o sinal `NAO_APLICAVEL_SINALIZADA` do AD-7 chega às duas superfícies do Administrador — um estado sem caminho de leitura é um estado que ninguém vê.
 
@@ -301,7 +303,7 @@ Este grafo, com estes rótulos, **é** o diagrama dos seis módulos que o §6.1 
 
 - **Binds:** FR-6, FR-7, FR-8, FR-9, FR-12, FR-17
 - **Prevents:** a Vitrine mostrar um Produto que a busca esconde, ou o Carrinho aceitar um Produto de Vendedor desativado
-- **Rule:** "Produto visível" (Produto ativo **e** Vendedor ativo) é definido uma vez, em `catalogo`, e exposto por `catalogo.Visiveis`. A VIEW do AD-16 é construída sobre o mesmo predicado. Vitrine, página de Produto, Carrinho e criação de Pedido passam todos por ele. Nenhum outro lugar escreve `WHERE ativo = true`.
+- **Rule:** "Produto visível" (Produto ativo **e** Vendedor ativo) é definido uma vez, em `catalogo`, e **a definição é a VIEW `catalogo.produto_visivel`** — a mesma do AD-16. `catalogo.Visiveis` e `catalogo.Disponivel` **leem** a VIEW, e não o contrário: o predicado mora no banco, onde a consulta da busca também o alcança, e nenhuma função Go o redeclara. Vitrine, página de Produto, Carrinho e criação de Pedido passam todos por ele. Nenhum outro lugar escreve `WHERE ativo = true`.
 
   **O predicado vale também dentro das funções de escrita do AD-5, não só nas telas.** `Disponivel` devolve `0` para Produto inexistente ou invisível — nunca omite a chave do mapa, nunca devolve erro: "disponível" já embute "comprável". `Reservar` verifica visibilidade **na mesma consulta `FOR UPDATE`** em que verifica Estoque, e reservar Produto invisível falha com o mesmo `catalogo.ErrEstoqueInsuficiente` — do ponto de vista do Comprador é a mesma frase. Sem isso, comprar de Vendedor desativado é o cenário que o *Prevents* deste AD nomeia e que nenhuma Rule impedia.
 
@@ -458,12 +460,19 @@ Dentro de cada módulo, uma forma só:
 
 ```text
 internal/catalogo/
-  catalogo.go                 # interface pública — o ÚNICO arquivo que outro módulo importa
+  catalogo.go                 # a porta principal do módulo — mas a porta é o PACOTE
   servico.go                  # a regra
   dominio.go                  # tipos e invariantes
   db/consultas.sql            # fonte do sqlc
   db/gerado/                  # saída do sqlc — não editar
 ```
+
+**A porta de cada módulo é o pacote, não um arquivo.** Outro módulo chama símbolos exportados de
+qualquer arquivo irmão — `identidade.BuscarEndereco` vive em `endereco.go`, e
+`catalogo.ErrVendedorComProdutos` em `vendedor.go`. Quem prende a fronteira é o AD-1, e a prova é
+`internal/fronteira_test.go` lendo o grafo de importação: aresta fora da tabela derruba o teste,
+e nenhum teste sabe em que arquivo do pacote o símbolo mora. A árvore acima é a forma esperada
+dentro do módulo, e não uma segunda regra de fronteira por cima da do AD-1.
 
 ## Mapa Funcionalidade → Arquitetura
 
