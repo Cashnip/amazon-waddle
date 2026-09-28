@@ -2,7 +2,7 @@
 title: '7.4 — Os três roteiros ensaiados a partir de clone limpo'
 type: 'chore'
 created: '2026-09-28'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'ddcc36139e47b63539454dd8a4d216e73b74a8aa'
