@@ -87,7 +87,13 @@ A **7.3** está em `main` (`691008b`, `spec-7-3-o-addendum-percorrido-contra-o-c
 - o NFR-4 da consulta embarcada foi medido na retro da Épica 3 (pior p95 de 8,47 ms), mas o teste ainda mede a sonda da 1.4: é o `epic-3-retro-item-13`, aberto;
 - os 109 itens retroativos foram escritos pelos leitores e conferidos por amostra de âncora, não um a um; a revisão da 7.3 rodou antes deles.
 
-1. **`bmad-build` na Estória 7.4** (os três roteiros ensaiados de clone limpo). Antes da entrega, também as emendas de espinha adiadas acima. Quem mexer no grafo ou na tabela `arestas` mexe nos dois arquivos e no teste, senão `go test ./internal/` cai.
+A **7.4** está em `main` (`spec-7-4-os-tres-roteiros-ensaiados-a-partir-de-clone-limpo.md`), em `review`. Os três roteiros do §12 foram executados **no navegador**, a partir de clone limpo de `ddcc361` em `C:\dev\ensaio74`, com `docker compose up --build` e **sem `psql`, sem reinício e sem nada reconfigurado entre roteiros**: **19 de 19 passos aprovados** (A 9/9, B 5/5, C 5/5), nenhum erro visível, nenhuma notificação com identificador de correlação. Tudo com passo numerado, dado de demonstração, o que tem de aparecer e a evidência do que a tela mostrou, em `ensaio-dos-roteiros.md`, que também traz o **Registro de ensaios**, as perguntas prováveis com Fonte preenchida e as oito armadilhas de quem for apresentar. O passo 5 do Roteiro C está **liberado**: o subteste "a última unidade: oito checkouts, um Pedido" passou no clone limpo antes de o passo rodar, e `go test ./...` saiu todo `ok`. O `deck-banca.html` foi emendado nos dois pontos em que mentia (a porta do pagamento e o schema `pedido`), com memlog da arquitetura. O que a 7.4 deixou aberto:
+- **a metade humana da regra de ensaio não fechou**: o Registro abre **duas linhas nomeadas em branco**, porque o agente não é uma das duas pessoas que o §12 exige. O time nomeia e ensaia;
+- **continua sem ver na tela**: os passeios pelo teclado (os desfechos `,00` e `,90`, e o painel do Administrador), o `Alert` de preço (D7, FR-19), `AZAMON_ENTREGA_SIMULACAO_ATIVA=false` e as quatro larguras das Épicas 3 e 4. A UJ-3 inteira (E2, E3, cancelamento com o Estoque voltando) e Meus pedidos vazio **foram vistos** neste ensaio, por apontador;
+- **duas entradas novas em `deferred-work.md`**: o cookie `azamon_sessao` compartilhado por Comprador e Administrador, que faz o login no painel derrubar a Sessão do Comprador no mesmo navegador (Roteiro C, passos 1–4, contornado com dois perfis de navegador), e a janela de ~30 s dos passos 2 e 3 do Roteiro C, que é o intervalo da simulação de entrega;
+- o Roteiro A com a rede desconectada (NFR-15) **não foi refeito**: continua valendo a medição da 1.9, relatada no `addendum.md` §10.
+
+1. **As cinco emendas de espinha adiadas pela 7.3** (AD-18, Semente Estrutural, AD-10, AD-19, tabela de rotas do AD-16), com prazo antes da entrega. Quem mexer no grafo ou na tabela `arestas` mexe nos dois arquivos e no teste, senão `go test ./internal/` cai. E o ensaio humano dos três roteiros, pelas duas pessoas do Registro.
 
 ### Defeitos abertos
 
@@ -112,7 +118,9 @@ O resto do que ficou adiado, com a condição de fechamento de cada um, está em
 
 ### O que as correções deixaram sem ver na tela
 
-Pelo teclado ou pelo mouse, ninguém registrou ter visto depois das correções: os desfechos `,00` e `,90` pelo teclado, o `Alert` de preço (D7), a UJ-3 (E2, E3, e cancelar em `AGUARDANDO_PAGAMENTO` com o Produto de R$ 39,95), E1, E4, E5, Meus pedidos vazio, o painel do Administrador pelo teclado, e `AZAMON_ENTREGA_SIMULACAO_ATIVA=false`. Das Épicas 3 e 4 há passeios nas quatro larguras que nunca foram feitos, e cada estória das Épicas 5 e 6 tem o roteiro do seu passeio — os dois estão no histórico, e são insumo da 7.4.
+O ensaio da 7.4 (2026-09-28, `ensaio-dos-roteiros.md`) atravessou parte desta lista **pelo apontador, em clone limpo**: os três desfechos de pagamento na tela (`,00`, `,90` e `,95`), a **UJ-3 inteira** (E2 e E3 — transição pelo painel e cancelamento pelo Comprador com o Estoque voltando —, mais a recusa do cancelamento em `ENVIADO`, nas duas variantes), **Meus pedidos vazio**, o bloco neutro no lugar da imagem ausente, e a última unidade disputada por dois Compradores.
+
+Continua sem registro de quem viu: os desfechos `,00` e `,90` **pelo teclado**, o `Alert` de preço (D7), E1, E4, E5, o painel do Administrador **pelo teclado**, e `AZAMON_ENTREGA_SIMULACAO_ATIVA=false`. Das Épicas 3 e 4 há passeios nas quatro larguras que nunca foram feitos, e cada estória das Épicas 5 e 6 tem o roteiro do seu passeio — os dois estão no histórico.
 
 ## Quanto custa uma estória, e o que fazer com isso
 

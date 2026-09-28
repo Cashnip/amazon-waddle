@@ -365,7 +365,7 @@
             <tr><td>identidade</td><td><code>comprador</code> <code>administrador</code> <code>endereco</code></td><td>Quem está falando</td></tr>
             <tr><td>catalogo</td><td><code>vendedor</code> <code>categoria</code> <code>produto</code> <code>reserva_estoque</code></td><td>O Estoque, inclusive a Reserva</td></tr>
             <tr><td>carrinho</td><td><code>carrinho</code> <code>item_carrinho</code></td><td>A intenção, sem compromisso</td></tr>
-            <tr><td>pedido</td><td><code>pedido</code> <code>item_pedido</code> <code>transicao_status</code> <code>faixa_frete</code></td><td>O compromisso e sua história</td></tr>
+            <tr><td>pedido</td><td><code>pedido</code> <code>item_pedido</code> <code>transicao_status</code> <code>faixa_frete</code> <code>contador_numero</code></td><td>O compromisso e sua história</td></tr>
             <tr><td>pagamento</td><td><code>tentativa_pagamento</code> <code>confirmacao_recebida</code></td><td>A fronteira com o dinheiro</td></tr>
             <tr><td>busca</td><td><em>nenhuma</em> — uma VIEW sobre <code>catalogo</code></td><td>A costura do Elasticsearch</td></tr>
           </tbody>
@@ -523,7 +523,7 @@
         <table>
           <thead><tr><th>Etapa</th><th>O que acontece</th><th>Por que assim</th></tr></thead>
           <tbody>
-            <tr><td>Porta</td><td><code>ProvedorDePagamento</code> tem duas operações: iniciar Tentativa e receber confirmação. O total vai como valor.</td><td>O adapter nunca consulta o Pedido — é o que impede o ciclo de dependência</td></tr>
+            <tr><td>Porta</td><td>A porta é <strong>contrato, não tipo</strong>: duas operações e mais nada — a função <code>pagamento.IniciarTentativa</code> e a rota do webhook. Não existe <code>interface</code> Go. O total vai como valor.</td><td>O adapter nunca consulta o Pedido — é o que impede o ciclo de dependência. Com um adapter só, a interface seria cerimônia (AD-8)</td></tr>
             <tr><td>Decisão</td><td>Os centavos do total decidem: aprovado, recusado, ou confirmação que nunca chega. Só na primeira Tentativa.</td><td>Determinístico e acionável ao vivo escolhendo Produto e quantidade — sem tela de operador, sem reconfigurar nada entre roteiros</td></tr>
             <tr><td>Entrada</td><td><code>POST /api/v1/webhooks/pagamento</code>, com chave de idempotência.</td><td>Trocar pelo Stripe é apontar a URL e trocar a implementação. A SM-5 vira verificável, não declarada</td></tr>
             <tr><td>Idempotência</td><td>Restrição única no banco. Receber duas vezes é um <code>INSERT</code> que falha.</td><td>Estrutural, não código defensivo — é o comportamento exato que um webhook real exige</td></tr>

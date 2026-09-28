@@ -62,6 +62,10 @@ credenciais não são segredo; elas estão versionadas junto com a lista, em `me
 
 ### Registro de subidas
 
+Este registro mede a **subida**. O ensaio dos três roteiros de demonstração tem registro próprio,
+no mesmo formato e com a mesma metade humana em aberto:
+[`_bmad-output/implementation-artifacts/ensaio-dos-roteiros.md`](_bmad-output/implementation-artifacts/ensaio-dos-roteiros.md).
+
 Quanto demora do `git clone` ao primeiro Produto na Vitrine — **medido, nunca estimado**.
 O teto do NFR-1 é **15 min**. O número é dominado pela banda da máquina, porque a
 primeira construção baixa as imagens base, os módulos Go e os pacotes npm: num link mais
