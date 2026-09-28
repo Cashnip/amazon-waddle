@@ -2,7 +2,7 @@
 title: '7.4 — Os três roteiros ensaiados a partir de clone limpo'
 type: 'chore'
 created: '2026-09-28'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'ddcc36139e47b63539454dd8a4d216e73b74a8aa'
@@ -57,13 +57,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] (scratchpad) -- clonar `main` num diretório novo fora do repositório; `docker compose up --build -d`; conferir `docker compose images` e `curl /api/v1/saude`; ao fim, `down -v` e remover as imagens do ensaio -- o clone limpo que a CA exige.
-- [ ] (scratchpad) -- executar os três roteiros no navegador, passo a passo, anotando por passo o que a tela mostrou, o status e o horário; antes do passo 5 do Roteiro C, rodar o teste da NFR-7 -- a execução é a prova da SM-1.
-- [ ] `_bmad-output/implementation-artifacts/ensaio-dos-roteiros.md` -- o entregável: contagem de passos aprovados/reprovados/não ensaiados no topo; uma seção por roteiro com passo numerado, FR, dado da demonstração, o que tem de aparecer e a evidência desta execução; a condição do passo 5 do Roteiro C; **Registro de ensaios** no formato do Registro de subidas; a tabela das perguntas prováveis com Responsável e Fonte; e as armadilhas de quem for apresentar.
-- [ ] `.../architecture-azamon-2026-09-05/deck-banca.html` -- a porta como contrato no lugar de `ProvedorDePagamento`, e `contador_numero` na linha do schema `pedido`; memlog da arquitetura pelo script -- o deck vai projetado e não pode mostrar nome que o código não tem.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md` -- `RESOLVIDO —` na entrada do deck (`:529`), e uma entrada por defeito que o ensaio achar, com o roteiro e o passo.
-- [ ] `README.md:63` e `HANDOFF.md` -- um ponteiro do Registro de subidas para o Registro de ensaios, e o parágrafo da 7.4 no HANDOFF com o que ficou aberto -- a 7.4 é a última da épica, e a entrega lê o HANDOFF.
-- [ ] `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `7-4-…` para `review`.
+- [x] (scratchpad) -- clonar `main` num diretório novo fora do repositório; `docker compose up --build -d`; conferir `docker compose images` e `curl /api/v1/saude`; ao fim, `down -v` e remover as imagens do ensaio -- o clone limpo que a CA exige.
+- [x] (scratchpad) -- executar os três roteiros no navegador, passo a passo, anotando por passo o que a tela mostrou, o status e o horário; antes do passo 5 do Roteiro C, rodar o teste da NFR-7 -- a execução é a prova da SM-1.
+- [x] `_bmad-output/implementation-artifacts/ensaio-dos-roteiros.md` -- o entregável: contagem de passos aprovados/reprovados/não ensaiados no topo; uma seção por roteiro com passo numerado, FR, dado da demonstração, o que tem de aparecer e a evidência desta execução; a condição do passo 5 do Roteiro C; **Registro de ensaios** no formato do Registro de subidas; a tabela das perguntas prováveis com Responsável e Fonte; e as armadilhas de quem for apresentar.
+- [x] `.../architecture-azamon-2026-09-05/deck-banca.html` -- a porta como contrato no lugar de `ProvedorDePagamento`, e `contador_numero` na linha do schema `pedido`; memlog da arquitetura pelo script -- o deck vai projetado e não pode mostrar nome que o código não tem.
+- [x] `_bmad-output/implementation-artifacts/deferred-work.md` -- `RESOLVIDO —` na entrada do deck (`:529`), e uma entrada por defeito que o ensaio achar, com o roteiro e o passo.
+- [x] `README.md:63` e `HANDOFF.md` -- um ponteiro do Registro de subidas para o Registro de ensaios, e o parágrafo da 7.4 no HANDOFF com o que ficou aberto -- a 7.4 é a última da épica, e a entrega lê o HANDOFF.
+- [x] `_bmad-output/implementation-artifacts/sprint-status.yaml` -- `7-4-…` para `review`.
 
 **Acceptance Criteria:**
 - Dado `ensaio-dos-roteiros.md`, então todo passo dos três roteiros tem dado de demonstração e veredito, e nenhum veredito é presumido: passo não executado aparece como não ensaiado.
@@ -76,6 +76,37 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Passe 1 (2026-09-28). Camadas: Blind Hunter (BH) e Edge Case Hunter (EC). A Verification Gap foi pulada e anunciada: o diff não tem uma linha de código nem de teste, e a regra de custo do HANDOFF põe o gatilho no raio do diff.
+
+| # | Achado | Veredito | Evidência da triagem | Rota |
+|---|---|---|---|---|
+| EC1 | Roteiro A passo 2 diz "sem Sessão — cadastrar e entrar são dois atos" | **high** | Falso no código: `api/comprador.go:58` chama `abrirSessao` no `POST /api/v1/compradores`, e `web/app/cadastrar/page.tsx:76` comenta "O cadastro já abriu a Sessão: o visitante chega à Vitrine autenticado". O documento de apresentação afirma um passo que não existe | patch |
+| BH9 + EC6 + EC7 + EC8 + EC9 + EC10 | O `epic-7-context.md` foi recompilado no mesmo diff e perdeu o que a estória cita e usa | **high** | Um só defeito, seis sintomas. `git show ddcc361:…` tem, e a versão nova não: `:25` "Nunca cortar FR-19, FR-24, FR-34 e o teste do NFR-7"; `:36–39` as armadilhas de ensaio (a rede `internal: true` descartando as portas em silêncio, e `--no-deps`); `:45` "a Tabela de Pedidos não tem busca por número"; `:50` a metade "pessoa de fora" da SM-3; `:55` a rubrica do professor. A recompilação foi minha, no passo 1, e trocou conteúdo operacional por prosa por propósito | patch |
+| BH1 + EC3 | `AZ-2026-000004` não aparece em evidência nenhuma, e a aritmética do Estoque precisa dele | **medium** | Real e explicável: a Maré aparece em **8** às 11:37:26, e a semente dá 10 (`20260912120100_catalogo_reserva_estoque.sql:12`); `maquina.go:132` consolida em `ENVIADO`, então cada Pedido entregue baixa o total. Um Pedido (a tentativa perdida do passo 3, `PAGO` 11:35:39 → `ENTREGUE` 11:36:52) consumiu a segunda unidade e ficou sem linha | patch |
+| BH4 | Dois passos passaram na segunda tentativa, e a contagem 19/19 não diz | **medium** | Real: o passo 3 do Roteiro C perdeu a janela de 30 s na primeira tentativa, e a tabela de Contagem só tem aprovado/reprovado/não ensaiado. A SM-1 é sobre conduzir ao vivo e de uma vez | patch |
+| BH3 | O passo 3 do Roteiro C não tem a leitura do Estoque durante a própria Reserva | **medium** | Real: registra 8 antes (11:37:26) e 8 depois (11:38:06), e empresta o 7 de 11:39:08, que é de outro Pedido. O comportamento está provado alhures (Roteiro B passos 3 e 5); o passo que a matriz encarrega dele, não | patch |
+| BH5 | Roteiro C 1–4 passou com contorno que o §12 não contém | **medium** | Real: o roteiro como está escrito perde a Sessão do Comprador no login do painel; passou porque o ensaio usou perfis separados. 19/19 sem essa marca se lê como "o roteiro funciona como escrito" | patch |
+| EC4 | A evidência do FR-32 não distingue painel de varredura | **medium** | Real: `Pago` 11:37:54 e `Separando` 11:37:55 no histórico, mas a interação do painel está narrada às 11:37:57 — a transição precede a ação que a teria causado. Ou o horário é de outro relógio, ou está transcrito errado; o entregável não diz qual | patch |
+| EC5 | O HANDOFF tira da lista de "sem ver na tela" um cancelamento que não foi feito | **medium** | Real: a lista antiga nomeava "cancelar em `AGUARDANDO_PAGAMENTO` com o Produto de R$ 39,95"; o ensaio cancelou a partir de `SEPARANDO`, e o Pedido de R$ 39,95 expirou por tempo. O item saiu da lista sem ter sido visto | patch |
+| BH8 | O `deferred-work.md` diz "append-only" e o diff reescreveu o `evidence` de uma entrada | **low** | Real: o `RESOLVIDO —` no `summary` tem precedente em `:55`, mas a leitura original (`grep` dando 1) foi sobrescrita pela de depois (0) — é justamente o que append-only protege | patch |
+| BH2 | O Estoque foi medido pelo seletor de quantidade, que satura em 10 | **low** | Parcialmente real: `web/lib/quantidade.ts:5` tem `TETO_POR_ITEM = 10` e `caixa-de-compra.tsx:116` mostra "Em estoque" sem número a partir de 10, então "10" é "≥ 10". Mas 9 → 10 ainda prova que subiu, e é isso que o passo alega. É redação, não prova | patch |
+| BH12 | Negrito aninhado quebra a armadilha 4 | **low** | Real: a ênfase interna em torno de "total" fecha a externa no meio da frase | patch |
+| BH10 | O HANDOFF não diz o que fecha a épica | **low** | Parcialmente real: ele nomeia as cinco emendas e o ensaio humano como próximo passo, mas não a retrospectiva da Épica 7, que o `sprint-status.yaml` carrega como `optional` e é a última porta da épica | patch |
+| BH13a | "Os quatro serviços no ar" seguido de três nomes | **low** | Real: o `web` não tem healthcheck e a frase deixa o leitor adivinhar | patch |
+| BH13b | A armadilha 2 pede dois perfis de navegador; o ensaio usou três | **low** | Real: o segundo Comprador do passo 5 do Roteiro C é o terceiro perfil | patch |
+| BH13c | O Registro de ensaios não tem coluna de commit | **low** | Real: `ddcc361` está espremido na célula da máquina, e o documento avisa que verde num dia não é verde no outro | patch |
+| BH13d | `go test ./...` alegado "tudo ok" sem o comando que o invocou | **low** | Real: a seção Verification da spec nomeia uma invocação precisa, e o entregável cola só os subtestes de concorrência | patch |
+| BH13e | A desmontagem que a tarefa exige não está registrada | **low** | Real no documento, verdadeiro no mundo: conferi que o clone do ensaio não existe mais e que não sobrou contêiner nem imagem `ensaio74`. Falta a linha | patch |
+| EC12 | O Registro de ensaios não tem campo para reinício entre roteiros | **low** | Real: a matriz congelada exige que o Registro diga se houve reinício e por quê, e hoje isso só existe na prosa deste ensaio — as duas linhas humanas não têm onde declarar | patch |
+| BH6 | O Roteiro A offline (NFR-15) fica sem condição de fechamento | **medium** | Real: é restrição da épica ("o Roteiro A percorre inteiro com a rede desconectada"), não foi refeito, e só existe como prosa no HANDOFF. Todo outro adiamento desta estória virou entrada com condição | defer |
+| BH7 | A metade humana do ensaio e os responsáveis não têm dono nem prazo fora da prosa | **medium** | Real: são o maior pedaço de trabalho que a estória deixa aberto, e o `deferred-work.md` é onde o repositório guarda "o resto do que ficou adiado, com a condição de fechamento de cada um" | defer |
+| EC14 | A tabela de fronteiras do deck não menciona `public.semente` | **low** | Real e pré-existente: o deck é de 2026-09-06 e a estória só tinha dois pontos nomeados para emendar | defer |
+| BH11 | As quatro estórias da Épica 7 estão em `review` e nada as move a `done` | **false** | `review` é o estado terminal do desenvolvimento neste projeto: o cabeçalho do `sprint-status.yaml` diz "Dev moves story to 'review', then runs code-review". Quem move a `done` é a revisão humana, não esta estória | rejeitado |
+| EC11 | A matriz congelada diz "o Pedido `PAGO` do Roteiro A" e a execução usou Pedidos novos | **low** | Rejeitado por duas razões: a leitura é única (o passo 9 do Roteiro A leva aquele Pedido a `ENTREGUE` de propósito, e em `ENTREGUE` não há transição nem cancelamento — nenhum outro caminho existe), e a correção pedida é editar a spec desta construção | rejeitado |
+| EC2 | A corrida do passo 4b não foi seguida até `ENTREGUE` para ver o E4 | **low** | Rejeitado: o E4 continua listado como sem registro na seção de não cobertos e no HANDOFF. Um passo a mais que não foi dado não é defeito do que foi | rejeitado |
+| EC13 | "são insumo da 7.4" saiu do HANDOFF sem os passeios terem sido consumidos | **false** | O ensaio foi construído do §12 do PRD, não dos passeios por estória, e a mesma frase continua dizendo que os roteiros de passeio das Épicas 5 e 6 estão no histórico. O ponteiro saiu porque a 7.4 deixou de estar pendente | rejeitado |
+
 
 ## Design Notes
 
