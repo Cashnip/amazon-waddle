@@ -1,12 +1,13 @@
 # Azamon — Handoff
 
-**Atualizado:** 2026-09-25 · **Estado:**
+**Atualizado:** 2026-09-29 · **Estado:**
 - PRD, UX, arquitetura, spec e épicas finalizados e reconciliados entre si.
-- **Épicas 1 a 6 fechadas:** as 48 estórias estão `done` e em `main`. O Roteiro A anda de clone limpo em 4 min 28 s, medido de novo na 7.1 (teto do NFR-1: 15 min) e numa rede sem saída (NFR-15); o Roteiro B anda do passo 1 ao 5; o Roteiro C tem a prova do NFR-7.
+- **Épicas 1 a 6 fechadas:** as 48 estórias estão `done` e em `main`. O Roteiro A anda de clone limpo em 4 min 28 s, medido de novo na 7.1 (teto do NFR-1: 15 min); o Roteiro B anda do passo 1 ao 5; o Roteiro C tem a prova do NFR-7. **Os três roteiros foram ensaiados de ponta a ponta no navegador em 2026-09-28** (19 de 19 passos, `ensaio-dos-roteiros.md`) — um só na segunda tentativa e quatro com contorno, e o ensaio das duas pessoas do time continua pendente. O NFR-15 com a rede desligada **não foi refeito desde a 1.9**: está em `deferred-work.md`, com o método certo (desligar a rede da máquina à mão, porque um compose com `internal: true` descarta as portas em silêncio).
 - Os passeios da Épica 5 e da Épica 6 acharam D1–D7 e E1–E5, e **todos estão corrigidos em `main`** (`7014591`, `9240730`, `ab4558c`, `33ca441`). O2 decidido (não é defeito), O3 aceito sem mudança.
 - As retrospectivas headless das Épicas 5 e 6 estão `accepted-with-open-items`; as ações delas, com dono, estão no `sprint-status.yaml`.
 - O passeio só pelo teclado foi encerrado em 2026-09-25 por decisão humana e deixou K1 e K2, os dois de severidade baixa.
-- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, está `in-progress`: a 7.1 (`9c63713`), a 7.2 (`2043ecc`) e a 7.3 (`691008b`) estão em `main` e em `review`; a 7.4 está em `backlog`.
+- Os três testes das retros (5-26, 6-32, 6-33) estão em `main` (`a610f86`, `spec-testes-da-retro-5-e-6.md`). A Épica 7, que verifica e não constrói, tem **as quatro estórias em `main` e em `review`**: a 7.1 (`9c63713`), a 7.2 (`2043ecc`), a 7.3 (`691008b`) e a 7.4 (`413123d`, `9f575f2`, `70704d9`). Faltam duas portas para fechar a épica, as duas abaixo do "Próximo passo": o **ensaio humano** dos três roteiros, pelas duas pessoas do Registro, e a **retrospectiva**.
+- **A espinha não diverge mais do código** (`d18f6f2`, 2026-09-28): as cinco emendas que a 7.3 adiou — AD-18 nos dois pontos, AD-10 nos dois, AD-19, AD-5 e a Semente Estrutural — estão feitas no lugar, com memlog, sem tocar no grafo do AD-1 nem na tabela `arestas`. Com o addendum percorrido na 7.3 e o diagrama preso por teste na 7.2, **a SM-7 está verificada e não presumida**.
 - O relato estória a estória até a Épica 6 saiu para [`handoff-historico-ate-epica-6.md`](_bmad-output/implementation-artifacts/handoff-historico-ate-epica-6.md).
 
 Réplica da Amazon como trabalho de faculdade. Time de 2 a 4 pessoas, um semestre, avaliado em três eixos ao mesmo tempo: funcionalidade entregue, arquitetura e documentação, e apresentação ao vivo.
