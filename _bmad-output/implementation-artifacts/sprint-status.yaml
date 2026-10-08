@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-07-2026 13:12
-last_updated: 10-01-2026 21:40
+last_updated: 10-08-2026 19:30
 project: azamon
 project_key: NOKEY
 tracking_system: file-system
@@ -107,6 +107,11 @@ development_status:
   7-3-o-addendum-percorrido-contra-o-código: done
   7-4-os-três-roteiros-ensaiados-a-partir-de-clone-limpo: done
   epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-o-catálogo-semeado-vira-os-194-produtos-do-dummyjson-com-foto: backlog
+  8-2-os-três-roteiros-ensaiados-de-novo-sobre-o-catálogo-novo: backlog
+  epic-8-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-reconciliar-o-status-para-em_separacao-e"
     epic: 1

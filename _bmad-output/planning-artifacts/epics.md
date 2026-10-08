@@ -367,6 +367,18 @@ pessoas diferentes.
 > A contra-métrica **SM-C1** é um portão, não uma estória: nenhuma funcionalidade nova entra enquanto os
 > três roteiros não passarem.
 
+### Épica 8: Catálogo com fotos — pós-MVP
+
+A Vitrine deixa a cara de protótipo: o Catálogo Semeado passa a ser os 194 Produtos do DummyJSON,
+traduzidos, sem marca, com foto de loja embutida no binário. Os três roteiros são ensaiados de novo
+sobre ele.
+
+**FRs cobertos:** nenhum novo — FR-6, FR-11, FR-12 e NFR-15 continuam valendo sobre o catálogo novo
+**Métricas:** SM-1, SM-4, SM-C3 · **AD:** AD-10, AD-12, AD-16 · **Passo:** pós-MVP
+
+> Origem: `sprint-change-proposal-2026-10-08.md`. A SM-C1 continua sendo portão: a Épica 8 só fecha
+> com os três roteiros passando sobre o catálogo novo.
+
 ### Requisitos transversais — cobram de toda épica
 
 Sete NFRs e cinco UX-DRs não pertencem a nenhuma épica sozinha e viram AC em **todas** onde se aplicam.
@@ -1832,3 +1844,91 @@ addendum é mantido vivo desde a estória 1.2, e cada decisão volta para ele na
 **Dado** a contra-métrica SM-C1,
 **Quando** o escopo é revisto,
 **Então** **nenhuma funcionalidade nova entra enquanto os três roteiros não passarem** — mais telas com o ciclo quebrado vale menos que o ciclo fechado.
+
+## Épica 8: Catálogo com fotos — pós-MVP
+
+A banca vê uma Vitrine com foto de loja, e não placeholder. O catálogo é importado uma vez, traduzido
+e versionado; em tempo de execução nada vem da rede (AD-12).
+
+**FRs:** nenhum novo · **Métricas:** SM-1, SM-4, SM-C3 · **AD:** AD-10, AD-12, AD-16
+
+### Estória 8.1: O Catálogo Semeado vira os 194 Produtos do DummyJSON, com foto
+
+**Como** Comprador na demonstração,
+**quero** ver Produtos com foto de loja,
+**para que** a Vitrine não pareça um protótipo.
+
+**Condições de Aceite:**
+
+**Dado** o DummyJSON baixado uma vez para fora do repositório,
+**Quando** `go run media/gerar.go` roda,
+**Então** `db/semente/001_catalogo_semeado.sql` tem **194 Produtos, 8 Categorias e 5 Vendedores**,
+na tabela da §3.2 da proposta,
+**E** a lista mora em `media/gerar.go`, com nome, descrição e Categoria em PT-BR, sem marca no nome, e
+o id do DummyJSON de cada Produto num campo `origem`,
+**E** o gerador falha se dois Produtos tiverem o mesmo nome ou o mesmo apelido de arquivo, ou se a
+imagem de um Produto não existir em `media/`,
+**E** o gerador não desenha imagem nem acessa a rede.
+
+**Dado** a regra de preço,
+**Quando** os preços são escritos,
+**Então** `reais = max(1, round(USD × 5,50))` com centavos `,00`, exceto um Produto em `,90` e um em
+`,95`, os dois abaixo de R$ 250,
+**E** os três uuids de papel dos testes (`produtoSemeado`, `produtoParaEsgotar`, `produtoAprovado`)
+apontam para Produtos com os centavos e a faixa de preço do papel (§3.3 da proposta).
+
+**Dado** as imagens,
+**Quando** o binário é construído,
+**Então** `media/` tem uma WebP por Produto (`images[0]`, 1000 px, como veio) e nenhum SVG,
+**E** `media/embutido.go` embute `*.webp`, e `GET /api/v1/media/{arquivo}` responde `image/webp`,
+**E** `media/CREDITOS.md` credita o DummyJSON com o aviso MIT e diz que a origem das fotos não é
+declarada,
+**E** nenhum arquivo versionado contém `//cdn.` (AD-12).
+
+**Dado** a medição do NFR-4,
+**Quando** `AZAMON_SEMENTE_GRANDE=true`,
+**Então** `db/semente-grande` deriva 194 × 13 linhas × 2 séries = **5.044** Produtos, total de 5.238, e
+`db/medicao_nfr4_test.go` confere esse total e o p95 ≤ 500 ms.
+
+**Dado** a suíte,
+**Quando** `go test ./...` roda,
+**Então** passa, inclusive `api/media_test.go` (RIFF/WEBP no lugar de `<svg`) e
+`api/vendedor_test.go` (Sertão Empório).
+
+**Dado** a tela,
+**Quando** a Vitrine, a Página de Produto, a Faixa de Categorias com 8 itens e o seletor de imagem do
+Administrador são abertos de 360 a 1440 px,
+**Então** nenhuma foto quebra, a foto 1:1 cabe no quadro 4/3 sem rolagem horizontal (NFR-10), e
+nenhum verde nem laranja entra como enfeite (UX-DR7).
+
+**Dado** a documentação,
+**Quando** a estória fecha,
+**Então** o README troca os 50 SVG pelas fotos, refaz a tabela das três faixas com os Produtos novos
+(uuid e total) e diz que um banco já semeado precisa de `docker compose down -v`,
+**E** o addendum §10 ganha a entrada da 8.1 com memlog, sem apagar as entradas da 1.3, da 1.4 e da D1,
+**E** a frase do AD-10 sobre SVG é emendada no lugar, com memlog da arquitetura.
+
+### Estória 8.2: Os três roteiros ensaiados de novo sobre o catálogo novo
+
+**Como** time que vai apresentar,
+**quero** os três roteiros ensaiados de novo a partir de clone limpo com o catálogo novo,
+**para que** nada seja demonstrado ao vivo pela primeira vez (SM-1).
+
+**Condições de Aceite:**
+
+**Dado** a 8.1 em `main`,
+**Quando** os três roteiros do §12 são executados a partir de clone limpo, com o Roteiro A de rede
+desconectada (NFR-15),
+**Então** os três passam de ponta a ponta, sem intervenção manual no banco e sem erro visível,
+**E** o Roteiro B mostra a recusa com o Produto de `,90` e a expiração com o de `,95`,
+**E** a busca sem acento mostra um Produto com acento no nome.
+
+**Dado** o registro,
+**Quando** o ensaio fecha,
+**Então** `roteiro-da-apresentacao.md` traz os Produtos, preços e totais novos,
+**E** `ensaio-dos-roteiros.md` ganha uma seção datada no fim, e o ensaio de 2026-09-28 fica intacto,
+**E** `HANDOFF.md` aponta o catálogo novo.
+
+**Dado** o checkpoint humano,
+**Quando** a estória é revisada,
+**Então** ela só fecha com o ensaio feito por uma pessoa.
