@@ -290,3 +290,253 @@ apresentação — ninguém responde por parte que não construiu sem antes ler 
 8. **O deck projetado.** O `deck-banca.html` foi emendado nesta estória nos dois pontos em que
    mentia (a porta do pagamento e o schema `pedido`). Se você abrir uma cópia antiga, ela mostra
    `ProvedorDePagamento`, nome que o código não tem.
+
+---
+
+## Ensaio de 2026-10-08 — catálogo da 8.1
+
+O mesmo ensaio, repetido na Estória 8.2 sobre o catálogo que a 8.1 trouxe: 194 Produtos com foto,
+8 Categorias, e três Produtos novos no papel de cada desfecho de pagamento. As seções acima, de
+2026-09-28, ficam como estão: são o registro do catálogo anterior. Esta seção tem contagem,
+ambiente, tabelas e Registro próprios, e nada daqui reescreve o que está acima.
+
+Os dados de demonstração vêm do README §2 e de `media/gerar.go`. O desfecho continua vindo dos
+centavos do **total** (`,00`–`,89` aprova, `,90`–`,94` recusa, `,95`–`,99` expira), com Frete
+inteiro: R$ 15,00 no Sudeste e R$ 20,00 no Sul, grátis a partir de R$ 299,00 de Subtotal.
+
+| Papel | Produto | uuid | Preço | Total com Frete de SP |
+|---|---|---|---|---|
+| aprova e esgota (Roteiro A, Roteiro C 2–4) | Mixer de Mão | `7446cd4e-bfa7-5bbe-8929-c987cc39a1d5` | R$ 192,00 | **R$ 207,00** |
+| recusa (Roteiro B 1–4) | Carregador de Celular com Cabo | `71ea1e58-91d9-5022-ba93-6a2518f42eed` | R$ 110,90 | **R$ 125,90** |
+| expira (Roteiro B 5) | Bola de Futebol | `0faf8e31-3b0c-5a47-8c00-34d462d42aa6` | R$ 99,95 | **R$ 114,95** |
+
+### Contagem (2026-10-08)
+
+| Veredito | Quantos | Quais |
+|---|---|---|
+| **aprovado** | **19** | Roteiro A 1–9, Roteiro B 1–5, Roteiro C 1–5 |
+| **reprovado** | **0** | — |
+| **não ensaiado** | **0** | — |
+| **Total dos três roteiros** | **19** | |
+| *(dos 19 acima)* aprovado **só na segunda tentativa** | 1 | **Roteiro B passo 3.** No primeiro Pedido do Carregador (**AZ-2026-000002**), a leitura do Estoque durante a Reserva não foi tomada a tempo: a recusa chegou 7 s depois do Confirmar. O passo foi refeito com um segundo Pedido do Carregador (**AZ-2026-000003**), e aí a leitura saiu durante e depois. Os passos 1, 2 e 4 ficaram com o primeiro Pedido |
+| *(dos 19 acima)* aprovado **com perfil por papel** | 4 | **Roteiro C passos 1 a 4.** Comprador e Administrador em perfis de navegador separados, como a spec da 8.2 manda por causa do defeito 1 da 7.4. Esse defeito continua aberto em `deferred-work.md`: o roteiro só funciona como está escrito com esse preparo |
+
+Como na contagem de 2026-09-28, as duas últimas linhas são ressalvas sobre **como** os passos
+passaram. Elas não somam nem subtraem nada dos 19.
+
+**Nenhum erro visível.** Nenhuma notificação com identificador de correlação apareceu, em passo
+nenhum. As recusas que apareceram são de regra de domínio, e cada uma era o desfecho esperado do
+passo: pagamento recusado, expiração, cancelamento depois do envio e Estoque insuficiente. Houve
+também uma validação de formulário ("Informe o nome de quem recebe."), quando o primeiro clique
+em "Salvar Endereço" saiu com o `Dialog` ainda vazio.
+
+**Fotos.** Nenhuma foto quebrada nas telas lidas. Na Vitrine, as 20 imagens da página 1 estavam
+carregadas e nenhuma tinha largura natural zero. A Página de Produto e o Carrinho mostraram a foto
+do Produto. O seletor de imagem do painel lista **195 opções** ("Sem imagem" e as 194 fotos) e
+pré-visualiza a escolhida. O Produto criado sem imagem no Roteiro C passo 5 aparece com o bloco
+neutro e o nome do Produto.
+
+### O ambiente deste ensaio (2026-10-08)
+
+A pilha de trabalho do repositório foi parada às 22:46:56 com `docker compose stop`, sem `-v`. O
+clone limpo de `main`, vindo da origin, ficou em `C:\dev\ensaio82`:
+
+```bash
+git clone -q -c core.longpaths=true https://github.com/Cashnip/amazon-waddle ensaio82   # 6 s
+cd ensaio82 && docker compose up --build -d                                            # 35 s
+```
+
+`HEAD` do clone: `04d800f`, o `baseline_commit` da spec. Às 22:47:49, `docker compose images`
+mostrou `ensaio82-azamon` criada **há 24 s** e `ensaio82-web` **há 25 s**, e não horas. `azamon`,
+`postgres` e `redis` estavam `healthy`. O `web`, que não tem healthcheck, respondeu 200 na porta
+3000, e `GET /api/v1/saude` devolveu `{"status":"ok"}`. Os 35 s são de cache morno e não medem o
+NFR-1; essa medida é o Registro de subidas do README.
+
+**`go test ./...` no clone, nativo nesta máquina, às 22:47:56: tudo `ok`, nenhum `FAIL`.** Em
+seguida rodou o teste da NFR-7, `go test ./api -run TestSessaoEProduto -v`, que terminou às
+22:48:51. Ele correu em paralelo aos passos 1 e 2 do Roteiro A, que começou às 22:48:09, e
+terminou bem antes do passo 5 do Roteiro C (23:07), que é a porta que depende dele:
+
+```
+--- PASS: TestSessaoEProduto (11.47s)
+    --- PASS: TestSessaoEProduto/a_consistência_de_Estoque_sob_concorrência (1.24s)
+        --- PASS: …/a_última_unidade:_oito_checkouts,_um_Pedido (0.26s)
+        --- PASS: …/três_unidades:_doze_checkouts,_três_Pedidos (0.43s)
+        --- PASS: …/a_trava_do_Produto_serializa_duas_Reservas_da_última_unidade (0.51s)
+ok  github.com/Cashnip/amazon-waddle/api  12.310s
+```
+
+**O passo 5 do Roteiro C ficou liberado no clone.**
+
+**Como o navegador foi conduzido.** Chrome 155 com três perfis separados, cada um com o seu
+`--user-data-dir`:
+
+- **A**: o Comprador `ensaio82@azamon.test`, com uma segunda janela para ler o Estoque;
+- **C**: o Administrador `admin@azamon.test`;
+- **D**: o segundo Comprador `ensaio82b@azamon.test`, usado só no passo 5 do Roteiro C.
+
+Quem conduziu foi o agente, pelo Chrome DevTools Protocol, com um script de rascunho fora do
+repositório. Os cliques são eventos de mouse reais no centro do elemento, e o texto entra como
+digitação. A evidência é o texto que a página mostrava, lido com o horário do relógio da máquina,
+mais as capturas de tela tiradas no caminho. A extensão Claude in Chrome não estava conectada.
+Isso **não é** uma pessoa conduzindo: é o ensaio técnico do Registro abaixo.
+
+Dois tropeços eram da condução e não do sistema, e ficam registrados para quem repetir pelo
+mesmo caminho:
+
+- **Janela em segundo plano é estrangulada pelo Chrome.** Numa aba de fundo, os cliques não
+  andavam e a página demorava a terminar de carregar. Às 22:54, o primeiro "Fechar o Pedido" do
+  Roteiro B ficou sem efeito até a aba vir para a frente. A "outra aba" do Estoque passou então
+  a ser **outra janela** do mesmo perfil.
+- **Os perfis A e D foram reabertos às 23:04**, entre os passos 1 e 2 do Roteiro C, com
+  `--disable-backgrounding-occluded-windows`, porque o Windows dava a janela coberta por
+  "escondida". Foi o navegador que reiniciou, não o sistema: o banco, os contêineres e o `.env`
+  não foram tocados, e a Sessão do Comprador voltou intacta, com "Olá, Ensaio 8.2" e os 4
+  Pedidos em Meus pedidos.
+
+**Nenhum reinício do sistema entre roteiros.** Não houve `down -v` nem `psql`, e nada foi
+reconfigurado. A, B e C correram sobre o mesmo banco, das 22:48:09 às 23:08:16, e cada desfecho
+de pagamento veio da escolha de Produto e quantidade.
+
+**Desmontagem.** Às 23:08:31, no clone: `docker compose down -v` removeu os contêineres, a rede
+`ensaio82_default` e o volume `ensaio82_azamon-postgres`. Depois vieram o `docker rmi` de
+`ensaio82-azamon:latest` e `ensaio82-web:latest`, a remoção de `C:\dev\ensaio82` e o fechamento
+dos três Chrome e dos seus perfis. `docker ps -a`, `docker volume ls`, `docker images` e
+`docker network ls` não mostram mais nada `ensaio82`. A pilha de trabalho voltou com
+`docker compose start` às 23:09, com `azamon`, `postgres` e `redis` `healthy` e `saude` `ok`.
+
+### A rede durante o Roteiro A (NFR-15, a metade online)
+
+O perfil A teve um registro de rede ligado na aba do Comprador antes da primeira tela. Ele anotou
+toda requisição que a página fez, de documento, script, folha de estilo, fonte, imagem ou
+`fetch`, com o host.
+
+| Janela | Requisições | Hosts | Por tipo |
+|---|---|---|---|
+| Roteiro A inteiro, 22:48:09 → 22:53:00 | **286** | **só `http://localhost:3000`** | 107 script, 105 `fetch`, **50 imagem**, 8 fonte, 8 folha de estilo, 7 documento, 1 outra |
+| Roteiro C, passos 2 a 5, aba do Comprador depois de reaberta (23:04 → 23:08) | 289 | só `http://localhost:3000` | — |
+
+De 22:53 a 23:04 (o Roteiro B inteiro e o passo 1 do Roteiro C) o tráfego não foi registrado, e os
+perfis do Administrador (C) e do segundo Comprador (D) não tiveram registro nenhum.
+
+As 50 imagens são as fotos dos Produtos, servidas por `/api/v1/media/*.webp` através do Next. As
+fontes são as da marca, hospedadas pelo próprio `web`. **Nenhuma requisição saiu de
+`localhost`**, nem de foto, nem de fonte, nem de script.
+
+Esse registro vê o que **a página** pede. Ele não vê o tráfego do próprio Chrome nem as chamadas
+do Next ao Go, que acontecem dentro da rede do compose. Por isso ele prova que a demonstração não
+depende de host externo, mas **não é o Roteiro A com a rede desligada**. Essa metade fica para a
+pessoa no checkpoint: desligar a rede da máquina à mão, não pelo compose, e anotar o resultado na
+linha dela do Registro abaixo. **Esta seção não declara o NFR-15 cumprido.** A entrada do
+`deferred-work.md` que pede esse ensaio continua aberta.
+
+### Roteiro A — o caminho feliz (2026-10-08)
+
+Dado de demonstração: **Mixer de Mão**, R$ 192,00, **1 unidade**, CEP `01310-100` (SP) → Frete
+R$ 15,00 → **total R$ 207,00**, centavos `,00`: **aprova**.
+
+| # | FR | Dado da demonstração | O que tem de aparecer | Evidência desta execução | Veredito |
+|---|---|---|---|---|---|
+| 1 | NFR-1 | `docker compose up --build`, sem argumento a mais | os quatro serviços no ar e a Vitrine com o Catálogo Semeado, com as fotos | 22:47:49: os quatro no ar, três `healthy`, e `saude` `{"status":"ok"}`. 22:48:35: Vitrine com "1–20 de 194 resultados", **8 Categorias** na faixa e no filtro (Beleza e Perfumaria, Casa e Cozinha, Eletrônicos, Esporte e Lazer, Mercado, Moda, Relógios e Joias, Veículos) e 20 fotos de 1000 px carregadas | **aprovado** |
+| 2 | FR-1, FR-2 | conta nova `ensaio82@azamon.test` | cadastro aceito e Sessão de Comprador | 22:48:49: `/cadastrar` aceitou. 22:48:51: Vitrine com "Olá, Ensaio 8.2" e o Carrinho em 0. O cadastro já abriu a Sessão | **aprovado** |
+| 3 | FR-12, FR-13, FR-14 | termo `mao`, sem acento; faixa de R$ 10 a R$ 500; "Preço: menor primeiro" | Produtos com "Mão" apesar do acento faltando, a faixa aplicada e a ordem trocando | 22:48:56: `?termo=mao` dá "1–6 de 6 resultados para 'mao'": Bolsa de Mão Azul, Bolsa de Mão Preta, Sabonete Líquido para Mãos, **Mixer de Mão**, Porta-Temperos e Limão Siciliano. A busca lê nome e descrição: o Porta-Temperos casa pela descrição ("sempre à mão"). 22:49:07: fichas "A partir de R$ 10,00" e "Até R$ 500,00", com "1–5 de 5" (o Limão, de R$ 4,00, saiu). 22:49:18: em "Preço: menor primeiro", a ordem fica Sabonete R$ 49,00, Porta-Temperos R$ 110,00, Mixer R$ 192,00, Bolsa Azul R$ 275,00, Bolsa Preta R$ 330,00 | **aprovado** |
+| 4 | FR-7 | a Página de Produto do Mixer | o Vendedor na página, que é onde se explica a espinha de marketplace | 22:49:24: `/produtos/7446cd4e-…` com breadcrumb "Vitrine › Casa e Cozinha", **"Vendido por Casa Boa Utilidades"**, R$ 192,00, "Em estoque", a foto do mixer e a Caixa de compra | **aprovado** |
+| 5 | FR-17, FR-18 | adicionar **2 unidades**, ajustar para **1** no Carrinho | o Carrinho somando, e o Subtotal seguindo o ajuste | 22:49:36: "Adicionado ao Carrinho." e contador **2**. 22:49:41: Carrinho com "R$ 192,00 cada", linha de R$ 384,00 e "Subtotal: R$ 384,00". 22:50:01: com 1 unidade, contador **1**, "Subtotal: R$ 192,00" e "Faltam R$ 107,00 para o Frete grátis." | **aprovado** |
+| 6 | FR-20, FR-21, FR-22 | Endereço de SP `01310-100`, depois Curitiba `80010-000` (Sul), depois SP de novo | Endereço → Revisão, e o **Frete recalculado** ao trocar de região | 22:50:18: Endereço de SP salvo. 22:50:24: Revisão com Subtotal R$ 192,00 · **Frete (Sudeste) R$ 15,00** · Total **R$ 207,00**. Em "Trocar o Endereço", o Endereço de Curitiba/PR foi cadastrado pelo `Dialog` e ficou marcado (22:50:52). 22:51:00: **Frete (Sul) R$ 20,00** · Total **R$ 212,00**. 22:51:06: de volta ao de SP, **R$ 15,00** · **R$ 207,00** | **aprovado** |
+| 7 | FR-23, FR-25, FR-26 | "Confirmar Pedido" com o total em R$ 207,00 | o Pedido virar `PAGO` **sem recarregar** | 22:51:13: `/pedidos/01a11e5b-…`, **AZ-2026-000001**, "Aguardando pagamento", "Tempo restante para o pagamento: 0:58", Carrinho zerado. Sem recarregar, a tela mostrou "Status: **Pago**" às 22:51:22. No histórico: `Aguardando pagamento` 22:51:13 → `Pago` **22:51:19**, ou seja, **6 s** | **aprovado** |
+| 8 | FR-29, FR-30 | "Meus pedidos" e o Detalhe | o **preço praticado** e a **linha do tempo** | 22:51:26: `/pedidos` com "AZ-2026-000001 · 08/10/2026 · Pago · R$ 207,00 · Página 1 de 1 · 1 Pedido". 22:51:31: Detalhe com "Mixer de Mão — **1 × R$ 192,00**" e o Histórico de cada transição, com o "antes:" | **aprovado** |
+| 9 | FR-33 | nada: a varredura é que move | `ENTREGUE` sozinho durante o resto | Na mesma tela, sem recarregar: `Separando` **22:51:50**, `Enviado` **22:52:21** e `Entregue` **22:52:52**, 30 s por etapa. São **1 min 39 s** do Confirmar ao `ENTREGUE`. Ao fim, a tela diz "Este Pedido já foi entregue e não pode mais ser cancelado." | **aprovado** |
+
+### Roteiro B — o caminho triste (2026-10-08)
+
+Dado dos passos 1–4: **Carregador de Celular com Cabo**, R$ 110,90, 1 unidade, Endereço de SP →
+total **R$ 125,90**, centavos `,90`: **recusa** na primeira Tentativa. Passo 5: **Bola de
+Futebol**, R$ 99,95 → total **R$ 114,95**, centavos `,95`: a confirmação **nunca chega**. Entre o
+Roteiro A e o B, só o Produto mudou.
+
+**Ordem real: 1, 2, 4, 3, 5.** A primeira leitura do passo 3 se perdeu (ver Contagem), e o passo 4
+seguiu no mesmo Pedido, o AZ-2026-000002, às 22:56:32. A segunda tentativa do passo 3 precisava de
+um Pedido novo do Carregador, e por isso veio depois, às 22:57:14.
+
+| # | FR | Dado da demonstração | O que tem de aparecer | Evidência desta execução | Veredito |
+|---|---|---|---|---|---|
+| 1 | FR-25 | Carregador, total R$ 125,90 | o mesmo checkout, com o total na faixa de recusa | 22:54:25: Carrinho com "Subtotal: R$ 110,90" e "Faltam R$ 188,10 para o Frete grátis.". 22:55:51: Revisão com **Frete (Sudeste) R$ 15,00** e **Total R$ 125,90**. 22:55:54: Confirmar → **AZ-2026-000002** | **aprovado** |
+| 2 | FR-27 | — | `PAGAMENTO_RECUSADO` **com o motivo** | 22:56:03, sem recarregar: "Status: **Pagamento recusado**", **"O Provedor de Pagamento recusou a Tentativa de Pagamento."**, "Restam 2 Tentativas de Pagamento para este Pedido." e "Os Itens de Pedido continuam no próprio Pedido.". No histórico: `Aguardando pagamento` 22:55:53 → `Pagamento recusado` **22:56:00** (7 s), com o motivo na linha | **aprovado** |
+| 3 | FR-11, FR-27 | a Página de Produto do Carregador **em outra janela** | o Estoque **voltou** | **Segunda tentativa** (ver Contagem). A Reserva do AZ-2026-000002, que estava pago e ainda não enviado, segurava 1 unidade, e a outra janela dizia "Restam **9** unidades" às 22:57:14. O segundo Pedido, **AZ-2026-000003** (Confirmar 22:57:46, também R$ 125,90), fez a outra janela, recarregada, mostrar "Restam **8** unidades": é a Reserva dele. Ele foi recusado às 22:57:52, com o mesmo motivo, e a janela recarregada às 22:58:17 voltou a "Restam **9** unidades". O 8 só existe enquanto a Reserva dos dois está ativa, e o **8 → 9** é a Reserva liberada. Desta vez a contagem é exata, porque abaixo de 10 a Caixa de compra diz o número (`caixa-de-compra.tsx:116`) | **aprovado** (segunda tentativa) |
+| 4 | FR-27 | "Tentar pagar de novo" no AZ-2026-000002 | o Pedido seguindo adiante, porque da segunda Tentativa em diante o Simulado aprova | 22:56:32: nova Tentativa, com volta a "Aguardando pagamento" (22:56:31 no histórico) e "Status: **Pago**" (**22:56:37**, 6 s). O histórico guarda as quatro linhas, a recusa incluída | **aprovado** |
+| 5 | FR-34 | Bola, total R$ 114,95, expiração em 60 s | sair **sozinho** de `AGUARDANDO_PAGAMENTO` por tempo esgotado, e o Estoque voltando | 22:58:35: a outra janela mostra a Bola "Em estoque". 22:58:45: Revisão com **Total R$ 114,95**. 22:58:47: Confirmar → **AZ-2026-000004**, "0:59". 22:58:51: outra janela com "Restam **9** unidades". O relógio desceu (0:50 às 22:58:57, 0:27 às 22:59:20, 0:05 às 22:59:43) e nenhuma confirmação chegou. 22:59:51, sem recarregar: "Status: Pagamento recusado" e **"Tempo de pagamento expirado."**. No histórico: `Aguardando pagamento` **22:58:47** → `Pagamento recusado` **22:59:47**, os **60 s** exatos. 22:59:53: outra janela de novo em "Em estoque" | **aprovado** |
+
+### Roteiro C — operação e reversão (2026-10-08)
+
+Dado de demonstração: `admin@azamon.test` em **`/admin/entrar`**, no perfil C; um Vendedor novo,
+"Ensaio 8.2 Distribuidora", e um Produto novo, "Luminária de Mesa Ensaio" de R$ 129,00. Os passos
+2 a 4 usam Pedidos `PAGO` **novos** do Mixer, de R$ 207,00, pelo mesmo motivo do desvio declarado
+em 2026-09-28: o Pedido do Roteiro A já estava em `ENTREGUE`. São o **AZ-2026-000005** nos passos
+2 e 3, o **000006** no 4a e o **000007** no 4b. Desta vez o painel estava aberto **antes** de cada
+Confirmar, e nenhuma janela de 30 s se perdeu.
+
+Os horários de histórico e de "Última atualização" são do **servidor**. Os demais são do relógio
+da máquina no momento da leitura da tela, sempre iguais ou posteriores aos do servidor.
+
+| # | FR | Dado da demonstração | O que tem de aparecer | Evidência desta execução | Veredito |
+|---|---|---|---|---|---|
+| 1 | FR-8, FR-9 | `admin@azamon.test` / `azamon-admin` em `/admin/entrar`; Vendedor e Produto novos | o Produto novo **na Vitrine** | 23:00:33: entrou e caiu em `/admin/vendedores` com os 5 Vendedores da semente, entre eles **Sertão Empório**. 23:00:46: "Ensaio 8.2 Distribuidora" **Ativo**. Às 23:01:11 o Produto "Luminária de Mesa Ensaio" estava preenchido: R$ 129,00, Estoque 3, Casa e Cozinha e a imagem `abajur-de-mesa.webp` escolhida no seletor, que pré-visualizou a foto. Foi salvo às 23:01:19; a tabela do painel, paginada, não o mostra na página 1. 23:01:33: na Vitrine do Comprador, a busca `luminaria` dá "1–1 de 1 resultado", com **Luminária de Mesa Ensaio R$ 129,00 · Em estoque** e a foto | **aprovado** (perfil por papel) |
+| 2 | FR-32 | o Pedido `PAGO` **AZ-2026-000005**, pelo painel | `PAGO` → `SEPARANDO` **pelo painel** | Pelo servidor: Confirmar 23:04:58 e `Pago` **23:05:05**. Pela tela do Comprador, "Pago" às 23:05:08. Em `/admin/pedidos`, a linha "AZ-2026-000005 · Pago · R$ 207,00" oferecia **"Iniciar a separação"**. O `Dialog` perguntou "Mudar o Pedido AZ-2026-000005 para Separando? O Pedido não volta ao Status anterior." e foi confirmado às 23:05:13. Às 23:05:14 o painel respondeu "**Pedido AZ-2026-000005: Separando.**", com a linha passando a "Registrar o envio". A transição gravada é `Separando` **23:05:13**, 8 s depois do `Pago`: veio do painel, e não da varredura, que só move depois de 30 s | **aprovado** (perfil por papel) |
+| 3 | FR-31 | o mesmo Pedido, agora **como Comprador** | cancelamento pelo Comprador, e o Estoque voltando | Mixer na outra janela: "Restam **9** unidades" antes do Pedido (23:04:51) e "Restam **8** unidades" **durante a Reserva**, com o Pedido em `Separando` (23:05:17). 23:05:24, na tela do Pedido: "Status: Separando" → "Cancelar Pedido" → `Dialog` "Cancelar o Pedido AZ-2026-000005? Depois de cancelado, o Pedido não volta a andar." → "Status: **Cancelado**". No histórico: `Separando` 23:05:13 → `Cancelado` **23:05:25**. 23:05:30: outra janela em "Restam **9** unidades". A leitura durante a Reserva foi tomada desta vez: **9 → 8 → 9** | **aprovado** (perfil por papel) |
+| 4 | FR-31 | um Pedido em `ENVIADO` (**AZ-2026-000006**); e a corrida, com o **AZ-2026-000007** | a **recusa** do cancelamento | *(a)* `Pago` 23:05:54. O painel levou o Pedido a `Separando` às 23:06:02 ("Pedido AZ-2026-000006: Separando.") e a `Enviado` às 23:06:05 ("Pedido AZ-2026-000006: Enviado."). Às 23:06:09, a tela do Comprador dizia "Status: Enviado · **Este Pedido já saiu para entrega e não pode mais ser cancelado.**", **sem** botão de cancelar. *(b)* Recusa **do servidor**: com o 000007 em `Separando` desde 23:06:39, o Comprador abriu o `Dialog` de cancelamento às 23:06:44. O Administrador registrou o envio às 23:06:45, e o Comprador confirmou às 23:06:48. A tela respondeu **"Este Pedido foi enviado enquanto você estava nesta tela e não pode mais ser cancelado."**, com o `Dialog` fechado e o Status em `Enviado`. No histórico, nenhum `Cancelado` | **aprovado** (perfil por papel) |
+| 5 | NFR-7 | Produto novo "Caneca Única do Ensaio", R$ 99,00, **Estoque total 1**, sem imagem; dois Compradores, cada um com total de R$ 114,00 | dois checkouts na última unidade, **um Pedido só** | **Condição satisfeita**: teste verde no clone às 22:48:51 (ver o ambiente). 23:07:10: Produto salvo. Às 23:07:35 e às 23:07:41, a Página de Produto em cada perfil dizia "**Resta 1 unidade**", com o bloco neutro no lugar da imagem. Os dois Compradores, `ensaio82@` no perfil A e `ensaio82b@` no perfil D, chegaram à Revisão com Total R$ 114,00. 23:08:05: os dois "Confirmar Pedido" foram disparados juntos. O perfil D nasceu **AZ-2026-000008**, em "Aguardando pagamento" (23:08:04 no servidor). O perfil A **continuou na Revisão**, com **"Estoque insuficiente para este Produto."** e "Voltar ao Carrinho". 23:08:16: o painel lista **8 Pedidos**, e só um é da Caneca. **Um Pedido, não dois** | **aprovado** |
+
+Com os oito números, a sequência fecha:
+
+- 000001: Roteiro A;
+- 000002: Roteiro B, passos 1, 2 e 4;
+- 000003: Roteiro B, passo 3, na segunda tentativa;
+- 000004: Roteiro B, passo 5;
+- 000005: Roteiro C, passos 2 e 3;
+- 000006: Roteiro C, passo 4a;
+- 000007: Roteiro C, passo 4b;
+- 000008: Roteiro C, passo 5.
+
+Nenhum Pedido foi descartado.
+
+### O que este ensaio não cobriu (2026-10-08)
+
+- **O Roteiro A com a rede desligada.** Fica com a pessoa no checkpoint, como dito acima; a seção
+  só mostra que a página não pede nada fora de `localhost`.
+- **A condução por uma pessoa.** O navegador foi dirigido por script, então o ensaio não mede o
+  tempo de quem apresenta. Os 20 minutos do primeiro passo ao último **não** são estimativa do
+  tempo ao vivo.
+- **As armadilhas de quantidade.** Duas Bolas somam R$ 199,90, e o total de R$ 214,90 cai na
+  recusa e não na expiração. Isso é aritmética das faixas, conferida contra o README §2, e não
+  foi clicado.
+- **O que a lista de 2026-09-28 já deixava de fora:** os passeios pelo teclado, o `Alert` de
+  preço (D7), `AZAMON_ENTREGA_SIMULACAO_ATIVA=false` e as quatro larguras. Este ensaio correu numa
+  janela de 1084 a 1440 px de largura útil.
+- **O caminho do `roteiro-da-apresentacao.md` não é o ensaiado.** Lá o Pedido do caminho feliz
+  se confirma com Frete Sul (R$ 212,00) e o cancelamento é o do Pedido do Carregador já `PAGO`.
+  Aqui o Roteiro A confirmou com o Endereço de SP (R$ 207,00), e o cancelamento do Roteiro C
+  passo 3 foi de um Pedido do Mixer em `SEPARANDO`.
+
+Nenhum desses é passo dos três roteiros, e a contagem dos 19 continua íntegra.
+
+### Defeitos (2026-10-08)
+
+**Nenhum defeito novo de comportamento.** Nenhuma entrada nova em `deferred-work.md`, e nenhum
+arquivo de produção foi alterado. Os dois itens de 2026-09-28 continuam abertos e foram
+confirmados:
+
+- **o cookie de Sessão compartilhado.** Este ensaio não tentou os dois papéis num perfil só: usou
+  um perfil por papel, como a spec manda;
+- **a janela de ~30 s do Roteiro C.** Com o painel aberto antes do Confirmar, os passos 2 e 3
+  fecharam em 20 s, do `Pago` 23:05:05 ao `Cancelado` 23:05:25.
+
+### Registro de ensaios (2026-10-08)
+
+Mesmo formato do Registro de 2026-09-28, acima. Aquele Registro, com as duas linhas em aberto,
+continua valendo para o catálogo anterior. Este é o do catálogo da 8.1, e a 8.2 só fecha com a
+linha da pessoa preenchida, no checkpoint humano.
+
+| Data | Quem | Commit ensaiado | Máquina · Docker · navegador | Reinício entre roteiros | Resultado (A · B · C) | O que não bateu |
+|---|---|---|---|---|---|---|
+| 2026-10-08 | **agente** Claude Code, na estória 8.2. **Ensaio técnico, não conta como uma das duas pessoas** | `04d800f` | Windows 11 Pro · Docker Desktop 29.4.3 · Chrome 155 conduzido pelo DevTools Protocol, três perfis · clone em `C:\dev\ensaio82` | **nenhum do sistema**: os três roteiros correram sobre o mesmo banco, sem `down -v` e sem nada reconfigurado. Os perfis A e D do navegador foram reabertos às 23:04, entre os passos 1 e 2 do Roteiro C (ver o ambiente) | **9/9 · 5/5 · 5/5**: 19 de 19, nenhum erro visível. NFR-15: só a metade online (Roteiro A sem requisição fora de `localhost`) | o passo 3 do Roteiro B só passou na segunda tentativa; os passos 1 a 4 do Roteiro C dependem do perfil por papel (defeito 1 da 7.4); **o Roteiro A com a rede desligada não foi feito** e é da pessoa |
+| *em aberto* | **pessoa** (checkpoint humano da 8.2) | | | | | **inclui o Roteiro A com a rede da máquina desligada à mão (NFR-15)** |

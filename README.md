@@ -163,8 +163,10 @@ nasce do Carrinho, com Frete, Endereço e Reserva de Estoque.
    → `ENVIADO` → `ENTREGUE` de 30 em 30 s: **`ENTREGUE` 1 min 39 s** depois do Confirmar
    Pedido. Nenhum passo é manual: quem move o tempo é a varredura do serviço Go. Na tela,
    cada mudança aparece até um intervalo de consulta (3 s ou 10 s) depois desses tempos.
-   Os tempos desta seção foram medidos em 2026-09-25 sobre o catálogo anterior à 8.1, e a
-   8.2 os mede de novo.
+   Esses tempos são de 2026-09-25, sobre o catálogo anterior à 8.1. O ensaio da 8.2, de
+   2026-10-08, os viu na tela sobre o catálogo atual: `PAGO` 6 s depois do Confirmar Pedido,
+   `ENTREGUE` 1 min 39 s depois, a recusa em 7 s e a expiração em 60 s exatos
+   ([`ensaio-dos-roteiros.md`](_bmad-output/implementation-artifacts/ensaio-dos-roteiros.md#ensaio-de-2026-10-08--catálogo-da-81)).
 
 Os outros dois desfechos, medidos na mesma sessão e também pela API:
 

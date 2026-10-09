@@ -99,40 +99,40 @@ outro que expirou e um cancelamento que devolveu o Produto à prateleira. Esse �
 Os cinco caminhos correm no mesmo banco, em sequência, sem nada reconfigurado. O desfecho do
 pagamento vem dos centavos do total: `,00`–`,89` aprova, `,90`–`,94` recusa, `,95`–`,99` a
 confirmação nunca chega. O Frete é inteiro (Sudeste R$ 15,00, Sul R$ 20,00), então os centavos do
-total são os do Produto — **e a quantidade muda o total**: duas unidades do Andarilho recusam em
-vez de expirar.
+total são os do Produto — **e a quantidade muda o total**: duas Bolas de Futebol somam R$ 199,90,
+e o total de R$ 214,90 **recusa** em vez de expirar. Leve sempre **uma** unidade nos caminhos 2 e 3.
 
 | Caminho | Produto e total | O que aparece | Requisito |
 |---|---|---|---|
-| 1 · Caminho feliz | Caixa de Som Portátil Maré · R$ 209,00 (Frete Sul) | `PAGO` em ~7 s sem recarregar; depois `ENTREGUE` sozinho | FR-1 a FR-33 |
-| 2 · Pagamento recusado | Fone de Ouvido Bluetooth Aurora · R$ 264,90 | a recusa com o motivo; a nova Tentativa aprova | FR-27 |
-| 3 · Pagamento expirado | Anotações de um Andarilho · R$ 54,95 | sai sozinho em 60 s, e o Estoque volta | FR-34 |
-| 4 · Cancelamento | o Pedido da Aurora, já `PAGO` | `CANCELADO`, e a Reserva é liberada | FR-31 |
-| 5 · Cancelamento recusado | o Pedido da Maré, já `ENTREGUE` | "não pode mais ser cancelado" | FR-31 |
+| 1 · Caminho feliz | Mixer de Mão · R$ 212,00 (Frete Sul; R$ 207,00 com o de SP) | `PAGO` em ~6 s sem recarregar; depois `ENTREGUE` sozinho | FR-1 a FR-33 |
+| 2 · Pagamento recusado | Carregador de Celular com Cabo · R$ 125,90 | a recusa com o motivo; a nova Tentativa aprova | FR-27 |
+| 3 · Pagamento expirado | Bola de Futebol · R$ 114,95 | sai sozinho em 60 s, e o Estoque volta | FR-34 |
+| 4 · Cancelamento | o Pedido do Carregador, já `PAGO` | `CANCELADO`, e a Reserva é liberada | FR-31 |
+| 5 · Cancelamento recusado | o Pedido do Mixer, já `ENTREGUE` | "não pode mais ser cancelado" | FR-31 |
 
-**O truque é sobrepor as esperas.** O Pedido da Maré anda até `ENTREGUE` em ~1 min 40 s enquanto
-os outros caminhos acontecem; o do Andarilho expira em 60 s enquanto a Aurora recusa, paga e é
-cancelada. Todo Produto semeado tem Estoque 10, então a Reserva fica visível na Página de Produto:
+**O truque é sobrepor as esperas.** O Pedido do Mixer anda até `ENTREGUE` em ~1 min 40 s enquanto
+os outros caminhos acontecem; o da Bola expira em 60 s enquanto o Carregador recusa, paga e é
+cancelado. Todo Produto semeado tem Estoque 10, então a Reserva fica visível na Página de Produto:
 "Restam 9 unidades" durante, "Em estoque" depois.
 
 | Minuto | Perfil | O que fazer e dizer |
 |---|---|---|
 | 0:00 | A | Vitrine. "O Wi-Fi está desligado. Isto subiu de um `docker compose up`, com o Catálogo Semeado." |
 | 0:20 | A | Cadastrar conta nova. O cadastro já abre a Sessão. |
-| 0:45 | A | Buscar `mare`, sem acento: acha Maré e Marés. Faixa R$ 10–500; ordenar por menor preço. |
-| 1:20 | A | Página da Caixa de Som Maré: "Vendido por Atlântico Importados" — a espinha de marketplace. |
+| 0:45 | A | Buscar `mao`, sem acento: acha Mixer de Mão, as duas Bolsas de Mão, o Sabonete Líquido para Mãos, o Limão Siciliano e o Porta-Temperos, que casa pela descrição ("sempre à mão"): a busca lê nome e descrição (6 resultados). Faixa R$ 10–500: o Limão Siciliano, de R$ 4,00, sai (5). Ordenar por menor preço: o Mixer fica em 3º. |
+| 1:20 | A | Página do Mixer de Mão: "Vendido por Casa Boa Utilidades" — a espinha de marketplace. |
 | 1:40 | A | Adicionar 2 unidades, abrir o Carrinho, ajustar para 1: o Subtotal acompanha. |
-| 2:00 | A | Checkout: Endereço de SP → Revisão com Frete Sudeste R$ 15,00. Trocar para Curitiba: Frete Sul R$ 20,00, total R$ 209,00. "Confirmar Pedido" é o único botão laranja: o passo irreversível. |
-| 2:50 | A | "Aguardando pagamento" vira "Pago" em ~7 s, sem recarregar. "Vamos deixar este Pedido andar sozinho." |
-| 3:00 | B | Carrinho com o Andarilho → Revisão R$ 54,95 → Confirmar. "Esta confirmação nunca vai chegar." Recarregar a aba do Andarilho: "Restam 9 unidades". |
-| 3:20 | B | Adicionar a Aurora, checkout, Confirmar R$ 264,90 → "Pagamento recusado", com o motivo e as Tentativas restantes. |
+| 2:00 | A | Checkout: Endereço de SP → Revisão com Frete Sudeste R$ 15,00, total R$ 207,00. Trocar para Curitiba: Frete Sul R$ 20,00, total R$ 212,00. "Confirmar Pedido" é o único botão laranja: o passo irreversível. |
+| 2:50 | A | "Aguardando pagamento" vira "Pago" em ~6 s, sem recarregar. "Vamos deixar este Pedido andar sozinho." |
+| 3:00 | B | Carrinho com a Bola de Futebol → Revisão R$ 114,95 → Confirmar. "Esta confirmação nunca vai chegar." Recarregar a aba da Bola: "Restam 9 unidades". |
+| 3:20 | B | Adicionar o Carregador de Celular com Cabo, checkout, Confirmar R$ 125,90 → "Pagamento recusado", com o motivo e as Tentativas restantes. |
 | 4:00 | B | "Tentar pagar de novo" → "Pago". O histórico guarda a recusa. |
 | 4:20 | B | "Cancelar Pedido" → `Dialog` → "Cancelado". A Reserva foi liberada. |
-| 4:45 | B | Aba do Pedido do Andarilho: saiu sozinho, "Tempo de pagamento expirado". Recarregar a Página de Produto: "Em estoque" de novo. |
+| 4:45 | B | Aba do Pedido da Bola: saiu sozinho, "Tempo de pagamento expirado". Recarregar a Página de Produto: "Em estoque" de novo. |
 | 5:15 | C | **Opcional.** Painel do Administrador: os Pedidos por Status e as transições que são dele. |
-| 5:40 | A | O Pedido da Maré em `ENTREGUE`, a linha do tempo inteira, e "não pode mais ser cancelado". |
+| 5:40 | A | O Pedido do Mixer em `ENTREGUE`, a linha do tempo inteira, e "não pode mais ser cancelado". |
 
-**Se der errado.** O Pedido da Aurora já foi a `ENVIADO` antes do cancelamento? Mostre a recusa do
+**Se der errado.** O Pedido do Carregador já foi a `ENVIADO` antes do cancelamento? Mostre a recusa do
 cancelamento — também é caminho. Atrasou? Corte nesta ordem: o painel do Administrador, a troca de
 Endereço, o cadastro (use uma conta pronta). Travou? Troque para o vídeo de reserva no mesmo ponto.
 
@@ -158,8 +158,8 @@ dá para mostrá-la com dois perfis de Comprador — só com o teste do NFR-7 ve
 3. Desligar o Wi-Fi da máquina.
 4. Três perfis do Chrome, porque Comprador e Administrador dividem o cookie de Sessão:
    - **A** — vazio, aberto na Vitrine;
-   - **B** — Comprador preparado pela tela: conta criada, Endereço de SP salvo, Andarilho no
-     Carrinho; abas abertas na Página de Produto do Andarilho e da Aurora;
+   - **B** — Comprador preparado pela tela: conta criada, Endereço de SP salvo, Bola de Futebol
+     no Carrinho; abas abertas na Página de Produto da Bola e do Carregador;
    - **C** (opcional) — Administrador em `/admin/entrar` → `/admin/pedidos`.
 5. Zoom do navegador entre 125% e 150%, para o projetor.
 
