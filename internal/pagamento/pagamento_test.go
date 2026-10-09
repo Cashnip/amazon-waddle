@@ -16,7 +16,7 @@ func TestSimuladoDecidePelosCentavosDoTotal(t *testing.T) {
 		quer  string
 	}{
 		{100, Aprovado},    // ,00 — o piso da faixa aprovada
-		{24990, Recusado},  // ,90 — o Produto semeado de R$ 249,90 não atravessa
+		{24990, Recusado},  // ,90 — dentro da faixa que recusa
 		{123489, Aprovado}, // ,89 — o teto da faixa aprovada
 		{1090, Recusado},   // ,90 — o piso da recusa
 		{1094, Recusado},   // ,94 — o teto da recusa

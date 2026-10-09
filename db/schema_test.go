@@ -365,8 +365,8 @@ func TestSchemaESemente(t *testing.T) {
 			t.Fatalf("primeiro Semear = %v, %v; quero true, nil", aplicada, err)
 		}
 		antes := catalogo(t, ctx, conexao)
-		if len(antes) != 50 {
-			t.Errorf("%d Produtos semeados; o Catálogo Semeado tem exatamente 50", len(antes))
+		if len(antes) != 194 {
+			t.Errorf("%d Produtos semeados; o Catálogo Semeado tem exatamente 194", len(antes))
 		}
 		// O catálogo só é comparado consigo mesmo, então uma imagem_url
 		// apontando para arquivo que não existe passaria verde. A conferência é
@@ -387,7 +387,7 @@ func TestSchemaESemente(t *testing.T) {
 			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada = ''`, 0},
 			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada <> lower(busca_normalizada)`, 0},
 			{`SELECT count(*) FROM catalogo.produto WHERE busca_normalizada ~ '[^[:ascii:]]'`, 0},
-			{`SELECT count(*) FROM catalogo.categoria`, 5},
+			{`SELECT count(*) FROM catalogo.categoria`, 8},
 			{`SELECT count(*) FROM catalogo.vendedor`, 5},
 			{`SELECT count(*) FROM identidade.comprador`, 1},
 			{`SELECT count(*) FROM identidade.administrador`, 1},
@@ -398,6 +398,12 @@ func TestSchemaESemente(t *testing.T) {
 			// não precisasse mudar: sem teto, a Reserva não teria com o que
 			// comparar e nenhuma compra seria recusada.
 			{`SELECT count(*) FROM catalogo.produto WHERE estoque_total <= 0`, 0},
+			// O Provedor Simulado decide pelos centavos do total: todo preço é `,00`,
+			// menos o Produto que recusa (`,90`) e o que expira (`,95`).
+			{`SELECT count(*) FROM catalogo.produto WHERE preco_centavos % 100 <> 0`, 2},
+			{`SELECT count(*) FROM catalogo.produto WHERE nome = 'Bola de Futebol' AND preco_centavos % 100 = 95`, 1},
+			// Uma foto por Produto.
+			{`SELECT count(*) - count(DISTINCT imagem_url) FROM catalogo.produto`, 0},
 		} {
 			if n := inteiro(t, ctx, conexao, consulta.sql); n != consulta.n {
 				t.Errorf("%s = %d, quero %d", consulta.sql, n, consulta.n)

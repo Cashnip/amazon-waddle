@@ -19,12 +19,12 @@ import (
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
-// Teclado Mecânico Compacto Tucano, R$ 329,00: os centavos caem em `,00`, que
-// é a faixa aprovada do §7.1. O Produto de R$ 249,90 dos outros subtestes cai
+// Wok de Aço Carbono, R$ 165,00: os centavos caem em `,00`, que é a faixa
+// aprovada do §7.1. O Produto de R$ 110,90 dos outros subtestes cai
 // em `,90`, a faixa que recusa: a recusa é da 5.10, que a prova com Produtos
 // próprios em `nova_tentativa_test.go`, e os Pedidos dele aqui ficam
 // aguardando pagamento porque nenhum transporte destes subtestes a entrega.
-const produtoAprovado = "b489768a-4430-5081-b888-35f6dec41790"
+const produtoAprovado = "9803e7d5-899c-5b1e-8db7-bbcf57fa90b1"
 
 // simuladoDeTeste são as faixas do `.env` da demonstração.
 var simuladoDeTeste = pagamento.Simulado{AprovadoAteCentavos: 89, RecusadoAteCentavos: 94}
@@ -48,11 +48,12 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 		t.Fatal("o 201 não devolveu o identificador do Pedido")
 	}
 
-	// A Tentativa nasceu na mesma transação do Pedido, com o total congelado.
+	// A Tentativa nasceu na mesma transação do Pedido, com o total congelado:
+	// R$ 165,00 mais o Frete de SP, porque fica abaixo do limiar de isenção.
 	tentativas := textoDe(t, pool, `
 		SELECT id_externo || '|' || total_centavos || '|' || numero
 		FROM pagamento.tentativa_pagamento WHERE pedido_id = $1::uuid`, pedidoID)
-	quer := pagamento.IDExterno(pedidoID, 1) + "|32900|1"
+	quer := pagamento.IDExterno(pedidoID, 1) + "|18000|1"
 	if len(tentativas) != 1 || tentativas[0] != quer {
 		t.Fatalf("tentativa = %v, quero [%q]", tentativas, quer)
 	}
@@ -62,7 +63,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 	//
 	// Só a Tentativa deste Pedido é entregue; as outras são anotadas em
 	// `emitidas` e não chegam ao webhook. Desde a 5.10 a recusa também é
-	// emitida, e os Pedidos de R$ 249,90 dos subtestes anteriores (`,90`, a
+	// emitida, e os Pedidos de R$ 110,90 dos subtestes anteriores (`,90`, a
 	// faixa que recusa) têm Tentativa vencida: entregar a recusa deles deixaria
 	// a varredura abaixo levá-los a PAGAMENTO_RECUSADO, e os subtestes
 	// seguintes contam com eles ainda aguardando pagamento.
@@ -92,7 +93,7 @@ func confirmacaoAprovadaLevaOPedidoAPago(t *testing.T, rotas http.Handler, pool 
 		}
 	}
 	if len(emitidas) < 2 || !slices.ContainsFunc(emitidas, func(c pagamento.Confirmacao) bool { return c.Resultado == pagamento.Recusado }) {
-		t.Errorf("emitidas = %v; quero também a recusa dos Pedidos de R$ 249,90", emitidas)
+		t.Errorf("emitidas = %v; quero também a recusa dos Pedidos de R$ 110,90", emitidas)
 	}
 
 	chave := pagamento.ChaveIdempotencia(pagamento.IDExterno(pedidoID, 1))

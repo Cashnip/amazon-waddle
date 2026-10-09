@@ -88,7 +88,7 @@ func executar(ctx context.Context, saida io.Writer) error {
 
 	// O conjunto de medição do NFR-4 (Estória 1.4) é ligado só por
 	// configuração e entra depois do Catálogo Semeado, porque multiplica os
-	// 50 Produtos dele. O catálogo da demonstração nunca vira 5.000 (SM-C3).
+	// 194 Produtos dele. O catálogo da demonstração nunca vira 5.238 (SM-C3).
 	if cfg.SementeGrande {
 		aplicada, err := plataforma.Semear(ctx, cfg.PostgresDSN, db.SementeGrande, db.DirSementeGrande, db.VersaoSementeGrande)
 		if err != nil {

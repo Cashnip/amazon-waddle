@@ -5,8 +5,8 @@ import { cn } from "cn";
 
 // A imagem do Produto em 4/3. Sem URL, ou quando o arquivo não carrega, vira
 // um bloco neutro com o nome centralizado — nunca o ícone de imagem quebrada.
-// `<img>` e não `next/image`: a imagem é SVG embutido no Go, servido na mesma
-// origem, e não há o que otimizar (AD-12).
+// `<img>` e não `next/image`: a imagem é embutida no Go (WebP, desde a 8.1),
+// servida na mesma origem, e não há o que otimizar (AD-12).
 export function ImagemDoProduto({
   src,
   nome,

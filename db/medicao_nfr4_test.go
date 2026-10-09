@@ -14,7 +14,7 @@ import (
 	"github.com/Cashnip/amazon-waddle/internal/plataforma"
 )
 
-// TestMedicaoNFR4 é a verificação 4 do passo 0: com 5.000 Produtos, a consulta
+// TestMedicaoNFR4 é a verificação 4 do passo 0: com 5.238 Produtos, a consulta
 // com termo, Categoria e faixa de preço tem de responder em p95 ≤ 500 ms
 // (NFR-4, SM-4). O número que sai daqui é o que fecha a decisão "índice antes
 // de serviço" no addendum §10 — sem ele, a escolha entre índice, cache e
@@ -25,7 +25,7 @@ import (
 
 const (
 	tetoP95ms  = 500 // NFR-4
-	repeticoes = 20  // × 5 casos = 100 execuções, o bastante para um p95 honesto
+	repeticoes = 20  // × 8 casos = 160 execuções, o bastante para um p95 honesto
 )
 
 // sonda é a forma que a 1.4 mediu: LIKE sobre a coluna normalizada (o que
@@ -69,8 +69,8 @@ func TestMedicaoNFR4(t *testing.T) {
 	}
 	conexao := conectar(t, ctx, dsn)
 
-	if n := inteiro(t, ctx, conexao, `SELECT count(*) FROM catalogo.produto`); n != 5050 {
-		t.Fatalf("%d Produtos; quero 5050 — 50 do Catálogo Semeado e 5.000 do conjunto de medição", n)
+	if n := inteiro(t, ctx, conexao, `SELECT count(*) FROM catalogo.produto`); n != 5238 {
+		t.Fatalf("%d Produtos; quero 5238 — 194 do Catálogo Semeado e 5.044 do conjunto de medição", n)
 	}
 	// Sem ANALYZE o planejador ainda acha que a tabela tem uma página, e o
 	// plano medido não seria o que a demonstração roda.
@@ -82,12 +82,17 @@ func TestMedicaoNFR4(t *testing.T) {
 		termo, categoria string
 		min, max         int64
 	}{
+		// Um termo ASCII por Categoria, que casa com pelo menos um nome dela; Moda
+		// fica com o caso de dois caracteres, abaixo.
 		{"fone", "Eletrônicos", 1000, 200000},
-		{"livro", "Livros", 1000, 200000},
 		{"panela", "Casa e Cozinha", 1000, 200000},
-		{"tenis", "Esporte e Lazer", 1000, 200000},
+		{"racao", "Mercado", 1000, 200000},
+		{"bola", "Esporte e Lazer", 1000, 200000},
+		{"relogio", "Relógios e Joias", 1000, 200000},
+		{"perfume", "Beleza e Perfumaria", 1000, 200000},
+		{"moto", "Veículos", 1000000, 50000000},
 		// A linha da matriz: termo de dois caracteres não extrai trigrama e
-		// degrada para varredura. Com 5.000 linhas isso ainda cabe no teto.
+		// degrada para varredura. Com 5.238 linhas isso ainda cabe no teto.
 		{"ca", "Moda", 1000, 200000},
 	}
 
@@ -106,7 +111,7 @@ func TestMedicaoNFR4(t *testing.T) {
 	}
 
 	p95 := percentil95(comFiltro)
-	t.Logf("NFR-4, termo + Categoria + faixa de preço sobre 5.050 Produtos: %d execuções · mediana %.2f ms · p95 %.2f ms · máximo %.2f ms",
+	t.Logf("NFR-4, termo + Categoria + faixa de preço sobre 5.238 Produtos: %d execuções · mediana %.2f ms · p95 %.2f ms · máximo %.2f ms",
 		len(comFiltro), mediana(comFiltro), p95, slices.Max(comFiltro))
 	t.Logf("NFR-4, só termo: %d execuções · mediana %.2f ms · p95 %.2f ms · máximo %.2f ms",
 		len(soTermo), mediana(soTermo), percentil95(soTermo), slices.Max(soTermo))

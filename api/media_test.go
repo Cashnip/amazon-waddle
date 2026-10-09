@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/Cashnip/amazon-waddle/media"
@@ -27,11 +26,12 @@ func TestMediaServeOArquivoEmbutido(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, quero 200", resp.Code)
 	}
-	if tipo := resp.Header().Get("Content-Type"); !strings.HasPrefix(tipo, "image/svg+xml") {
+	if tipo := resp.Header().Get("Content-Type"); tipo != "image/webp" {
 		t.Errorf("Content-Type = %q", tipo)
 	}
-	if !strings.HasPrefix(resp.Body.String(), "<svg") {
-		t.Errorf("corpo não é o SVG embutido: %.40q", resp.Body.String())
+	// O cabeçalho RIFF do WebP: "RIFF" nos bytes 0–3 e "WEBP" nos bytes 8–11.
+	if corpo := resp.Body.Bytes(); len(corpo) < 12 || string(corpo[0:4]) != "RIFF" || string(corpo[8:12]) != "WEBP" {
+		t.Errorf("corpo não é o WebP embutido: %.12q", resp.Body.String())
 	}
 }
 
@@ -40,7 +40,7 @@ func TestMediaServeOArquivoEmbutido(t *testing.T) {
 // entrega "../../etc/passwd" já decodificado, e o fs.ValidPath de dentro do
 // ReadFile do embed é quem recusa.
 func TestMediaInexistenteSaiNoEnvelope(t *testing.T) {
-	for _, caminho := range []string{"nao-existe.svg", "..%2F..%2Fetc%2Fpasswd"} {
+	for _, caminho := range []string{"nao-existe.webp", "..%2F..%2Fetc%2Fpasswd"} {
 		resp := httptest.NewRecorder()
 		rotasSemDependencia().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/media/"+caminho, nil))
 

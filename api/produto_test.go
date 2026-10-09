@@ -26,15 +26,15 @@ func produtoSemeadoSai(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	}
 	corpo := decodificar(t, resp)
 
-	if corpo["nome"] != "Fone de Ouvido Bluetooth Aurora" {
+	if corpo["nome"] != "Carregador de Celular com Cabo" {
 		t.Errorf("nome = %v", corpo["nome"])
 	}
 	// O preço sai cru, em centavos: não há divisão no caminho monetário
-	// (AD-3), e o JSON não pode trazer 249.90.
-	if preco, ok := corpo["preco_centavos"].(float64); !ok || preco != 24990 {
-		t.Errorf("preco_centavos = %v, quero 24990 inteiro", corpo["preco_centavos"])
+	// (AD-3), e o JSON não pode trazer 110.90.
+	if preco, ok := corpo["preco_centavos"].(float64); !ok || preco != 11090 {
+		t.Errorf("preco_centavos = %v, quero 11090 inteiro", corpo["preco_centavos"])
 	}
-	if strings.Contains(resp.Body.String(), ".") && strings.Contains(resp.Body.String(), "249.9") {
+	if strings.Contains(resp.Body.String(), ".") && strings.Contains(resp.Body.String(), "110.9") {
 		t.Error("o preço saiu em ponto flutuante")
 	}
 	// Relativa: quem serve o byte é GET /api/v1/media/{arquivo}, do próprio

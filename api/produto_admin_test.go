@@ -52,7 +52,7 @@ func gestaoDeProdutos(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &midias); resp.Code != http.StatusOK || err != nil {
 		t.Fatalf("mídias = %d (%s)", resp.Code, resp.Body.String())
 	}
-	imagem := "/api/v1/media/air-fryer-4-litros.svg"
+	imagem := "/api/v1/media/mixer-de-mao.webp"
 	if !slices.IsSorted(midias) || !slices.Contains(midias, imagem) {
 		t.Errorf("mídias = %v, quero em ordem e com %s", midias, imagem)
 	}

@@ -39,7 +39,7 @@ export default async function PaginaDeProduto({
   // `no-store`: preço e disponível não podem vir de cache de construção.
   // encodeURIComponent: o segmento vem da URL e vai para outra URL. Sem
   // escape, um `%2F` normaliza para outra rota do Go — a de mídia devolveria
-  // um SVG, e o resposta.json() estouraria em página de erro em vez de 404.
+  // uma imagem, e o resposta.json() estouraria em página de erro em vez de 404.
   const resposta = await fetch(`${api}/api/v1/produtos/${encodeURIComponent(id)}`, {
     cache: "no-store",
   });

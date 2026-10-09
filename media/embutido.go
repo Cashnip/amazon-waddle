@@ -2,14 +2,14 @@
 // imagem final é `scratch`: arquivo não embutido simplesmente não existe no
 // contêiner, e nada é buscado em rede em tempo de execução (AD-12).
 //
-// Os arquivos e o gerador que os escreve (media/gerar.go) são os dois
-// versionados: trocar placeholder por foto de verdade é substituir o arquivo
-// aqui, sem tocar no banco — a URL gravada no Produto não muda.
+// As fotos são WebP (desde a 8.1), o images[0] de cada Produto do DummyJSON
+// como veio, e ficam versionadas ao lado do gerador que confere a presença
+// delas (media/gerar.go). Créditos e licença em CREDITOS.md.
 package media
 
 import "embed"
 
-// Arquivos são os SVG de media/, servidos por GET /api/v1/media/{arquivo}.
+// Arquivos são as fotos de media/, servidas por GET /api/v1/media/{arquivo}.
 //
-//go:embed *.svg
+//go:embed *.webp
 var Arquivos embed.FS

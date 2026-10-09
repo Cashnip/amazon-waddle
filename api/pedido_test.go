@@ -29,7 +29,7 @@ import (
 //
 // Este Produto é semeado e tem estoque próprio — o de 409 precisa de um
 // Produto que possa ser esgotado sem estragar os outros subtestes.
-const produtoParaEsgotar = "a0ae8ff1-da13-5591-9291-4a4f1ce15383"
+const produtoParaEsgotar = "7446cd4e-bfa7-5bbe-8929-c987cc39a1d5" // Mixer de Mão, R$ 192,00
 
 // freteSudeste é o Frete da faixa de SP (AD-17): o Endereço que
 // enderecoDeSP garante cai nela, e todo Pedido abaixo do limiar de isenção de
@@ -77,11 +77,11 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 		}
 		// O total é o preço do Produto mais o Frete de SP, em centavos
 		// inteiros: não há divisão no caminho monetário (AD-9), e o JSON não
-		// pode trazer 264.9.
-		if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990+freteSudeste {
-			t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 24990+freteSudeste)
+		// pode trazer 125.9.
+		if total, ok := corpo["total_centavos"].(float64); !ok || total != 11090+freteSudeste {
+			t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 11090+freteSudeste)
 		}
-		if strings.Contains(resp.Body.String(), "264.9") {
+		if strings.Contains(resp.Body.String(), "125.9") {
 			t.Error("o total saiu em ponto flutuante")
 		}
 		if i == 0 {
@@ -110,7 +110,7 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 	itens := textoDe(t, pool, `
 		SELECT nome || '|' || vendedor_nome || '|' || preco_praticado_centavos || '|' || quantidade
 		FROM pedido.item_pedido WHERE pedido_id = $1::uuid`, primeiro)
-	quer := "Fone de Ouvido Bluetooth Aurora|Atlântico Importados|24990|1"
+	quer := "Carregador de Celular com Cabo|Atlântico Importados|11090|1"
 	if len(itens) != 1 || itens[0] != quer {
 		t.Errorf("item = %v, quero [%q]", itens, quer)
 	}
@@ -120,7 +120,7 @@ func pedidoNasceAguardandoPagamento(t *testing.T, rotas http.Handler, pool *pgxp
 		SELECT subtotal_centavos || '|' || frete_centavos || '|' || total_centavos || '|' ||
 		       endereco_cep || '|' || endereco_uf
 		FROM pedido.pedido WHERE id = $1::uuid`, primeiro)
-	quer = fmt.Sprintf("24990|%d|%d|01310100|SP", freteSudeste, 24990+freteSudeste)
+	quer = fmt.Sprintf("11090|%d|%d|01310100|SP", freteSudeste, 11090+freteSudeste)
 	if len(congelado) != 1 || congelado[0] != quer {
 		t.Errorf("Pedido = %v, quero [%q]", congelado, quer)
 	}
@@ -339,8 +339,8 @@ func leituraDoPedido(t *testing.T, rotas http.Handler, pool *pgxpool.Pool, cooki
 	if corpo["status"] != "AGUARDANDO_PAGAMENTO" {
 		t.Errorf("status = %v", corpo["status"])
 	}
-	if total, ok := corpo["total_centavos"].(float64); !ok || total != 24990+freteSudeste {
-		t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 24990+freteSudeste)
+	if total, ok := corpo["total_centavos"].(float64); !ok || total != 11090+freteSudeste {
+		t.Errorf("total_centavos = %v, quero %d inteiro", corpo["total_centavos"], 11090+freteSudeste)
 	}
 	if !strings.HasPrefix(fmt.Sprint(corpo["numero"]), "AZ-") {
 		t.Errorf("numero = %v", corpo["numero"])

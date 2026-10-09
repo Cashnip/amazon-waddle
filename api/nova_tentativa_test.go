@@ -22,7 +22,7 @@ import (
 // — sem Estoque, teto, duplo clique e Pedido alheio —, cada uma conferindo que
 // nada foi gravado.
 //
-// Tudo é próprio: conta, Produtos e Estoque. O Produto de R$ 249,90 dos
+// Tudo é próprio: conta, Produtos e Estoque. O Produto de R$ 110,90 dos
 // subtestes da 1.7 também cai em `,90`, mas os Pedidos dele precisam continuar
 // aguardando pagamento para os subtestes que vêm depois, e a Reserva que a nova
 // Tentativa deixa ativa mexeria no disponível que eles conferem.

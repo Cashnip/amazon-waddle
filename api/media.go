@@ -26,7 +26,7 @@ func midia(w http.ResponseWriter, r *http.Request) {
 	}
 	// Literal, e não mime.TypeByExtension: aquele lê a tabela MIME do sistema
 	// operacional, e o embed guarda um tipo de arquivo só.
-	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Content-Type", "image/webp")
 	_, _ = w.Write(conteudo)
 }
 
@@ -35,7 +35,7 @@ func midia(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/media/{arquivo} de fato responde. Upload é da fase 2.
 func midias() []string {
 	// O padrão é literal e válido: o único erro possível do Glob é padrão malformado.
-	nomes, _ := fs.Glob(media.Arquivos, "*.svg")
+	nomes, _ := fs.Glob(media.Arquivos, "*.webp")
 	urls := make([]string, 0, len(nomes))
 	for _, n := range nomes {
 		urls = append(urls, "/api/v1/media/"+n)

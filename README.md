@@ -38,8 +38,8 @@ O Provedor Simulado confirma em 5 s nos dois modos.
 **A primeira construção usa a rede; o sistema em pé, não.** O `Dockerfile` roda
 `go mod download` e o `web/Dockerfile` roda `npm ci`, os dois contra registradores
 externos — o NFR-15 é sobre a demonstração rodando (seção 3), não sobre a primeira
-construção. O que não precisa ser baixado à mão é o resto: o `.env`, os 50 SVG dos
-Produtos, a fonte da marca e o SQL da semente são versionados.
+construção. O que não precisa ser baixado à mão é o resto: o `.env`, as 194 fotos dos
+Produtos (WebP, em `media/`), a fonte da marca e o SQL da semente são versionados.
 
 **Deu certo se**, em outro terminal, depois que `docker compose ps` mostrar o serviço
 `azamon` como `healthy` (o `web` não tem healthcheck, e até ele subir a porta 3000 recusa
@@ -51,9 +51,11 @@ curl http://localhost:8080/api/v1/saude    # {"status":"ok"} pela porta do Go
 curl http://localhost:3000                 # a casca do Next respondendo
 ```
 
-O arranque aplica as migrações e, uma vez só, o **Catálogo Semeado** — 50 Produtos em 5
-Categorias, com as duas contas de demonstração abaixo. Não existe produção, então estas
-credenciais não são segredo; elas estão versionadas junto com a lista, em `media/gerar.go`.
+O arranque aplica as migrações e, uma vez só, o **Catálogo Semeado** — 194 Produtos com
+foto em 8 Categorias, com as duas contas de demonstração abaixo. Não existe produção, então
+estas credenciais não são segredo; elas estão versionadas junto com a lista, em
+`media/gerar.go`. Quem já tinha subido o banco antes da estória 8.1 precisa de
+`docker compose down -v` uma vez (seção 4).
 
 | Papel | E-mail | Senha |
 |---|---|---|
@@ -134,15 +136,15 @@ nasce do Carrinho, com Frete, Endereço e Reserva de Estoque.
 
    | Centavos do total | Desfecho | Um Produto que cai nela |
    |---|---|---|
-   | `,00` a `,89` | aprova: `PAGO`, e daí sozinho até `ENTREGUE` | [Caixa de Som Portátil Maré](http://localhost:3000/produtos/a0ae8ff1-da13-5591-9291-4a4f1ce15383), R$ 189,00 — total R$ 204,00 |
-   | `,90` a `,94` | recusa: `PAGAMENTO_RECUSADO`, e a nova Tentativa aprova | [Fone de Ouvido Bluetooth Aurora](http://localhost:3000/produtos/3400cd00-3f5e-5433-9171-fde099a52005), R$ 249,90 — total R$ 264,90 |
-   | `,95` a `,99` | nenhuma confirmação: a Tentativa expira em 60 s e o Pedido vai a `PAGAMENTO_RECUSADO` | [Anotações de um Andarilho](http://localhost:3000/produtos/cc853ad1-cdb0-5621-aac5-d92fae625359), R$ 39,95 — total R$ 54,95 |
+   | `,00` a `,89` | aprova: `PAGO`, e daí sozinho até `ENTREGUE` | [Mixer de Mão](http://localhost:3000/produtos/7446cd4e-bfa7-5bbe-8929-c987cc39a1d5), R$ 192,00 — total R$ 207,00 |
+   | `,90` a `,94` | recusa: `PAGAMENTO_RECUSADO`, e a nova Tentativa aprova | [Carregador de Celular com Cabo](http://localhost:3000/produtos/71ea1e58-91d9-5022-ba93-6a2518f42eed), R$ 110,90 — total R$ 125,90 |
+   | `,95` a `,99` | nenhuma confirmação: a Tentativa expira em 60 s e o Pedido vai a `PAGAMENTO_RECUSADO` | [Bola de Futebol](http://localhost:3000/produtos/0faf8e31-3b0c-5a47-8c00-34d462d42aa6), R$ 99,95 — total R$ 114,95 |
 
    O Frete é sempre em reais inteiros (R$ 15,00 no Sudeste, e grátis a partir de R$ 299,00
    de Subtotal), então os centavos do total são os dos Produtos — e **a quantidade os
-   muda**: duas unidades do Andarilho somam R$ 79,90, e o total de R$ 94,90 cai na recusa,
+   muda**: duas Bolas de Futebol somam R$ 199,90, e o total de R$ 214,90 cai na recusa,
    não na expiração. Da segunda Tentativa em diante o Simulado sempre aprova (AD-8), com
-   teto de 3 Tentativas por Pedido. A Maré está na página 2 da Vitrine; os links acima
+   teto de 3 Tentativas por Pedido. O Mixer está na página 6 da Vitrine; os links acima
    levam direto à Página de Produto.
 4. A Página de Produto mostra a Categoria no breadcrumb e, na Caixa de compra (à direita a
    partir de 1024 px), a disponibilidade, a quantidade e **"Adicionar ao Carrinho"**. Sem
@@ -161,14 +163,16 @@ nasce do Carrinho, com Frete, Endereço e Reserva de Estoque.
    → `ENVIADO` → `ENTREGUE` de 30 em 30 s: **`ENTREGUE` 1 min 39 s** depois do Confirmar
    Pedido. Nenhum passo é manual: quem move o tempo é a varredura do serviço Go. Na tela,
    cada mudança aparece até um intervalo de consulta (3 s ou 10 s) depois desses tempos.
+   Os tempos desta seção foram medidos em 2026-09-25 sobre o catálogo anterior à 8.1, e a
+   8.2 os mede de novo.
 
 Os outros dois desfechos, medidos na mesma sessão e também pela API:
 
-- **Recusa (Aurora).** `PAGAMENTO_RECUSADO` em 7 s. A tela troca o relógio por "O Provedor
+- **Recusa.** `PAGAMENTO_RECUSADO` em 7 s. A tela troca o relógio por "O Provedor
   de Pagamento recusou a Tentativa de Pagamento." e oferece **"Tentar pagar de novo"**
   enquanto restam Tentativas; a nova Tentativa chegou a `PAGO` 6 s depois de pedida e
   seguiu até `ENTREGUE` no mesmo ritmo.
-- **Expiração (Andarilho).** Nenhuma confirmação chega; o relógio corre, e em 60 s
+- **Expiração.** Nenhuma confirmação chega; o relógio corre, e em 60 s
   (`AZAMON_PAGAMENTO_TENTATIVA_EXPIRACAO`) a varredura leva o Pedido a
   `PAGAMENTO_RECUSADO` com o motivo "Tempo de pagamento expirado.". Daí sai o mesmo
   "Tentar pagar de novo", enquanto restam Tentativas.
@@ -345,7 +349,7 @@ ensaio:
   **código deste repositório**: `node_modules`, `.next` e `package-lock.json` ficam de
   fora, então o portão não diz nada sobre o que uma dependência de terceiro busca.
 - **Ensaio completo:** com a pilha no ar, percorra a seção 2 de ponta a ponta com o Wi-Fi
-  da máquina desligado. Tudo que o navegador carrega — a casca, a fonte, os SVG dos
+  da máquina desligado. Tudo que o navegador carrega — a casca, a fonte, as fotos dos
   Produtos — sai dos contêineres.
 
 **Por que desligar o Wi-Fi e não subir uma rede sem saída.** Um
@@ -360,11 +364,17 @@ respondendo 200 e `https://example.com` sem nem resolver o nome. O relato está 
 ## 4. Reiniciar a demonstração
 
 `docker compose down -v` e `docker compose up` devolvem o ambiente ao estado inicial: os
-mesmos 50 Produtos, com os mesmos identificadores, nenhum Pedido, nenhum Endereço, e as
+mesmos 194 Produtos, com os mesmos identificadores, nenhum Pedido, nenhum Endereço, e as
 senhas das duas contas de volta às da tabela da seção 1. O `-v` é o que apaga o volume do
 banco; `docker compose down` sem ele só para os contêineres, e a próxima subida volta com
 tudo que estava lá. Os identificadores da semente são derivados do nome, então não mudam
 entre subidas — é o que permite ligar um Produto pela URL como a seção 2 faz.
+
+**Banco semeado antes da 8.1? Rode `docker compose down -v` uma vez.** A estória 8.1 trocou
+os 50 Produtos de placeholder pelos 194 com foto sem mudar a versão da semente (uma versão
+nova bateria na chave primária dos Vendedores e derrubaria o arranque). Um volume antigo
+continua com o catálogo velho, e as `imagem_url` dele apontam para SVG que não existem
+mais no binário. Depois do `down -v`, suba com `docker compose up --build`.
 
 É também o que devolve o Estoque. Cada Produto nasce com `estoque_total` 10; a Reserva de
 Estoque segura a unidade desde a criação do Pedido e a consolida em `ENVIADO`, e só o
@@ -397,12 +407,14 @@ cd web && npm test       # node --test sobre os 9 arquivos de web/scripts/*.test
   não tem teste no `web/`. O mesmo `npm test` roda no `prebuild`, então teste vermelho
   derruba a construção da imagem `web`.
 - Mexeu na lista de Produtos? Ela mora em `media/gerar.go`, e `go run media/gerar.go`
-  reescreve os SVG e o SQL da semente — nenhum dos dois se edita à mão. Para ver a semente
-  nova, `docker compose down -v` e suba de novo: o marcador em `public.semente` faz o banco
-  já semeado ignorar qualquer mudança.
-- Para medir a busca em volume, `AZAMON_SEMENTE_GRANDE=true` no `.env` acrescenta 5.000
+  reescreve o SQL da semente, que não se edita à mão. O gerador não baixa nem desenha
+  imagem: a foto de cada Produto já está em `media/{apelido}.webp`, e ele falha se faltar
+  alguma, ou se um nome ou apelido se repetir. Créditos e licença das fotos em
+  `media/CREDITOS.md`. Para ver a semente nova, `docker compose down -v` e suba de novo:
+  o marcador em `public.semente` faz o banco já semeado ignorar qualquer mudança.
+- Para medir a busca em volume, `AZAMON_SEMENTE_GRANDE=true` no `.env` acrescenta 5.044
   Produtos de bancada no arranque, com marcador próprio. Não é o catálogo da demonstração,
-  que continua com 50 — a medição do NFR-4 vive em `go test ./db -run TestMedicaoNFR4` e
+  que continua com 194 — a medição do NFR-4 vive em `go test ./db -run TestMedicaoNFR4` e
   não precisa da variável.
 
 > O repositório versiona **o trabalho, não a ferramenta**. Depois de clonar você tem os

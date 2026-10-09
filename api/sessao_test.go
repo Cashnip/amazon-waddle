@@ -42,8 +42,10 @@ const (
 	nomeAdmin  = "Marcos Aleixo"
 
 	// Identificador v5 derivado do nome em media/gerar.go — estável por
-	// construção, e por isso escrevível no teste e no front.
-	produtoSemeado = "3400cd00-3f5e-5433-9171-fde099a52005"
+	// construção, e por isso escrevível no teste e no front. É o Carregador de
+	// Celular com Cabo, R$ 110,90: `,90` recusa, e fica abaixo do limiar de
+	// isenção de Frete dos testes (R$ 250,00).
+	produtoSemeado = "71ea1e58-91d9-5022-ba93-6a2518f42eed"
 )
 
 // expiracaoDeTeste são os mesmos 7 dias do AZAMON_SESSAO_EXPIRACAO da

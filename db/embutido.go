@@ -33,9 +33,9 @@ const DirSemente = "semente"
 // está lá, não quantas vieram antes.
 const VersaoSemente = "2026-09-11-catalogo-inicial"
 
-// SementeGrande é o conjunto de medição do NFR-4: 5.000 Produtos que só
+// SementeGrande é o conjunto de medição do NFR-4: 5.044 Produtos que só
 // entram com AZAMON_SEMENTE_GRANDE=true. Fica fora de Semente de propósito —
-// o catálogo da demonstração continua com 50 Produtos (SM-C3).
+// o catálogo da demonstração continua com 194 Produtos (SM-C3).
 //
 //go:embed semente-grande
 var SementeGrande embed.FS

@@ -49,7 +49,7 @@ func gestaoDeVendedores(t *testing.T, rotas http.Handler, pool *pgxpool.Pool) {
 	nomes := nomesDe(t, lista)
 	// A ordem esperada é literal, e não slices.IsSorted: o Go compara bytes e o
 	// ORDER BY do Postgres segue a collation, que divergem em nome acentuado.
-	semeados := []string{"Atlântico Importados", "Casa Boa Utilidades", "Pampa Esportes", "Sertão Livraria", "Vale do Sol Distribuidora"}
+	semeados := []string{"Atlântico Importados", "Casa Boa Utilidades", "Pampa Esportes", "Sertão Empório", "Vale do Sol Distribuidora"}
 	if !slices.Equal(nomes, semeados) {
 		t.Errorf("lista = %v, quero os cinco semeados por nome", nomes)
 	}
